@@ -189,85 +189,64 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
     const handleSignIn = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // --- REAL AUTHENTICATION ---
-        try {
-            // 1. Attempt Real Login
-            const response = await authService.login({ username, password });
+        // --- 0. BYPASS FOR DEMO ACCOUNTS (Local Testing) ---
+        const demoUsers = ['PAY-001', 'director', 'bursar', 'sarah.n@vine.ac.ug'];
+        if (demoUsers.includes(username)) {
+            console.log("Demo user detected, skipping AWS Auth...");
+            // Fall through to the logic below (User 273+)
+        } else {
+            // --- 1. REAL AUTHENTICATION (AWS) ---
+            try {
+                const response = await authService.login({ username, password });
 
-            if (response.success) {
-                // Login Successful!
-                console.log("Real login successful", response);
+                if (response.success) {
+                    // Login Successful!
+                    console.log("Real login successful", response);
 
-                // Fetch User Attributes to determine Role
-                const attributes = await authService.getUserAttributes();
-                const dbRole = attributes['nickname'] || attributes['custom:role'] || 'Student'; // specific standard attribute
-                const dbSchoolId = attributes['custom:schoolId'] || '1';
+                    // Fetch User Attributes to determine Role
+                    const attributes = await authService.getUserAttributes();
+                    const dbRole = attributes['nickname'] || attributes['custom:role'] || 'Student';
+                    const dbSchoolId = attributes['custom:schoolId'] || '1';
 
-                let redirectPath = '/student';
-                let userRole = 'Student';
+                    let redirectPath = '/student';
+                    let userRole = 'Student';
 
-                if (dbRole === 'Tutor') {
-                    userRole = 'Tutor';
-                    redirectPath = '/tutor';
-                } else if (dbRole === 'Director' || dbRole === 'School') {
-                    userRole = 'Director';
-                    redirectPath = '/portal'; // Redirect to Staff Portal Selector (Image 1)
-                } else if (dbRole === 'Bursar') {
-                    userRole = 'Bursar';
-                    redirectPath = '/bursar';
+                    if (dbRole === 'Tutor') {
+                        userRole = 'Tutor';
+                        redirectPath = '/tutor';
+                    } else if (dbRole === 'Director' || dbRole === 'School') {
+                        userRole = 'Director';
+                        redirectPath = '/portal';
+                    } else if (dbRole === 'Bursar') {
+                        userRole = 'Bursar';
+                        redirectPath = '/bursar';
+                    } else {
+                        // Default / Student
+                        userRole = 'Student';
+                        redirectPath = '/student';
+                    }
+
+                    logout();
+                    setActiveRole(userRole as any);
+                    router.push(redirectPath);
+                    onClose();
+                    return;
                 } else {
-                    // Default / Student
-                    userRole = 'Student';
-                    redirectPath = '/student';
-                }
+                    console.warn("Real login failed:", response.error);
 
-                logout(); // Clear any old mock state
-                setActiveRole(userRole as any);
+                    if (response.error === 'NEW_PASSWORD_REQUIRED') {
+                        setMode('new_password');
+                        return;
+                    }
 
-                // If it's a student, we might want to set the student profile. 
-                // Since we don't have the full student object from Cognito yet, we might need to fetch it or mock it minimally.
-                if (userRole === 'Student') {
-                    setStudentProfile({
-                        id: 'cognito_user',
-                        name: username, // or use sub
-                        email: username,
-                        // Defaults
-                        schoolId: '1',
-                        linkedStudentCode: '',
-                        likedContentIds: [],
-                        subscribedTutorIds: [],
-                        subscriptionStatus: 'active',
-                        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-                    });
+                    if (response.error) {
+                        alert(`Login Failed: ${response.error}`);
+                        return;
+                    }
                 }
-                else if (userRole === 'Tutor') {
-                    setTutorProfile({
-                        id: 'cognito_tutor',
-                        name: username,
-                        email: username,
-                        role: 'Tutor',
-                        subscriptionDaysLeft: 30
-                    });
-                }
-
-                router.push(redirectPath);
-                onClose();
-                return;
-            } else {
-                console.warn("Real login failed:", response.error);
-
-                if (response.error === 'NEW_PASSWORD_REQUIRED') {
-                    setMode('new_password');
-                    return;
-                }
-
-                if (response.error) {
-                    alert(`Login Failed: ${response.error}`);
-                    return;
-                }
+            } catch (err) {
+                console.error("Login exception:", err);
             }
-        } catch (err) {
-            console.error("Login exception:", err);
         }
 
         // --- EMERGENCY DEMO LOGIN BYPASS (FALLBACK) ---

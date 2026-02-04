@@ -568,6 +568,15 @@ export default function BursarResultsPage() {
 
     return (
         <div className="max-w-7xl mx-auto p-6 animate-fade-in space-y-8 relative">
+            {/* DEVELOPMENT BANNER - DIRECTOR REQUEST */}
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg shadow-sm flex items-start gap-3">
+                <span className="text-2xl">🚧</span>
+                <div>
+                    <h3 className="text-yellow-800 font-bold uppercase tracking-wider text-xs mb-1">Under Construction</h3>
+                    <p className="text-yellow-700 text-sm font-medium">The Academic Results module is currently in development. Features and data persistence may be limited.</p>
+                </div>
+            </div>
+
             {/* Edit Results Modal */}
 
 

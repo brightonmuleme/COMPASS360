@@ -27,40 +27,53 @@ export default function RoleSelectionPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl w-full">
                 {roles.map((role) => (
-                    <Link
-                        key={role.id}
-                        href={getRoute(role.id)}
-                        className="group relative bg-white rounded-2xl p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-100 flex flex-col items-center text-center cursor-pointer"
-                    >
-                        {/* Icon/Image Placeholder */}
-                        <div
-                            className="w-20 h-20 rounded-full mb-6 flex items-center justify-center text-4xl shadow-inner"
-                            style={{ backgroundColor: `${role.theme}20`, color: role.theme }}
+                    <div key={role.id} onClick={(e) => {
+                        if (role.id === 'registrar') {
+                            e.preventDefault();
+                            alert("🚧 Registrar Portal is currently Under Development.\n\nPlease check back soon for updates to Admissions, Enrollments, and Academic Records.");
+                            return;
+                        }
+                    }}>
+                        <Link
+                            href={role.id === 'registrar' ? '#' : getRoute(role.id)}
+                            className="group relative bg-white rounded-2xl p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-100 flex flex-col items-center text-center cursor-pointer"
                         >
-                            {/* Simple Logic to pick an emoji based on role if no image, or just use colored box */}
-                            <span className="group-hover:scale-110 transition-transform duration-300">
-                                {role.id === 'admin' && '👔'}
-                                {role.id === 'bursar' && '💰'}
-                                {role.id === 'student' && '🎓'}
-                                {role.id === 'tutor' && '👨‍🏫'}
-                                {role.id === 'developer' && '🛠️'}
-                                {role.id === 'registrar' && '📋'}
-                            </span>
-                        </div>
+                            {/* Icon/Image Placeholder */}
+                            <div
+                                className="w-20 h-20 rounded-full mb-6 flex items-center justify-center text-4xl shadow-inner"
+                                style={{ backgroundColor: `${role.theme}20`, color: role.theme }}
+                            >
+                                {/* Simple Logic to pick an emoji based on role if no image, or just use colored box */}
+                                <span className="group-hover:scale-110 transition-transform duration-300">
+                                    {role.id === 'admin' && '👔'}
+                                    {role.id === 'bursar' && '💰'}
+                                    {role.id === 'student' && '🎓'}
+                                    {role.id === 'tutor' && '👨‍🏫'}
+                                    {role.id === 'developer' && '🛠️'}
+                                    {role.id === 'registrar' && '📋'}
+                                    {/* News Coordinator */}
+                                    {role.title.includes('News') && '📰'}
+                                    {/* Expense Manager */}
+                                    {role.title.includes('Expense') && '📉'}
+                                    {/* Estate Manager */}
+                                    {role.title.includes('Estate') && '🏗️'}
+                                </span>
+                            </div>
 
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">{role.title}</h3>
-                        <p className="text-sm text-gray-500 line-clamp-2">{role.tagline}</p>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">{role.title}</h3>
+                            <p className="text-sm text-gray-500 line-clamp-2">{role.tagline}</p>
 
-                        <div className="mt-6 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                            Enter Portal →
-                        </div>
+                            <div className="mt-6 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                                {role.id === 'registrar' ? '🚧 Under Dev' : 'Enter Portal →'}
+                            </div>
 
-                        {/* Hover Border Effect */}
-                        <div
-                            className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-current opacity-10 pointer-events-none transition-colors"
-                            style={{ color: role.theme }}
-                        />
-                    </Link>
+                            {/* Hover Border Effect */}
+                            <div
+                                className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-current opacity-10 pointer-events-none transition-colors"
+                                style={{ color: role.theme }}
+                            />
+                        </Link>
+                    </div>
                 ))}
             </div>
 
