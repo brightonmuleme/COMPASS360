@@ -77,7 +77,7 @@ export const authService = {
                         email: params.email,
                         phone_number: params.phoneNumber,
                         name: params.name,
-                        'custom:role': params.role // Store role in Cognito!
+                        nickname: params.role // Store role in 'nickname' standard attribute
                     }
                 }
             });

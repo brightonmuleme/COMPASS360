@@ -159,7 +159,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
 
                 // Fetch User Attributes to determine Role
                 const attributes = await authService.getUserAttributes();
-                const dbRole = attributes['custom:role'] || 'Student'; // Default if missing
+                const dbRole = attributes['nickname'] || attributes['custom:role'] || 'Student'; // specific standard attribute
                 const dbSchoolId = attributes['custom:schoolId'] || '1';
 
                 let redirectPath = '/student';
