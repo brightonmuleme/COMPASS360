@@ -15,8 +15,8 @@ const TAKEN_USERNAMES = ['admin', 'user', 'brightoni', 'john', 'doe'];
 
 const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 'signup' }) => {
     const router = useRouter();
-    // Mode: 'signup' or 'signin' or 'payment' or 'account_info'
-    const [mode, setMode] = useState<'signup' | 'signin' | 'payment' | 'account_info'>(initialMode);
+    // Mode: 'signup' or 'signin' or 'payment' or 'account_info' or 'verification'
+    const [mode, setMode] = useState<'signup' | 'signin' | 'payment' | 'account_info' | 'verification'>(initialMode);
 
     // Payment State
     const [selectedPlan, setSelectedPlan] = useState('1 month Premium plan @ 30k Ugx');
@@ -39,6 +39,9 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+    // Verification State
+    const [verificationCode, setVerificationCode] = useState('');
 
     // Account Settings State (simulating Image 2)
 
@@ -73,7 +76,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
         featuredSchools, addStudent, addTutor, addStaffAccount
     } = useSchoolData();
 
-    const handleRegisterSubmit = (e: React.FormEvent) => {
+    const handleRegisterSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (role !== 'student' && !usernameAvailable) {
@@ -91,55 +94,55 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
             return;
         }
 
-        // --- PERSISTENCE ---
-        if (role === 'student') {
-            const newId = Math.floor(Math.random() * 100000);
-            const newStudent: EnrolledStudent = {
-                id: newId,
-                name: `${firstName} ${lastName}`,
-                payCode: payCode || `GUEST-${newId}`, // Use a guest code if none provided
-                password: password,
-                email: username, // Save the chosen username/email for login
-                phoneNumber: phoneNumber, // Save the phone number
-                programme: selectedSchool ? 'School Student' : 'Independent Learner',
-                level: 'Year 1',
-                semester: 'Semester 1',
-                balance: 0,
-                totalFees: 0,
-                services: [],
-                bursary: 'None',
-                previousBalance: 0,
-                status: 'active',
-                subscriptionDaysLeft: 14, // Trial
-                subscriptionExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-            };
-            addStudent(newStudent);
-        } else if (role === 'tutor') {
-            const newTutor: Tutor = {
-                id: `tutor_${Date.now()}`,
-                name: `${firstName} ${lastName}`,
-                email: email || username,
-                phone: phoneNumber,
-                password: password,
-                type: 'Full-time',
-                status: 'Active',
-                programmeIds: [],
-                subscriptionDaysLeft: 7 // Trial
-            };
-            addTutor(newTutor);
-        } else if (role === 'accountant') {
-            const newStaff: StaffAccount = {
-                id: `staff_${Date.now()}`,
-                username: username,
-                password: password,
-                role: 'Director', // Default signup role for demo
-                name: `${firstName} ${lastName}`
-            };
-            addStaffAccount(newStaff);
-        }
+        // --- REAL REGISTRATION ---
+        let userRole = 'Student';
+        if (role === 'tutor') userRole = 'Tutor';
+        if (role === 'school') userRole = 'Director'; // Or 'School'
+        if (role === 'accountant') userRole = 'Bursar';
 
-        alert(`Success! Account created for ${firstName} ${lastName}. Now please log in.`);
-        setMode('signin');
+        try {
+            // Note: We use the 'email' field as the username for simplicity in this flow,
+            // or the 'username' field if your Cognito pool allows it.
+            // Based on previous code, 'username' seems to be the main identifier.
+
+            // Format phone number to E.164 if possible, or just pass as is (Cognito is strict)
+            const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+256${phoneNumber.replace(/^0/, '')}`;
+
+            const result = await authService.signUp({
+                username: username, // Using username as the unique ID
+                password: password,
+                email: email,
+                name: `${firstName} ${lastName}`,
+                phoneNumber: formattedPhone, // rigorous formatting needed in prod
+                role: userRole
+            });
+
+            if (result.success) {
+                alert(`Account created! Please check your email (${email}) for the verification code.`);
+                setMode('verification');
+            } else {
+                alert(`Registration Failed: ${result.error}`);
+            }
+
+        } catch (err: any) {
+            console.error("Registration Error", err);
+            alert("An error occurred during registration. Please try again.");
+        }
+    };
+
+    const handleVerificationSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const result = await authService.confirmSignUp(username, verificationCode);
+            if (result.success) {
+                alert("Verification Successful! You can now log in.");
+                setMode('signin');
+            } else {
+                alert(`Verification Failed: ${result.error}`);
+            }
+        } catch (err) {
+            alert("Verification failed. Please check the code and try again.");
+        }
     };
 
     const handleSignIn = async (e: React.FormEvent) => {
@@ -154,20 +157,28 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                 // Login Successful!
                 console.log("Real login successful", response);
 
-                // Determine Role (Logic depends on how roles are stored in Cognito attributes)
-                // For now, we default to a safe portal or basic role, or check if we can parse it.
-                // If we don't have role info, we can redirect to a "portal selector" or default based on the modal's entry point.
+                // Fetch User Attributes to determine Role
+                const attributes = await authService.getUserAttributes();
+                const dbRole = attributes['custom:role'] || 'Student'; // Default if missing
+                const dbSchoolId = attributes['custom:schoolId'] || '1';
 
-                // Temporary: Map modal entry 'role' to the session role
-                // In production, this should come from user attributes e.g. custom:role
+                let redirectPath = '/student';
+                let userRole = 'Student';
 
-                let redirectPath = '/portal';
-                let userRole = 'Student'; // Default
-
-                if (role === 'tutor') { userRole = 'Tutor'; redirectPath = '/tutor'; }
-                else if (role === 'school') { userRole = 'Director'; redirectPath = '/admin'; }
-                else if (role === 'accountant') { userRole = 'Bursar'; redirectPath = '/bursar'; }
-                else if (role === 'student') { userRole = 'Student'; redirectPath = '/student'; }
+                if (dbRole === 'Tutor') {
+                    userRole = 'Tutor';
+                    redirectPath = '/tutor';
+                } else if (dbRole === 'Director' || dbRole === 'School') {
+                    userRole = 'Director';
+                    redirectPath = '/admin';
+                } else if (dbRole === 'Bursar') {
+                    userRole = 'Bursar';
+                    redirectPath = '/bursar';
+                } else {
+                    // Default / Student
+                    userRole = 'Student';
+                    redirectPath = '/student';
+                }
 
                 logout(); // Clear any old mock state
                 setActiveRole(userRole);
@@ -858,6 +869,51 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
 
                         {role === 'accountant' && <div style={{ textAlign: 'center' }}><p>Registration for {role}s is currently invite-only by the School Admin.</p></div>}
                     </>
+                )}
+
+                {/* --- VERIFICATION VIEW --- */}
+                {mode === 'verification' && (
+                    <div style={{ textAlign: 'center', animation: 'fadeIn 0.3s' }}>
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem', color: '#fff' }}>Verify Your Email</h2>
+                        <p style={{ color: '#ccc', marginBottom: '1.5rem' }}>
+                            We sent a 6-digit code to <span style={{ color: '#fff', fontWeight: 'bold' }}>{email}</span>.
+                            <br />Please enter it below to confirm your account.
+                        </p>
+
+                        <form onSubmit={handleVerificationSubmit}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>Verification Code</label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    required
+                                    value={verificationCode}
+                                    onChange={e => setVerificationCode(e.target.value)}
+                                    placeholder="123456"
+                                    style={{ textAlign: 'center', letterSpacing: '4px', fontSize: '1.2rem', fontWeight: 'bold' }}
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                className={styles.btnPrimary}
+                                style={{
+                                    width: '100%',
+                                    marginTop: '1.5rem',
+                                    background: '#74c043',
+                                    padding: '1rem',
+                                    fontSize: '1rem',
+                                    fontWeight: 600
+                                }}
+                            >
+                                Verify & Continue
+                            </button>
+                        </form>
+
+                        <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: '#888' }}>
+                            Didn't receive code? <span style={{ color: '#3b82f6', cursor: 'pointer' }} onClick={() => alert('Resend logic to be implemented via authService.resendSignUpCode(username)')}>Resend Code</span>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

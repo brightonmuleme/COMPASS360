@@ -64,5 +64,52 @@ export const authService = {
         } catch (err) {
             return undefined;
         }
+    },
+
+    signUp: async (params: { username: string; password: string; email: string; phoneNumber?: string; name: string; role: string }) => {
+        try {
+            const { signUp } = await import('aws-amplify/auth');
+            const { isSignUpComplete, userId, nextStep } = await signUp({
+                username: params.username,
+                password: params.password,
+                options: {
+                    userAttributes: {
+                        email: params.email,
+                        phone_number: params.phoneNumber,
+                        name: params.name,
+                        'custom:role': params.role // Store role in Cognito!
+                    }
+                }
+            });
+            return { success: true, isSignUpComplete, nextStep, userId };
+        } catch (error: any) {
+            console.error("SignUp failed", error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    confirmSignUp: async (username: string, code: string) => {
+        try {
+            const { confirmSignUp } = await import('aws-amplify/auth');
+            const { isSignUpComplete, nextStep } = await confirmSignUp({
+                username,
+                confirmationCode: code
+            });
+            return { success: true, isSignUpComplete, nextStep };
+        } catch (error: any) {
+            console.error("Confirmation failed", error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    getUserAttributes: async () => {
+        try {
+            const { fetchUserAttributes } = await import('aws-amplify/auth');
+            const attributes = await fetchUserAttributes();
+            return attributes;
+        } catch (error) {
+            console.error("Error fetching attributes", error);
+            return {};
+        }
     }
 };
