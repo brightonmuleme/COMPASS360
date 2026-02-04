@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useMemo } from 'react';
 import { useSchoolData, CalendarEvent, EventType } from '@/lib/store';
-import { ReadOnlyDayScheduleModal } from '@/components/bursar/ReadOnlyDayScheduleModal';
+import { ReadOnlyDayScheduleModal } from '@/components/bursar/calendar/ReadOnlyDayScheduleModal';
 
 export default function DirectorCalendarViewPage() {
     const { calendarEvents, programmes } = useSchoolData();
