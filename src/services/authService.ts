@@ -18,7 +18,7 @@ export const authService = {
             if (isSignedIn) {
                 return { success: true };
             } else if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
-                return { success: false, error: 'User must change password. Please use a different interface for first-time login or update code to handle password reset.' };
+                return { success: false, error: 'NEW_PASSWORD_REQUIRED' };
             } else {
                 return { success: false, error: `Login flow requires next step: ${nextStep.signInStep}` };
             }
@@ -110,6 +110,19 @@ export const authService = {
         } catch (error) {
             console.error("Error fetching attributes", error);
             return {};
+        }
+    },
+
+    confirmSignIn: async (challengeResponse: string) => {
+        try {
+            const { confirmSignIn } = await import('aws-amplify/auth');
+            const { isSignedIn, nextStep } = await confirmSignIn({
+                challengeResponse
+            });
+            return { success: true, isSignedIn, nextStep };
+        } catch (error: any) {
+            console.error("Confirm SignIn failed", error);
+            return { success: false, error: error.message };
         }
     }
 };

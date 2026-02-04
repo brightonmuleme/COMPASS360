@@ -15,8 +15,8 @@ const TAKEN_USERNAMES = ['admin', 'user', 'brightoni', 'john', 'doe'];
 
 const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 'signup' }) => {
     const router = useRouter();
-    // Mode: 'signup' or 'signin' or 'payment' or 'account_info' or 'verification'
-    const [mode, setMode] = useState<'signup' | 'signin' | 'payment' | 'account_info' | 'verification'>(initialMode);
+    // Mode: 'signup' or 'signin' or 'payment' or 'account_info' or 'verification' or 'new_password'
+    const [mode, setMode] = useState<'signup' | 'signin' | 'payment' | 'account_info' | 'verification' | 'new_password'>(initialMode);
 
     // Payment State
     const [selectedPlan, setSelectedPlan] = useState('1 month Premium plan @ 30k Ugx');
@@ -42,6 +42,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
 
     // Verification State
     const [verificationCode, setVerificationCode] = useState('');
+    const [newPassword, setNewPassword] = useState('');
 
     // Account Settings State (simulating Image 2)
 
@@ -130,6 +131,46 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
         }
     };
 
+    const handleNewPasswordSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const result = await authService.confirmSignIn(newPassword);
+            if (result.success) {
+                // Should be signed in now
+                // Trigger the same success logic as handleSignIn (could refactor, but for now specific flow)
+                alert("Password updated! Logging you in...");
+
+                // Reuse the success logic
+                const attributes = await authService.getUserAttributes();
+                const dbRole = attributes['nickname'] || attributes['custom:role'] || 'Student'; // Default if missing
+
+                let redirectPath = '/student';
+                let userRole = 'Student';
+
+                if (dbRole === 'Tutor') {
+                    userRole = 'Tutor';
+                    redirectPath = '/tutor';
+                } else if (dbRole === 'Director' || dbRole === 'School') {
+                    userRole = 'Director';
+                    redirectPath = '/admin';
+                } else if (dbRole === 'Bursar') {
+                    userRole = 'Bursar';
+                    redirectPath = '/bursar';
+                }
+
+                logout();
+                setActiveRole(userRole);
+                router.push(redirectPath);
+                onClose();
+
+            } else {
+                alert(`Password Update Failed: ${result.error}`);
+            }
+        } catch (err: any) {
+            alert(`Error: ${err.message}`);
+        }
+    };
+
     const handleVerificationSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -214,8 +255,12 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                 return;
             } else {
                 console.warn("Real login failed:", response.error);
-                // Fallthrough to mock login if real login fails (optional, or show error)
-                // If the error was "Incorrect username or password", we should probably stop here and show it
+
+                if (response.error === 'NEW_PASSWORD_REQUIRED') {
+                    setMode('new_password');
+                    return;
+                }
+
                 if (response.error) {
                     alert(`Login Failed: ${response.error}`);
                     return;
@@ -913,6 +958,46 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                         <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: '#888' }}>
                             Didn't receive code? <span style={{ color: '#3b82f6', cursor: 'pointer' }} onClick={() => alert('Resend logic to be implemented via authService.resendSignUpCode(username)')}>Resend Code</span>
                         </div>
+                    </div>
+                )}
+
+                {/* --- NEW PASSWORD VIEW (FORCE CHANGE) --- */}
+                {mode === 'new_password' && (
+                    <div style={{ textAlign: 'center', animation: 'fadeIn 0.3s' }}>
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem', color: '#fff' }}>Set New Password</h2>
+                        <div style={{ background: '#dbeafe', color: '#1e40af', padding: '0.75rem', borderRadius: '4px', marginBottom: '1.5rem', fontWeight: 600, fontSize: '0.9rem', textAlign: 'left' }}>
+                            ⚠️ For security, you must set a permanent password for your temporary account.
+                        </div>
+
+                        <form onSubmit={handleNewPasswordSubmit}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>New Password</label>
+                                <input
+                                    type="password"
+                                    className={styles.input}
+                                    required
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
+                                    placeholder="Enter new permanent password"
+                                    minLength={8}
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                className={styles.btnPrimary}
+                                style={{
+                                    width: '100%',
+                                    marginTop: '1.5rem',
+                                    background: '#74c043',
+                                    padding: '1rem',
+                                    fontSize: '1rem',
+                                    fontWeight: 600
+                                }}
+                            >
+                                Set Password & Login
+                            </button>
+                        </form>
                     </div>
                 )}
             </div>
