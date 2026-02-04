@@ -372,7 +372,12 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#9ca3af', fontSize: '0.85rem', cursor: 'pointer' }}>
                                     <input type="checkbox" style={{ accentColor: '#3b82f6' }} /> Remember me
                                 </label>
-                                <span style={{ fontSize: '0.85rem', color: '#3b82f6', cursor: 'pointer' }}>Forgot Password?</span>
+                                <span
+                                    style={{ fontSize: '0.85rem', color: '#3b82f6', cursor: 'pointer' }}
+                                    onClick={() => setMode('forgot_password')}
+                                >
+                                    Forgot Password?
+                                </span>
                             </div>
 
                             <button type="submit" className={styles.btnPrimary} style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', background: 'linear-gradient(to right, #3b82f6, #2563eb)', fontSize: '1rem', fontWeight: 600 }}>
@@ -480,6 +485,97 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                                 </>
                             )}
                         </form>
+                    )}
+
+                    {/* --- FORGOT PASSWORD VIEW --- */}
+                    {mode === 'forgot_password' && (
+                        <div style={{ textAlign: 'center', animation: 'fadeIn 0.3s' }}>
+                            <div style={{ background: '#1f2937', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '2px solid #eab308' }}>
+                                <Lock size={32} color="#eab308" />
+                            </div>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white', marginBottom: '0.5rem' }}>Reset Password</h2>
+                            <p style={{ color: '#9ca3af', marginBottom: '2rem' }}>Enter your username or email to receive a reset code.</p>
+
+                            <form onSubmit={(e) => {
+                                e.preventDefault();
+                                authService.resetPassword(username).then(res => {
+                                    if (res.success) {
+                                        setMode('reset_password_confirm');
+                                    } else {
+                                        alert(`Failed to send code: ${res.error}`);
+                                    }
+                                });
+                            }}>
+                                <div style={inputContainerStyle}>
+                                    <User size={18} style={iconStyle} />
+                                    <input
+                                        type="text"
+                                        style={inputStyle}
+                                        required
+                                        value={username}
+                                        onChange={e => setUsername(e.target.value)}
+                                        placeholder="Username or Email"
+                                    />
+                                </div>
+                                <button type="submit" className={styles.btnPrimary} style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', background: '#eab308', color: 'black', fontSize: '1rem', fontWeight: 600 }}>
+                                    Send Reset Code
+                                </button>
+                                <div style={{ marginTop: '1.5rem' }}>
+                                    <span style={{ color: '#9ca3af', cursor: 'pointer' }} onClick={() => setMode('signin')}>Back to Login</span>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* --- CONFIRM RESET PASSWORD VIEW --- */}
+                    {mode === 'reset_password_confirm' && (
+                        <div style={{ textAlign: 'center', animation: 'fadeIn 0.3s' }}>
+                            <div style={{ background: '#1f2937', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '2px solid #10b981' }}>
+                                <Check size={32} color="#10b981" />
+                            </div>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white', marginBottom: '0.5rem' }}>Set New Password</h2>
+                            <p style={{ color: '#9ca3af', marginBottom: '2rem' }}>Check your email for the code.</p>
+
+                            <form onSubmit={(e) => {
+                                e.preventDefault();
+                                if (password !== confirmPassword) {
+                                    alert("Passwords do not match");
+                                    return;
+                                }
+                                authService.confirmResetPassword(username, verificationCode, password).then(res => {
+                                    if (res.success) {
+                                        alert("Password Reset Successful! You can now login.");
+                                        setMode('signin');
+                                    } else {
+                                        alert(`Reset failed: ${res.error}`);
+                                    }
+                                });
+                            }}>
+                                <div style={inputContainerStyle}>
+                                    <Hash size={18} style={iconStyle} />
+                                    <input
+                                        type="text"
+                                        style={{ ...inputStyle, textAlign: 'center', letterSpacing: '0.2em' }}
+                                        required
+                                        value={verificationCode}
+                                        onChange={e => setVerificationCode(e.target.value)}
+                                        placeholder="Code"
+                                    />
+                                </div>
+                                <div style={inputContainerStyle}>
+                                    <Lock size={18} style={iconStyle} />
+                                    <input type="password" style={inputStyle} required value={password} onChange={e => setPassword(e.target.value)} placeholder="New Password" />
+                                </div>
+                                <div style={inputContainerStyle}>
+                                    <Lock size={18} style={iconStyle} />
+                                    <input type="password" style={inputStyle} required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm New Password" />
+                                </div>
+
+                                <button type="submit" className={styles.btnPrimary} style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', background: '#10b981', fontSize: '1rem', fontWeight: 600 }}>
+                                    Change Password
+                                </button>
+                            </form>
+                        </div>
                     )}
 
                     {/* --- VERIFICATION VIEW --- */}

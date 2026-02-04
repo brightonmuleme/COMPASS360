@@ -124,5 +124,29 @@ export const authService = {
             console.error("Confirm SignIn failed", error);
             return { success: false, error: error.message };
         }
+    },
+
+    resetPassword: async (username: string) => {
+        try {
+            // 'resetPassword' from amplify
+            const { resetPassword } = await import('aws-amplify/auth');
+            const output = await resetPassword({ username });
+            const { nextStep } = output;
+            return { success: true, nextStep };
+        } catch (error: any) {
+            console.error("Reset Password request failed", error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    confirmResetPassword: async (username: string, confirmationCode: string, newPassword: string) => {
+        try {
+            const { confirmResetPassword } = await import('aws-amplify/auth');
+            await confirmResetPassword({ username, confirmationCode, newPassword });
+            return { success: true };
+        } catch (error: any) {
+            console.error("Confirm Reset Password failed", error);
+            return { success: false, error: error.message };
+        }
     }
 };
