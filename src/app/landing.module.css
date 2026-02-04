@@ -1,26 +1,23 @@
 /* Font setup assumes global font (Inter/SF Pro) is set in layout */
 
 .container {
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
   background-color: #000;
   color: #fff;
+  overflow-x: hidden;
 }
 
 .section {
-  height: 100vh;
+  min-height: 100vh;
   width: 100%;
-  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: 2rem;
+  padding: 4rem 2rem;
   text-align: center;
 }
 

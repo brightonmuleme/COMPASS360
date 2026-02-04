@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSchoolData, FeaturedSchool } from '@/lib/store';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowLeft, ArrowRight, Check, Upload, User, MapPin, BookOpen, Send, Calendar, Phone, Mail, FileText } from 'lucide-react';
 
 export default function SchoolApplicationPage() {
     const router = useRouter();
@@ -11,46 +12,31 @@ export default function SchoolApplicationPage() {
 
     const { featuredSchools, addSchoolApplication } = useSchoolData();
     const [school, setSchool] = useState<FeaturedSchool | null>(null);
+    const [notFound, setNotFound] = useState(false);
+
+    // Wizard State
+    const [currentStep, setCurrentStep] = useState(1);
+    const totalSteps = 4;
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
+    // Form Data
     const [formData, setFormData] = useState({
-        // Personal Info
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        dob: '',
-        gender: '',
-        nationality: '',
-        phone: '',
-        email: '',
-        address: '',
+        // 1. Bio Data
+        firstName: '', middleName: '', lastName: '',
+        dob: '', gender: '', nationality: '',
 
-        // Programme Interest
-        programmes: '',
-        entryLevel: '',
-        modeOfStudy: 'Full-time',
+        // 2. Contact & Kin
+        phone: '', email: '', address: '',
+        nokName: '', nokRelationship: '', nokPhone: '', nokAddress: '',
 
-        // Academic Background
-        highestQualification: '',
-        lastInstitution: '',
-        completionYear: '',
-        examBody: '',
-        indexNumber: '',
+        // 3. Academic
+        highestQualification: '', lastInstitution: '', completionYear: '',
+        examBody: '', indexNumber: '',
+        programmes: '', entryLevel: '', modeOfStudy: 'Full-time',
 
-        // Source
-        sourceOfInfo: '',
-        sourceOrgName: '',
-        sourceFriendName: '',
-        sourceOther: '',
-
-        // Next of Kin
-        nokName: '',
-        nokRelationship: '',
-        nokPhone: '',
-        nokAddress: '',
-
-        // Declaration
+        // 4. Marketing & Declaration
+        sourceOfInfo: '', sourceOrgName: '', sourceFriendName: '', sourceOther: '',
         agreed: false
     });
 
@@ -59,21 +45,14 @@ export default function SchoolApplicationPage() {
     const profileInputRef = useRef<HTMLInputElement>(null);
     const resultsInputRef = useRef<HTMLInputElement>(null);
 
-    const [notFound, setNotFound] = useState(false);
-
     useEffect(() => {
         if (!schoolId) return;
-
-        // Robust lookup: handle existing numeric IDs and new string IDs
         const found = featuredSchools.find(s => String(s.id) === String(schoolId));
         if (found) {
             setSchool(found);
             setNotFound(false);
         } else {
-            // Give it a small delay to ensure hydration is complete
-            const timer = setTimeout(() => {
-                if (!school) setNotFound(true);
-            }, 1000);
+            const timer = setTimeout(() => { if (!school) setNotFound(true); }, 1000);
             return () => clearTimeout(timer);
         }
     }, [schoolId, featuredSchools, school]);
@@ -81,10 +60,7 @@ export default function SchoolApplicationPage() {
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'profile' | 'results') => {
         const file = e.target.files?.[0];
         if (file) {
-            if (!['image/jpeg', 'image/png'].includes(file.type)) {
-                alert('Please upload JPG or PNG files only.');
-                return;
-            }
+            if (!['image/jpeg', 'image/png'].includes(file.type)) return alert('JPG/PNG only.');
             const reader = new FileReader();
             reader.onloadend = () => {
                 if (type === 'profile') setProfilePhoto(reader.result as string);
@@ -94,25 +70,40 @@ export default function SchoolApplicationPage() {
         }
     };
 
-    const [errorOnce, setErrorOnce] = useState(false);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!school) return;
-
-        if (!formData.agreed) {
-            setErrorOnce(true);
-            const declarationEl = document.getElementById('declaration-section');
-            if (declarationEl) declarationEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
+    const validateStep = (step: number) => {
+        if (step === 1) {
+            if (!formData.firstName || !formData.lastName || !formData.dob || !formData.gender || !formData.nationality) return false;
         }
+        if (step === 2) {
+            if (!formData.phone || !formData.email || !formData.address || !formData.nokName || !formData.nokPhone) return false;
+        }
+        if (step === 3) {
+            if (!formData.highestQualification || !formData.lastInstitution || !formData.programmes) return false;
+        }
+        return true;
+    }
 
+    const nextStep = () => {
+        if (validateStep(currentStep)) {
+            setCurrentStep(prev => Math.min(prev + 1, totalSteps));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            alert("Please fill in all required fields to proceed.");
+        }
+    };
+
+    const prevStep = () => {
+        setCurrentStep(prev => Math.max(prev - 1, 1));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleSubmit = async () => {
+        if (!formData.agreed) return alert("Please agree to the declaration.");
         setSubmitting(true);
 
-        // Add to store
         addSchoolApplication({
-            schoolId: school.id,
-            schoolName: school.name,
+            schoolId: school!.id,
+            schoolName: school!.name,
             applicantName: `${formData.firstName} ${formData.lastName}`,
             applicantEmail: formData.email,
             applicantPhone: formData.phone,
@@ -128,505 +119,270 @@ export default function SchoolApplicationPage() {
         }, 1500);
     };
 
-    if (notFound) {
-        return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '2rem' }}>
-                <div style={{ background: 'white', padding: '3rem', borderRadius: '24px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', maxWidth: '500px', width: '100%', textAlign: 'center' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
-                    <h1 style={{ fontSize: '1.8rem', fontWeight: 'bold', marginBottom: '1rem' }}>School Not Found</h1>
-                    <p style={{ color: '#64748b', marginBottom: '2rem' }}>
-                        We couldn't find the school you're looking for. It may have been removed or the link might be incorrect.
-                    </p>
-                    <Link href="/">
-                        <button style={{ width: '100%', padding: '1rem', borderRadius: '12px', background: 'black', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
-                            Back to Homepage
-                        </button>
-                    </Link>
-                </div>
-            </div>
-        );
-    }
-
-    if (!school) {
-        return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: '50px', height: '50px', border: '3px solid #e2e8f0', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
-                    <p style={{ color: '#64748b' }}>Loading school information...</p>
-                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                </div>
-            </div>
-        );
-    }
+    if (notFound) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-center p-8">School Not Found <Link href="/" className="text-blue-600 block mt-4">Go Home</Link></div></div>;
+    if (!school) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
 
     if (submitted) {
         return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', padding: '2rem' }}>
-                <div style={{ background: 'white', padding: '3.5rem', borderRadius: '40px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)', maxWidth: '800px', width: '100%', textAlign: 'center' }}>
-                    <div style={{ fontSize: '5rem', marginBottom: '1.5rem' }}>🎊</div>
-                    <h1 style={{ fontSize: '2.5rem', fontWeight: '900', color: '#0f172a', marginBottom: '1rem' }}>Application Sent!</h1>
-                    <p style={{ fontSize: '1.2rem', color: '#64748b', marginBottom: '3rem', lineHeight: '1.6' }}>
-                        Your application to <strong>{school.name}</strong> has been received successfully.
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+                <div className="bg-white p-12 rounded-3xl shadow-xl max-w-2xl w-full text-center">
+                    <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Check size={48} strokeWidth={3} />
+                    </div>
+                    <h1 className="text-3xl font-black text-slate-900 mb-4">Application Sent!</h1>
+                    <p className="text-lg text-slate-600 mb-8">
+                        Your application to <strong>{school.name}</strong> has been received. <br />
+                        We will contact you via email ({formData.email}) shortly.
                     </p>
-
-                    <div style={{ background: '#f8fafc', padding: '2rem', borderRadius: '24px', textAlign: 'left', border: '1px solid #e2e8f0', marginBottom: '3rem' }}>
-                        <h4 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                            <span style={{ fontSize: '1.4rem' }}>📫</span> What happens next?
-                        </h4>
-                        <div style={{ display: 'grid', gap: '1rem' }}>
-                            <p style={{ margin: 0, fontSize: '1rem', color: '#475569', display: 'flex', gap: '1rem' }}>
-                                <span style={{ fontWeight: 'bold', color: '#0f172a' }}>1.</span> A school representative will review your documents.
-                            </p>
-                            <p style={{ margin: 0, fontSize: '1rem', color: '#475569', display: 'flex', gap: '1rem' }}>
-                                <span style={{ fontWeight: 'bold', color: '#0f172a' }}>2.</span> You will receive a phone call within 2-3 business days.
-                            </p>
-                            <p style={{ margin: 0, fontSize: '1rem', color: '#475569', display: 'flex', gap: '1rem' }}>
-                                <span style={{ fontWeight: 'bold', color: '#0f172a' }}>3.</span> Confirmation will be sent to your email address.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <button
-                            onClick={() => router.push('/')}
-                            style={{ padding: '1.2rem', borderRadius: '18px', background: 'black', color: 'white', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '1.1rem' }}
-                        >
-                            Return to Homepage
-                        </button>
-                    </div>
+                    <button onClick={() => router.push('/')} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition">
+                        Return to Schools
+                    </button>
                 </div>
             </div>
         );
     }
 
-    const inputStyle = {
-        width: '100%',
-        padding: '0.8rem 1rem',
-        borderRadius: '12px',
-        border: '1px solid #e2e8f0',
-        fontSize: '1rem',
-        outlineColor: '#3b82f6',
-        background: '#fff',
-        transition: 'border-color 0.2s'
-    };
-
-    const labelStyle = {
-        display: 'block',
-        fontSize: '0.85rem',
-        fontWeight: 'bold',
-        marginBottom: '0.5rem',
-        color: '#334155' // Darker for visibility
-    };
-
-    const sectionTitleStyle = {
-        fontSize: '1.1rem',
-        fontWeight: '900', // Thicker
-        color: '#0f172a', // Darker
-        marginBottom: '1.2rem',
-        borderBottom: '2px solid #e2e8f0', // More visible border
-        paddingBottom: '0.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem'
-    };
-
-    const sectionWrapperStyle = {
-        background: '#f8fafc',
-        padding: '1.5rem',
-        borderRadius: '20px',
-        border: '1px solid #f1f5f9',
-        marginBottom: '2rem'
-    };
+    // Styles
+    const inputClass = "w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition text-slate-900";
+    const labelClass = "block text-sm font-bold text-slate-700 mb-1";
 
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '4rem 1rem' }}>
-            <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-                <Link href="/" style={{ color: '#64748b', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem' }}>
-                    ← Back to Schools
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
+            {/* Header / Nav */}
+            <div className="max-w-4xl mx-auto pt-8 px-4 mb-8">
+                <Link href="/" className="inline-flex items-center text-slate-500 hover:text-slate-900 font-bold mb-6 transition">
+                    <ArrowLeft size={18} className="mr-2" /> Back to Schools
                 </Link>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr', gap: '2.5rem', alignItems: 'start' }}>
-                    {/* Left Sidebar: School Info */}
-                    <div style={{ position: 'sticky', top: '2rem' }}>
-                        <div style={{ background: 'white', padding: '2rem', borderRadius: '24px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                                <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: '#f1f5f9', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0 }}>
-                                    <img src={school.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => (e.target as HTMLImageElement).src = 'https://via.placeholder.com/60?text=Logo'} />
-                                </div>
-                                <div>
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#3b82f6', letterSpacing: '0.05em' }}>{school.category}</span>
-                                    <h1 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '0', color: '#0f172a' }}>{school.name}</h1>
-                                </div>
-                            </div>
-
-                            <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: '16px', overflow: 'hidden', marginBottom: '1.5rem' }}>
-                                <img src={school.image} alt={school.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            </div>
-
-                            <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '1.5rem', fontWeight: '500' }}>{school.tagline}</p>
-
-                            <div style={{ display: 'grid', gap: '1rem', padding: '1.2rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }}>
-                                <div>
-                                    <h4 style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.2rem' }}>Contact</h4>
-                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#1e293b' }}>{school.contact || 'Not listed'}</p>
-                                </div>
-                                <div>
-                                    <h4 style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.2rem' }}>Email</h4>
-                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#3b82f6' }}>{school.email || 'Not listed'}</p>
-                                </div>
-                                <div>
-                                    <h4 style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.2rem' }}>Location</h4>
-                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#1e293b' }}>{school.location || 'Not listed'}</p>
-                                </div>
-                            </div>
-                        </div>
+                <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-sm flex-shrink-0">
+                        <img src={school.logo} alt="" className="w-full h-full object-cover" />
                     </div>
-
-                    {/* Right Content: Admission Form */}
-                    <div style={{ background: 'white', padding: '3rem', borderRadius: '32px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-                        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-                            <div style={{ position: 'relative', display: 'inline-block', marginBottom: '1.5rem' }}>
-                                <div
-                                    onClick={() => profileInputRef.current?.click()}
-                                    style={{
-                                        width: '120px',
-                                        height: '120px',
-                                        borderRadius: '30px',
-                                        background: '#f1f5f9',
-                                        border: '3px dashed #cbd5e1',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        overflow: 'hidden',
-                                        transition: 'all 0.3s ease',
-                                        position: 'relative'
-                                    }}
-                                >
-                                    {profilePhoto ? (
-                                        <img src={profilePhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                        <div style={{ textAlign: 'center' }}>
-                                            <div style={{ fontSize: '2rem', marginBottom: '0.2rem' }}>🧑</div>
-                                            <div style={{ fontSize: '0.65rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Upload Photo</div>
-                                        </div>
-                                    )}
-                                    <div style={{
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        right: 0,
-                                        background: '#3b82f6',
-                                        color: 'white',
-                                        width: '32px',
-                                        height: '32px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        borderRadius: '10px 0 0 0'
-                                    }}>
-                                        +
-                                    </div>
-                                </div>
-                                <input
-                                    type="file"
-                                    ref={profileInputRef}
-                                    onChange={(e) => handleImageChange(e, 'profile')}
-                                    accept="image/jpeg,image/png"
-                                    style={{ display: 'none' }}
-                                />
-                                <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.8rem' }}>Passport size photo (JPG, PNG)</p>
-                            </div>
-
-                            <h2 style={{ fontSize: '2rem', fontWeight: '800', color: '#0f172a', marginBottom: '0.5rem' }}>Admission Form</h2>
-                            <p style={{ color: '#64748b' }}>Complete all sections carefully to apply for <strong>{school.name}</strong></p>
-                        </div>
-
-                        <form onSubmit={handleSubmit}>
-                            {/* A. Personal Information */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>A.</span> Personal Information</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
-                                    <div style={{ gridColumn: 'span 1' }}>
-                                        <label style={labelStyle}>First Name</label>
-                                        <input required type="text" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} style={inputStyle} placeholder="e.g. John" />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 1' }}>
-                                        <label style={labelStyle}>Last Name</label>
-                                        <input required type="text" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} style={inputStyle} placeholder="e.g. Doe" />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Middle Name (Optional)</label>
-                                        <input type="text" value={formData.middleName} onChange={(e) => setFormData({ ...formData, middleName: e.target.value })} style={inputStyle} placeholder="e.g. William" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Date of Birth</label>
-                                        <input required type="date" value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} style={inputStyle} />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Gender</label>
-                                        <select required value={formData.gender} onChange={(e) => setFormData({ ...formData, gender: e.target.value })} style={inputStyle}>
-                                            <option value="">Select Gender</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Nationality</label>
-                                        <input required type="text" value={formData.nationality} onChange={(e) => setFormData({ ...formData, nationality: e.target.value })} style={inputStyle} placeholder="e.g. Ugandan" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Phone Number</label>
-                                        <input required type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} style={inputStyle} placeholder="+256..." />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Email Address</label>
-                                        <input required type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={inputStyle} placeholder="john.doe@example.com" />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Home Address / District</label>
-                                        <input required type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} style={inputStyle} placeholder="e.g. Kampala, Central" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* B. Programme Interest */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>B.</span> Programme Interest</h3>
-                                <div style={{ display: 'grid', gap: '1.2rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>Desired Programme(s)</label>
-                                        <input required type="text" value={formData.programmes} onChange={(e) => setFormData({ ...formData, programmes: e.target.value })} style={inputStyle} placeholder="e.g. Diploma in Nursing, Midwifery" />
-                                        <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.4rem' }}>Type one or multiple programmes you wish to pursue</p>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
-                                        <div>
-                                            <label style={labelStyle}>Intended Entry Level</label>
-                                            <input required type="text" value={formData.entryLevel} onChange={(e) => setFormData({ ...formData, entryLevel: e.target.value })} style={inputStyle} placeholder="e.g. Year 1, Semester 1" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Mode of Study</label>
-                                            <select required value={formData.modeOfStudy} onChange={(e) => setFormData({ ...formData, modeOfStudy: e.target.value })} style={inputStyle}>
-                                                <option value="Full-time">Full-time</option>
-                                                <option value="Part-time">Part-time</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* C. Academic Background */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>C.</span> Academic Background</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Highest Qualification Attained</label>
-                                        <input required type="text" value={formData.highestQualification} onChange={(e) => setFormData({ ...formData, highestQualification: e.target.value })} style={inputStyle} placeholder="e.g. UACE Certificate" />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Name of Institution Last Attended</label>
-                                        <input required type="text" value={formData.lastInstitution} onChange={(e) => setFormData({ ...formData, lastInstitution: e.target.value })} style={inputStyle} placeholder="e.g. King's College Budo" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Year of Completion</label>
-                                        <input required type="text" value={formData.completionYear} onChange={(e) => setFormData({ ...formData, completionYear: e.target.value })} style={inputStyle} placeholder="e.g. 2023" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Examination Body</label>
-                                        <input required type="text" value={formData.examBody} onChange={(e) => setFormData({ ...formData, examBody: e.target.value })} style={inputStyle} placeholder="e.g. UNEB, UBTEB" />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Index / Registration Number (if applicable)</label>
-                                        <input type="text" value={formData.indexNumber} onChange={(e) => setFormData({ ...formData, indexNumber: e.target.value })} style={inputStyle} placeholder="e.g. U0001/501" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* D. Academic Results */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>D.</span> Academic Results</h3>
-                                <div
-                                    onClick={() => resultsInputRef.current?.click()}
-                                    style={{
-                                        width: '100%',
-                                        minHeight: '180px',
-                                        borderRadius: '20px',
-                                        background: 'white',
-                                        border: '2px dashed #e2e8f0',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        padding: '1.5rem',
-                                        transition: 'all 0.3s ease'
-                                    }}
-                                >
-                                    {academicResults ? (
-                                        <div style={{ position: 'relative', width: '100%' }}>
-                                            <img src={academicResults} alt="Results" style={{ width: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: '12px' }} />
-                                            <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.5)', color: 'white', padding: '5px 10px', borderRadius: '20px', fontSize: '0.7rem' }}>Click to change</div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📄</div>
-                                            <p style={{ fontWeight: '600', color: '#1e293b', marginBottom: '0.3rem' }}>Upload Result Slip / Transcript</p>
-                                            <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>JPG or PNG only</p>
-                                        </>
-                                    )}
-                                </div>
-                                <input
-                                    type="file"
-                                    ref={resultsInputRef}
-                                    onChange={(e) => handleImageChange(e, 'results')}
-                                    accept="image/jpeg,image/png"
-                                    style={{ display: 'none' }}
-                                />
-                            </div>
-
-                            {/* E. How Did You Get to Know About the School? */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>E.</span> Marketing Info</h3>
-                                <div style={{ display: 'grid', gap: '1.2rem' }}>
-                                    <div>
-                                        <label style={labelStyle}>How did you get to know about the school?</label>
-                                        <select
-                                            required
-                                            value={formData.sourceOfInfo}
-                                            onChange={(e) => setFormData({ ...formData, sourceOfInfo: e.target.value })}
-                                            style={inputStyle}
-                                        >
-                                            <option value="">Select Source</option>
-                                            <option value="Bursary Organisation">Bursary Organisation</option>
-                                            <option value="TikTok">TikTok</option>
-                                            <option value="A Friend">A Friend</option>
-                                            <option value="Self">Self</option>
-                                            <option value="Radio">Radio</option>
-                                            <option value="Advertisement">Advertisement</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
-
-                                    {formData.sourceOfInfo === 'Bursary Organisation' && (
-                                        <div>
-                                            <label style={labelStyle}>Enter Name of Organisation</label>
-                                            <input required type="text" value={formData.sourceOrgName} onChange={(e) => setFormData({ ...formData, sourceOrgName: e.target.value })} style={inputStyle} placeholder="Name of organization" />
-                                        </div>
-                                    )}
-
-                                    {formData.sourceOfInfo === 'A Friend' && (
-                                        <div>
-                                            <label style={labelStyle}>Enter Friend's Name</label>
-                                            <input required type="text" value={formData.sourceFriendName} onChange={(e) => setFormData({ ...formData, sourceFriendName: e.target.value })} style={inputStyle} placeholder="Friend's full name" />
-                                        </div>
-                                    )}
-
-                                    {formData.sourceOfInfo === 'Other' && (
-                                        <div>
-                                            <label style={labelStyle}>Please specify</label>
-                                            <input required type="text" value={formData.sourceOther} onChange={(e) => setFormData({ ...formData, sourceOther: e.target.value })} style={inputStyle} placeholder="Tell us more" />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* F. Next of Kin */}
-                            <div style={sectionWrapperStyle}>
-                                <h3 style={sectionTitleStyle}><span>F.</span> Next of Kin / Emergency Contact</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Full Name</label>
-                                        <input required type="text" value={formData.nokName} onChange={(e) => setFormData({ ...formData, nokName: e.target.value })} style={inputStyle} placeholder="Guardian or relative name" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Relationship</label>
-                                        <input required type="text" value={formData.nokRelationship} onChange={(e) => setFormData({ ...formData, nokRelationship: e.target.value })} style={inputStyle} placeholder="e.g. Father, Mother" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Phone Number</label>
-                                        <input required type="tel" value={formData.nokPhone} onChange={(e) => setFormData({ ...formData, nokPhone: e.target.value })} style={inputStyle} placeholder="+256..." />
-                                    </div>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={labelStyle}>Address</label>
-                                        <input required type="text" value={formData.nokAddress} onChange={(e) => setFormData({ ...formData, nokAddress: e.target.value })} style={inputStyle} placeholder="Residential address" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* G. Declaration */}
-                            <div
-                                id="declaration-section"
-                                style={{
-                                    ...sectionWrapperStyle,
-                                    background: errorOnce && !formData.agreed ? '#fff1f2' : '#fffbeb',
-                                    border: errorOnce && !formData.agreed ? '2px solid #ef4444' : '1px solid #fde68a',
-                                    transition: 'all 0.3s'
-                                }}
-                            >
-                                <h3 style={{ ...sectionTitleStyle, borderBottomColor: errorOnce && !formData.agreed ? '#fecaca' : '#fef3c7' }}><span>G.</span> Declaration</h3>
-                                <p style={{ fontSize: '0.95rem', color: errorOnce && !formData.agreed ? '#991b1b' : '#92400e', marginBottom: '1.2rem', lineHeight: '1.5', fontWeight: errorOnce && !formData.agreed ? 'bold' : 'normal' }}>
-                                    I declare that the information provided above is true and correct to the best of my knowledge.
-                                </p>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold', color: '#1e293b', background: 'white', padding: '1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.agreed}
-                                        onChange={(e) => setFormData({ ...formData, agreed: e.target.checked })}
-                                        style={{ width: '22px', height: '22px', cursor: 'pointer' }}
-                                    />
-                                    <span>I agree to the declaration above</span>
-                                </label>
-                                {errorOnce && !formData.agreed && (
-                                    <p style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <span>⚠️</span> Please agree to the declaration before submitting.
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* H. Submission Notice */}
-                            <div style={{ background: '#f1f5f9', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem' }}>
-                                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span>📢</span> Important Notice
-                                </h4>
-                                <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.6', marginBottom: '1rem' }}>
-                                    After submitting this application, you will receive a phone call from the school and an email with further instructions.
-                                </p>
-                                <ul style={{ fontSize: '0.8rem', color: '#64748b', paddingLeft: '1.2rem', margin: 0 }}>
-                                    <li>Submission does not guarantee admission</li>
-                                    <li>The school will contact you after reviewing your application</li>
-                                </ul>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={submitting}
-                                style={{
-                                    width: '100%',
-                                    padding: '1.4rem',
-                                    borderRadius: '16px',
-                                    background: 'black',
-                                    color: 'white',
-                                    border: 'none',
-                                    fontWeight: '800',
-                                    cursor: submitting ? 'not-allowed' : 'pointer',
-                                    opacity: submitting ? 0.7 : 1,
-                                    fontSize: '1.1rem',
-                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'
-                                }}
-                            >
-                                {submitting ? (
-                                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                        <div style={{ width: '18px', height: '18px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>
-                                        Processing Application...
-                                    </span>
-                                ) : 'Submit Application'}
-                            </button>
-                            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                        </form>
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900">{school.name} Admission</h1>
+                        <p className="text-slate-500 font-medium">Academic Year 2026/2027</p>
                     </div>
                 </div>
             </div>
+
+            <div className="max-w-4xl mx-auto px-4 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-8 items-start">
+
+                {/* Sidebar Progress (Desktop) */}
+                <div className="hidden md:block sticky top-8">
+                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                        <div className="space-y-6">
+                            {[
+                                { num: 1, label: "Personal Info", icon: User },
+                                { num: 2, label: "Contact Details", icon: Phone },
+                                { num: 3, label: "Academic History", icon: BookOpen },
+                                { num: 4, label: "Review & Submit", icon: Send },
+                            ].map((step) => (
+                                <div key={step.num} className={`flex items-center gap-4 ${currentStep === step.num ? 'text-blue-600' : currentStep > step.num ? 'text-green-600' : 'text-slate-300'}`}>
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 
+                                        ${currentStep === step.num ? 'border-blue-600 bg-blue-50' : currentStep > step.num ? 'border-green-600 bg-green-50' : 'border-slate-200 bg-slate-50'}`}>
+                                        {currentStep > step.num ? <Check size={16} /> : step.num}
+                                    </div>
+                                    <span className={`font-bold ${currentStep === step.num ? 'text-slate-900' : ''}`}>{step.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Form Area */}
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 md:p-10 relative animation-fade-in">
+
+                    {/* Mobile Progress Bar */}
+                    <div className="md:hidden mb-8">
+                        <div className="flex justify-between text-xs font-bold text-slate-400 mb-2">
+                            <span>Step {currentStep} of {totalSteps}</span>
+                            <span>{Math.round((currentStep / totalSteps) * 100)}%</span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${(currentStep / totalSteps) * 100}%` }}></div>
+                        </div>
+                    </div>
+
+                    <h2 className="text-2xl font-bold mb-6 text-slate-800 border-b border-slate-100 pb-4">
+                        {currentStep === 1 && "Start with your Personal Details"}
+                        {currentStep === 2 && "How can we contact you?"}
+                        {currentStep === 3 && "Tell us about your Education"}
+                        {currentStep === 4 && "Final Review & Declaration"}
+                    </h2>
+
+                    {/* Step 1: Personal Info */}
+                    {currentStep === 1 && (
+                        <div className="space-y-6 animation-slide-up">
+                            {/* Photo Upload */}
+                            <div className="flex justify-center mb-8">
+                                <div onClick={() => profileInputRef.current?.click()}
+                                    className="relative w-32 h-32 rounded-full bg-slate-50 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition overflow-hidden group">
+                                    {profilePhoto ? (
+                                        <img src={profilePhoto} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <>
+                                            <Upload className="text-slate-400 mb-1 group-hover:text-blue-500" />
+                                            <span className="text-xs font-bold text-slate-400 group-hover:text-blue-500">Upload Photo</span>
+                                        </>
+                                    )}
+                                    <input type="file" ref={profileInputRef} onChange={(e) => handleImageChange(e, 'profile')} className="hidden" accept="image/*" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div><label className={labelClass}>First Name *</label><input type="text" value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} className={inputClass} placeholder="John" /></div>
+                                <div><label className={labelClass}>Last Name *</label><input type="text" value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} className={inputClass} placeholder="Doe" /></div>
+                                <div><label className={labelClass}>Middle Name</label><input type="text" value={formData.middleName} onChange={e => setFormData({ ...formData, middleName: e.target.value })} className={inputClass} placeholder="Optional" /></div>
+                                <div><label className={labelClass}>Date of Birth *</label><input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className={inputClass} /></div>
+                                <div>
+                                    <label className={labelClass}>Gender *</label>
+                                    <select value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} className={inputClass}>
+                                        <option value="">Select...</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </select>
+                                </div>
+                                <div><label className={labelClass}>Nationality *</label><input type="text" value={formData.nationality} onChange={e => setFormData({ ...formData, nationality: e.target.value })} className={inputClass} placeholder="Ugandan" /></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: Contact */}
+                    {currentStep === 2 && (
+                        <div className="space-y-6 animation-slide-up">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="md:col-span-2"><label className={labelClass}>Home Address *</label><input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} className={inputClass} placeholder="District, Village, Plot No." /></div>
+                                <div><label className={labelClass}>Phone Number *</label><input type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className={inputClass} placeholder="+256 700 000000" /></div>
+                                <div><label className={labelClass}>Email Address *</label><input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className={inputClass} placeholder="you@example.com" /></div>
+                            </div>
+
+                            <div className="pt-6 border-t border-slate-100">
+                                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><User size={18} /> Next of Kin</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div><label className={labelClass}>Name *</label><input type="text" value={formData.nokName} onChange={e => setFormData({ ...formData, nokName: e.target.value })} className={inputClass} placeholder="Parent/Guardian Name" /></div>
+                                    <div><label className={labelClass}>Relationship *</label><input type="text" value={formData.nokRelationship} onChange={e => setFormData({ ...formData, nokRelationship: e.target.value })} className={inputClass} placeholder="Father, Mother, etc." /></div>
+                                    <div><label className={labelClass}>Phone *</label><input type="tel" value={formData.nokPhone} onChange={e => setFormData({ ...formData, nokPhone: e.target.value })} className={inputClass} /></div>
+                                    <div><label className={labelClass}>Address</label><input type="text" value={formData.nokAddress} onChange={e => setFormData({ ...formData, nokAddress: e.target.value })} className={inputClass} /></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 3: Academics */}
+                    {currentStep === 3 && (
+                        <div className="space-y-6 animation-slide-up">
+                            <div>
+                                <label className={labelClass}>Desired Programme(s) *</label>
+                                <input type="text" value={formData.programmes} onChange={e => setFormData({ ...formData, programmes: e.target.value })} className={inputClass} placeholder="e.g. Diploma in Nursing" />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div><label className={labelClass}>Highest Qualification *</label><input type="text" value={formData.highestQualification} onChange={e => setFormData({ ...formData, highestQualification: e.target.value })} className={inputClass} placeholder="UACE, Diploma, etc." /></div>
+                                <div><label className={labelClass}>Last Institution *</label><input type="text" value={formData.lastInstitution} onChange={e => setFormData({ ...formData, lastInstitution: e.target.value })} className={inputClass} /></div>
+                                <div><label className={labelClass}>Completion Year</label><input type="text" value={formData.completionYear} onChange={e => setFormData({ ...formData, completionYear: e.target.value })} className={inputClass} placeholder="YYYY" /></div>
+                                <div>
+                                    <label className={labelClass}>Study Mode</label>
+                                    <select value={formData.modeOfStudy} onChange={e => setFormData({ ...formData, modeOfStudy: e.target.value })} className={inputClass}>
+                                        <option>Full-time</option>
+                                        <option>Part-time</option>
+                                        <option>Weekend</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Documents */}
+                            <div className="bg-blue-50 rounded-xl p-6 border border-blue-100 flex flex-col items-center text-center cursor-pointer hover:bg-blue-100 transition"
+                                onClick={() => resultsInputRef.current?.click()}>
+                                {academicResults ? (
+                                    <div className="flex items-center gap-3 text-blue-700 font-bold">
+                                        <FileText /> Document Attached!
+                                        <span className="text-xs bg-white px-2 py-1 rounded-full text-blue-500">Change</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Upload className="text-blue-500 mb-2" size={32} />
+                                        <h4 className="font-bold text-slate-800">Upload Results / Transcript</h4>
+                                        <p className="text-xs text-slate-500 mt-1">PDF, JPG, or PNG (Max 5MB)</p>
+                                    </>
+                                )}
+                                <input type="file" ref={resultsInputRef} onChange={e => handleImageChange(e, 'results')} className="hidden" />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 4: Final */}
+                    {currentStep === 4 && (
+                        <div className="space-y-6 animation-slide-up">
+                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                <h3 className="font-bold text-slate-800 mb-4">Summary</h3>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between border-b border-slate-200 pb-2">
+                                        <span className="text-slate-500">Name</span>
+                                        <span className="font-bold">{formData.firstName} {formData.lastName}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-slate-200 pb-2">
+                                        <span className="text-slate-500">Contact</span>
+                                        <span className="font-bold">{formData.phone}</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-slate-200 pb-2">
+                                        <span className="text-slate-500">Programme</span>
+                                        <span className="font-bold">{formData.programmes}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={labelClass}>How did you hear about us?</label>
+                                <select value={formData.sourceOfInfo} onChange={e => setFormData({ ...formData, sourceOfInfo: e.target.value })} className={inputClass}>
+                                    <option value="">Select...</option>
+                                    <option>Social Media</option>
+                                    <option>Friend / Family</option>
+                                    <option>Radio / TV</option>
+                                    <option>School Visit</option>
+                                    <option>Other</option>
+                                </select>
+                            </div>
+
+                            <label className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-100 rounded-xl cursor-pointer">
+                                <input type="checkbox" checked={formData.agreed} onChange={e => setFormData({ ...formData, agreed: e.target.checked })} className="mt-1 w-5 h-5 accent-orange-500" />
+                                <span className="text-sm text-orange-900 leading-relaxed">
+                                    I declare that the information provided is correct. I understand that false information may lead to disqualification.
+                                </span>
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Nav Actions */}
+                    <div className="flex justify-between items-center mt-10 pt-6 border-t border-slate-100">
+                        {currentStep > 1 ? (
+                            <button onClick={prevStep} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition">
+                                Back
+                            </button>
+                        ) : <div></div>}
+
+                        {currentStep < totalSteps ? (
+                            <button onClick={nextStep} className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-slate-200">
+                                Next Step <ArrowRight size={18} />
+                            </button>
+                        ) : (
+                            <button onClick={handleSubmit} disabled={!formData.agreed || submitting} className={`bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-blue-200 ${(!formData.agreed || submitting) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                {submitting ? 'Submitting...' : 'Submit Form'} <Send size={18} />
+                            </button>
+                        )}
+                    </div>
+
+                </div>
+            </div>
+
+            <style jsx global>{`
+                @keyframes slideUp {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                .animation-slide-up {
+                    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+            `}</style>
         </div>
     );
 }
