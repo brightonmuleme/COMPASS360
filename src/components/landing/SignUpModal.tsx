@@ -152,14 +152,14 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                     redirectPath = '/tutor';
                 } else if (dbRole === 'Director' || dbRole === 'School') {
                     userRole = 'Director';
-                    redirectPath = '/admin';
+                    redirectPath = '/portal'; // Redirect to Staff Portal Selector
                 } else if (dbRole === 'Bursar') {
                     userRole = 'Bursar';
                     redirectPath = '/bursar';
                 }
 
                 logout();
-                setActiveRole(userRole);
+                setActiveRole(userRole as any);
                 router.push(redirectPath);
                 onClose();
 
@@ -211,7 +211,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                     redirectPath = '/tutor';
                 } else if (dbRole === 'Director' || dbRole === 'School') {
                     userRole = 'Director';
-                    redirectPath = '/admin';
+                    redirectPath = '/portal'; // Redirect to Staff Portal Selector (Image 1)
                 } else if (dbRole === 'Bursar') {
                     userRole = 'Bursar';
                     redirectPath = '/bursar';
@@ -222,7 +222,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                 }
 
                 logout(); // Clear any old mock state
-                setActiveRole(userRole);
+                setActiveRole(userRole as any);
 
                 // If it's a student, we might want to set the student profile. 
                 // Since we don't have the full student object from Cognito yet, we might need to fetch it or mock it minimally.
