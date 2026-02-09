@@ -44,5 +44,21 @@ export const databaseService = {
 
         if (error) throw error;
         return data[0];
+    },
+
+    submitSchoolApplication: async (application: any) => {
+        const { data, error } = await supabase
+            .from('school_applications')
+            .insert([{
+                school_name: application.schoolName,
+                admin_name: application.adminName,
+                email: application.email,
+                phone: application.phone,
+                status: 'pending'
+            }])
+            .select();
+
+        if (error) throw error;
+        return data[0];
     }
 };

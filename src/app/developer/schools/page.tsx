@@ -37,12 +37,12 @@ export default function SchoolValidationPage() {
         const app = pendingSchools.find(s => s.id === id);
         if (!app) return;
 
-        if (confirm(`Approve ${app.schoolName}? This will create a live school profile.`)) {
+        if (confirm(`Approve ${app.school_name}? This will create a live school profile.`)) {
             setLoading(true);
             try {
                 // 1. Create the school
                 const { error: schoolError } = await supabase.from('schools').insert([{
-                    name: app.schoolName,
+                    name: app.school_name,
                     email: app.email,
                     plan: app.plan || 'Standard',
                     status: 'Active'
@@ -140,10 +140,10 @@ export default function SchoolValidationPage() {
                                     {pendingSchools.map(app => (
                                         <tr key={app.id} className="hover:bg-blue-50/30 transition-colors">
                                             <td className="p-5">
-                                                <div className="font-black text-slate-900 text-lg">{app.schoolName}</div>
+                                                <div className="font-black text-slate-900 text-lg">{app.school_name}</div>
                                                 <div className="text-xs font-bold text-slate-400 mt-0.5">{app.email}</div>
                                             </td>
-                                            <td className="p-5 text-sm font-bold text-slate-600">{app.contactPerson || 'N/A'}</td>
+                                            <td className="p-5 text-sm font-bold text-slate-600">{app.admin_name || 'N/A'}</td>
                                             <td className="p-5">
                                                 <span className="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-[10px] font-black uppercase tracking-wider">{app.plan || 'Standard'}</span>
                                             </td>

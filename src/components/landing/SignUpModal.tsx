@@ -3,6 +3,7 @@ import styles from '../../app/landing.module.css';
 import { useRouter } from 'next/navigation';
 import { useSchoolData } from '@/lib/store';
 import { authService } from '@/services/authService';
+import { databaseService } from '@/services/databaseService';
 import { supabase } from '@/lib/supabase';
 import { Eye, EyeOff, User, Lock, Mail, Phone, Building, Hash, Check, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 
@@ -214,18 +215,14 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
             if (result.success) {
                 if (role === 'school') {
                     // Create School Application record in Supabase
-                    const { error: appError } = await supabase
-                        .from('school_applications')
-                        .insert([{
-                            schoolName: institutionName,
-                            email: email,
-                            contact: phoneNumber,
-                            status: 'Pending',
-                            applicantName: `${firstName} ${lastName}`
-                        }]);
+                    await databaseService.submitSchoolApplication({
+                        schoolName: institutionName,
+                        adminName: `${firstName} ${lastName}`,
+                        email: email,
+                        phone: phoneNumber
+                    });
 
-                    if (appError) console.error("Application insertion error:", appError);
-                    alert(`Application for ${institutionName} submitted! Please wait for developer approval.`);
+                    alert(`Application for ${institutionName} submitted! Please verify your email and wait for developer approval.`);
                 } else {
                     alert(`Welcome aboard! Account created successfully.`);
                 }
