@@ -11,9 +11,9 @@ export default function ContentManager() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<LandingPageRoleContent | null>(null);
 
-    // School Editing State
     const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
     const [schoolFormData, setSchoolFormData] = useState<FeaturedSchool | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const compressImage = (base64: string, maxWidth: number = 1920, quality: number = 0.7): Promise<string> => {
         return new Promise((resolve) => {
@@ -64,27 +64,37 @@ export default function ContentManager() {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        setIsSaving(true);
         const reader = new FileReader();
         reader.onloadend = async () => {
-            const base64String = reader.result as string;
-            const slimmed = await compressImage(base64String, 1920, 0.7);
+            try {
+                const base64String = reader.result as string;
+                const slimmed = await compressImage(base64String, 1920, 0.7);
 
-            const currentWallpapers = developerSettings?.wallpapers || [];
-            updateDeveloperSettings({
-                ...developerSettings,
-                wallpapers: [...currentWallpapers, slimmed]
-            });
+                const currentWallpapers = developerSettings?.wallpapers || [];
+                await updateDeveloperSettings({
+                    ...developerSettings,
+                    wallpapers: [...currentWallpapers, slimmed]
+                });
+            } finally {
+                setIsSaving(false);
+            }
         };
         reader.readAsDataURL(file);
     };
 
-    const removeWallpaper = (index: number) => {
-        const currentWallpapers = [...(developerSettings?.wallpapers || [])];
-        currentWallpapers.splice(index, 1);
-        updateDeveloperSettings({
-            ...developerSettings,
-            wallpapers: currentWallpapers
-        });
+    const removeWallpaper = async (index: number) => {
+        setIsSaving(true);
+        try {
+            const currentWallpapers = [...(developerSettings?.wallpapers || [])];
+            currentWallpapers.splice(index, 1);
+            await updateDeveloperSettings({
+                ...developerSettings,
+                wallpapers: currentWallpapers
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleEdit = (role: LandingPageRoleContent) => {
@@ -92,17 +102,22 @@ export default function ContentManager() {
         setFormData({ ...role });
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData || !editingId) return;
 
-        const updatedContent = landingPageContent.map(item =>
-            item.id === editingId ? formData : item
-        );
+        setIsSaving(true);
+        try {
+            const updatedContent = landingPageContent.map(item =>
+                item.id === editingId ? formData : item
+            );
 
-        updateLandingPageContent(updatedContent);
-        setEditingId(null);
-        setFormData(null);
-        alert("Landing Page Content Updated!");
+            await updateLandingPageContent(updatedContent);
+            setEditingId(null);
+            setFormData(null);
+            alert("Landing Page Content Updated!");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleChange = (field: keyof LandingPageRoleContent, value: any) => {
@@ -119,7 +134,15 @@ export default function ContentManager() {
 
     return (
         <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-            <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem', color: '#0f172a' }}>Landing Page Content</h1>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <h1 style={{ fontSize: '2rem', fontWeight: 'bold', margin: '0', color: '#0f172a' }}>Landing Page Content</h1>
+                {isSaving && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                        <div style={{ width: '12px', height: '12px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%' }} className="animate-spin" />
+                        SYNCING TO CLOUD...
+                    </div>
+                )}
+            </div>
 
             {/* Backdrop Wallpapers Section */}
             <div style={{
@@ -128,7 +151,10 @@ export default function ContentManager() {
                 borderRadius: '2rem',
                 boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)',
                 border: '1px solid #f1f5f9',
-                marginBottom: '3rem'
+                marginBottom: '3rem',
+                opacity: isSaving ? 0.6 : 1,
+                pointerEvents: isSaving ? 'none' : 'auto',
+                transition: 'opacity 0.2s'
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
                     <div>
@@ -138,15 +164,16 @@ export default function ContentManager() {
                     <label style={{
                         padding: '0.75rem 1.5rem',
                         borderRadius: '1rem',
-                        background: '#3b82f6',
+                        background: isSaving ? '#94a3b8' : '#3b82f6',
                         color: 'white',
                         fontWeight: '800',
                         fontSize: '0.8rem',
-                        cursor: 'pointer',
-                        textTransform: 'uppercase'
+                        cursor: isSaving ? 'not-allowed' : 'pointer',
+                        textTransform: 'uppercase',
+                        transition: 'all 0.2s'
                     }}>
-                        Add Wallpaper
-                        <input type="file" accept="image/*" onChange={handleWallpaperUpload} style={{ display: 'none' }} />
+                        {isSaving ? 'Processing...' : 'Add Wallpaper'}
+                        <input type="file" accept="image/*" onChange={handleWallpaperUpload} style={{ display: 'none' }} disabled={isSaving} />
                     </label>
                 </div>
 

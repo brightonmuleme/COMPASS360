@@ -36,7 +36,7 @@ const BackgroundSlideshow: React.FC<BackgroundSlideshowProps> = ({ images, inter
             width: '100%',
             height: '100%',
             overflow: 'hidden',
-            zIndex: -1,
+            zIndex: 0, // Base z-index for the container
             background: '#000'
         }}>
             {/* Current Image */}
@@ -53,6 +53,7 @@ const BackgroundSlideshow: React.FC<BackgroundSlideshowProps> = ({ images, inter
                     transition: 'opacity 1s ease-in-out, transform 10s ease-out',
                     opacity: isTransitioning ? 0 : 1,
                     transform: isTransitioning ? 'scale(1.1)' : 'scale(1.05)',
+                    zIndex: 1, // Images should be below the overlay but above the base container
                 }}
             />
 
@@ -70,6 +71,7 @@ const BackgroundSlideshow: React.FC<BackgroundSlideshowProps> = ({ images, inter
                     transition: 'opacity 1s ease-in-out, transform 10s ease-out',
                     opacity: isTransitioning ? 1 : 0,
                     transform: isTransitioning ? 'scale(1.05)' : 'scale(1.15)',
+                    zIndex: 1, // Images should be below the overlay but above the base container
                 }}
             />
 
