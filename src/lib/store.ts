@@ -3213,9 +3213,15 @@ function useSchoolDataInternal() {
             try {
                 const config = await developerService.getLandingPageConfig();
                 if (config) {
-                    if (config.landing_content) setLandingPageContent(config.landing_content);
-                    if (config.wallpapers) setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
-                    if (config.featured_schools) setFeaturedSchools(config.featured_schools);
+                    if (config.landing_content && config.landing_content.length > 0) {
+                        setLandingPageContent(config.landing_content);
+                    }
+                    if (config.wallpapers && config.wallpapers.length > 0) {
+                        setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
+                    }
+                    if (config.featured_schools && config.featured_schools.length > 0) {
+                        setFeaturedSchools(config.featured_schools);
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch cloud config:", err);
