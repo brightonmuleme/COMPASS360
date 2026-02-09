@@ -15,21 +15,46 @@ export default function ContentManager() {
     const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
     const [schoolFormData, setSchoolFormData] = useState<FeaturedSchool | null>(null);
 
+    const compressImage = (base64: string, maxWidth: number = 1920, quality: number = 0.7): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = base64;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+        });
+    };
+
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isSchool: boolean = true, isLogo: boolean = false) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onloadend = () => {
+        reader.onloadend = async () => {
             const base64String = reader.result as string;
+            const slimmed = await compressImage(base64String, 1200, 0.7);
+
             if (isSchool && schoolFormData) {
                 if (isLogo) {
-                    setSchoolFormData({ ...schoolFormData, logo: base64String });
+                    setSchoolFormData({ ...schoolFormData, logo: slimmed });
                 } else {
-                    setSchoolFormData({ ...schoolFormData, image: base64String });
+                    setSchoolFormData({ ...schoolFormData, image: slimmed });
                 }
             } else if (!isSchool && formData) {
-                setFormData({ ...formData, image: base64String });
+                setFormData({ ...formData, image: slimmed });
             }
         };
         reader.readAsDataURL(file);
@@ -40,12 +65,14 @@ export default function ContentManager() {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onloadend = () => {
+        reader.onloadend = async () => {
             const base64String = reader.result as string;
+            const slimmed = await compressImage(base64String, 1920, 0.7);
+
             const currentWallpapers = developerSettings?.wallpapers || [];
             updateDeveloperSettings({
                 ...developerSettings,
-                wallpapers: [...currentWallpapers, base64String]
+                wallpapers: [...currentWallpapers, slimmed]
             });
         };
         reader.readAsDataURL(file);
