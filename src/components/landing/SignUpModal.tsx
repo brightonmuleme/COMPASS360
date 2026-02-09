@@ -152,33 +152,22 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
         setIsLoading(true);
 
         try {
-            // --- DEMO FALLBACKS ---
-            if (password === 'password123') {
-                if (username === 'sarah.n@vine.ac.ug') {
-                    logout();
-                    setTutorProfile({ id: 'tutor_1', name: 'Dr. Sarah N', email: 'sarah.n@vine.ac.ug', role: 'Tutor', subscriptionDaysLeft: 30 });
-                    router.push('/tutor'); onClose(); return;
-                }
-                if (username === 'director') {
-                    logout(); setActiveRole('Director'); router.push('/portal'); onClose(); return;
-                }
-                if (username === 'PAY-001') {
-                    logout();
-                    setStudentProfile({
-                        id: '101', name: 'JOHN KAMAU', email: 'john.k@vine.ac.ug', phoneNumber: '0700000000', payCode: 'PAY-001',
-                        linkedStudentCode: 'PAY-001', schoolId: '1', likedContentIds: [], subscribedTutorIds: [],
-                        subscriptionStatus: 'active', subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-                    });
-                    router.push('/student/resources'); onClose(); return;
-                }
-                if (username === 'bursar') {
-                    logout(); setActiveRole('Bursar'); router.push('/bursar'); onClose(); return;
-                }
-            }
-
             // --- REAL AUTHENTICATION (Supabase) ---
             const response = await authService.login({ username, password });
             if (response.success) {
+                // Verify School Status before letting them in
+                const { user } = await authService.getCurrentUser();
+                const schoolId = user?.user_metadata?.school_id;
+
+                if (schoolId) {
+                    const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
+                    if (school && school.status !== 'Active') {
+                        await authService.logout();
+                        alert("Your school account is currently pending approval. Please wait for the developer to grant access.");
+                        setIsLoading(false);
+                        return;
+                    }
+                }
                 await proceedToLogin();
             } else {
                 alert(`Login Failed: ${response.error}`);

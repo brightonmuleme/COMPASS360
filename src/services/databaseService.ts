@@ -54,7 +54,7 @@ export const databaseService = {
                 admin_name: application.adminName,
                 email: application.email,
                 phone: application.phone,
-                status: 'pending'
+                status: 'Pending'
             }])
             .select();
 
