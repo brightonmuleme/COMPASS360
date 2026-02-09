@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSchoolData, Requisition, RequisitionItem, InQueueItem } from '@/lib/store';
+import { useSchoolData, Requisition, RequisitionItem, InQueueItem, generateId } from '@/lib/store';
 import { ArrowLeft, Plus, Save, Clock, Trash2, CheckCircle, XCircle, FileText, Printer, RotateCcw, AlertCircle, Calculator, ChevronDown, Lock, Eye, Edit } from 'lucide-react';
 import CategoryManager from '@/components/ui/CategoryManager';
 import SelectionGrid from '@/components/ui/SelectionGrid';
@@ -39,7 +39,7 @@ export default function RequisitionsPage() {
 
     const restoreToEditor = (qItem: InQueueItem) => {
         // Add to current editor state
-        const newItem = { ...qItem.itemData, id: crypto.randomUUID() }; // New ID to avoid conflicts
+        const newItem = { ...qItem.itemData, id: generateId() }; // New ID to avoid conflicts
 
         // Auto-Removal from Queue
         removeFromQueue(qItem.id);
@@ -69,7 +69,7 @@ export default function RequisitionsPage() {
 
         const req: Requisition = {
             ...requisitionDraft,
-            id: isEditing ? requisitionDraft.id! : crypto.randomUUID(),
+            id: isEditing ? requisitionDraft.id! : generateId(),
             readableId: requisitions.find(r => r.id === requisitionDraft.id)?.readableId, // Keep existing if editing
             status: asDraft ? 'Draft' : 'Submitted'
         };
@@ -96,7 +96,7 @@ export default function RequisitionsPage() {
         // Clone Items with new IDs
         const newItems = req.items.map(i => ({
             ...i,
-            id: crypto.randomUUID(),
+            id: generateId(),
         }));
 
         setRequisitionDraft({
@@ -236,7 +236,7 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
 
     const handleAddItem = () => {
         const newItem: RequisitionItem = {
-            id: crypto.randomUUID(),
+            id: generateId(),
             category: "",
             name: "",
             quantity: 1,
@@ -251,7 +251,7 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
         const item = items[index];
         // Move to Queue logic
         const queueItem: InQueueItem = {
-            id: crypto.randomUUID(),
+            id: generateId(),
             itemData: item,
             dateRemoved: new Date().toISOString()
         };

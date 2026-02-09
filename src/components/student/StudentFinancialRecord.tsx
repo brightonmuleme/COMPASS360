@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequirement } from '@/lib/store';
 import { numberToWords } from '@/lib/numberToWords';
+import { databaseService } from '@/services/databaseService';
 
 // --- COPIED COMPONENT: StatusRing ---
 const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
@@ -58,6 +59,7 @@ export const StudentFinancialRecord = ({ studentId }: { studentId: number }) => 
     const { students, services, programmes, payments, billings, bursaries, documentTemplates, schoolProfile, accounts, manualPaymentMethods } = useSchoolData();
     const [selectedStudent, setSelectedStudent] = useState<EnrolledStudent | null>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
 
     // --- STATES ---
     const [entryLevelFilter, setEntryLevelFilter] = useState<string>('Current');
@@ -109,67 +111,59 @@ export const StudentFinancialRecord = ({ studentId }: { studentId: number }) => 
     useEffect(() => {
         if (!selectedStudent) return;
 
-        const { targetTerm, startPrevBal, isCurrent } = viewContext;
+        const fetchLiveTransactions = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch from Supabase
+                const dbTransactions = await databaseService.getStudentTransactions(String(selectedStudent.id));
 
-        // 1. Map Payments (Credits) - Filter by Term
-        const studentPayments = payments
-            .filter(p => p.studentId === selectedStudent.id && (p.term === targetTerm || (!p.term && isCurrent)))
-            .map(p => ({
-                id: p.id,
-                date: p.date,
-                amount: p.amount,
-                type: (p.method as any) || 'cash',
-                studentName: selectedStudent.name,
-                term: p.term || selectedStudent.semester,
-                mode: p.method,
-                particulars: p.allocations ? Object.keys(p.allocations).join(', ') : 'Payment',
-                allocations: p.allocations,
-                description: p.description || '',
-                reference: p.reference,
-                status: p.status,
-                isPseudo: false
-            }));
+                const mappedTx = dbTransactions.map(tx => {
+                    const isBilled = tx.type === 'Billed' || tx.type === 'Debit' || tx.amount < 0;
+                    return {
+                        id: tx.id,
+                        date: tx.created_at || tx.date,
+                        amount: Math.abs(tx.amount),
+                        type: tx.mode || (isBilled ? 'Billed' : 'Payment'),
+                        studentName: selectedStudent.name,
+                        term: tx.term || selectedStudent.semester,
+                        mode: tx.mode,
+                        particulars: tx.particulars || tx.description,
+                        allocations: tx.metadata?.allocations,
+                        description: tx.description,
+                        reference: tx.reference,
+                        isPseudo: false
+                    };
+                });
 
-        // 2. Map Billings (Debits) - Filter by Term
-        const studentBillings = billings
-            .filter(b => b.studentId === selectedStudent.id && b.term === targetTerm)
-            .map(b => ({
-                id: b.id,
-                date: b.date,
-                amount: b.amount,
-                type: 'Billed',
-                studentName: selectedStudent.name,
-                term: b.term,
-                mode: 'Billed',
-                particulars: b.type === 'Tuition' ? 'Tuition Fee' : b.description,
-                allocations: null as any,
-                description: b.description,
-                reference: null as string | null,
-                isPseudo: false
-            }));
+                // Add local pseudo BF bill if missing from DB
+                const hasBF = mappedTx.some(tx => tx.particulars?.includes('Brought Forward'));
+                if (!hasBF && viewContext.startPrevBal > 0) {
+                    mappedTx.push({
+                        id: 'pseudo-bf',
+                        date: selectedStudent.enrollmentDate || '2020-01-01',
+                        amount: viewContext.startPrevBal,
+                        type: 'Billed',
+                        studentName: selectedStudent.name,
+                        term: viewContext.targetTerm,
+                        mode: 'Billed',
+                        particulars: 'Balance Brought Forward',
+                        allocations: null,
+                        description: 'Historical arrears',
+                        reference: 'B/F',
+                        isPseudo: true
+                    } as any);
+                }
 
-        // 2b. Inject Previous Balance as Billing
-        const hasBFBill = studentBillings.some(b => b.particulars?.includes('Balance Brought Forward') || b.description?.includes('Balance Brought Forward'));
+                setTransactions(mappedTx);
+            } catch (error) {
+                console.error("Error fetching live ledger:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-        if (!hasBFBill && startPrevBal && startPrevBal > 0) {
-            studentBillings.push({
-                id: 'prev-bal-' + selectedStudent.id + '-' + targetTerm,
-                date: selectedStudent.enrollmentDate || '2020-01-01',
-                amount: startPrevBal,
-                type: 'Billed',
-                studentName: selectedStudent.name,
-                term: targetTerm,
-                mode: 'Billed',
-                particulars: 'Previous Term Balance',
-                allocations: null,
-                description: 'Balance brought forward',
-                reference: 'B/F',
-                isPseudo: true
-            });
-        }
-
-        setTransactions([...studentPayments, ...studentBillings]);
-    }, [selectedStudent, payments, billings, viewContext]);
+        fetchLiveTransactions();
+    }, [selectedStudent, viewContext.targetTerm]);
 
     // --- FINANCIAL CALCULATIONS ---
     const outstandingBalance = useMemo(() => {

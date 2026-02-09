@@ -6,6 +6,7 @@ import PortalShowcase from '../components/landing/PortalShowcase';
 import SignUpModal from '../components/landing/SignUpModal';
 import LearnMoreModal from '../components/landing/LearnMoreModal';
 import SchoolShowcase from '../components/landing/SchoolShowcase';
+import BackgroundSlideshow from '../components/landing/BackgroundSlideshow';
 
 // Artifact Paths (Copying the generated image paths relative to public or using absolute if in dev environment)
 // In a real next.js app, these should be in /public. 
@@ -15,25 +16,36 @@ import SchoolShowcase from '../components/landing/SchoolShowcase';
 // No, the user needs to see them. I should probably use the placeholder or check if I can 'cp' them.
 // I will use the artifact filenames.
 export default function Home() {
-  const { landingPageContent } = useSchoolData();
+  const { landingPageContent, developerSettings } = useSchoolData();
   const [activeModal, setActiveModal] = useState<{ type: 'signup' | 'learnMore' | 'signin', role: string } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Use content from store, fallback to default if empty (though store initializes it)
   const ROLES = (landingPageContent && landingPageContent.length > 0) ? landingPageContent : [];
+
+  if (!mounted) return null;
 
 
   return (
     <main className={styles.container}>
       {/* Hero Section */}
-      <section className={styles.section} style={{ background: 'black' }}>
-        <h1 className={styles.roleTitle} style={{ fontSize: '10vw', marginBottom: '1rem', lineHeight: '1', textAlign: 'center' }}>
-          COMPASS 360
-        </h1>
-        <p className={styles.roleTagline} style={{ fontSize: '3vw', marginTop: '1rem' }}>
-          The Future of Education.
-        </p>
-        <p style={{ opacity: 0.5, marginTop: '2rem' }}>Scroll to explore</p>
-        <div style={{ marginTop: '1rem', fontSize: '2rem', animation: 'bounce 2s infinite' }}>↓</div>
+      <section className={styles.section} style={{ position: 'relative', overflow: 'hidden' }}>
+        <BackgroundSlideshow images={developerSettings?.wallpapers || []} />
+
+        <div style={{ position: 'relative', zIndex: 10, textAlign: 'center' }}>
+          <h1 className={styles.roleTitle} style={{ fontSize: '10vw', marginBottom: '1rem', lineHeight: '1', textAlign: 'center', textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+            COMPASS 360
+          </h1>
+          <p className={styles.roleTagline} style={{ fontSize: '3vw', marginTop: '1rem', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+            The Future of Education.
+          </p>
+          <p style={{ opacity: 0.7, marginTop: '2rem' }}>Scroll to explore</p>
+          <div style={{ marginTop: '1rem', fontSize: '2rem', animation: 'bounce 2s infinite' }}>↓</div>
+        </div>
       </section>
 
       {/* Role Sections */}

@@ -7,9 +7,10 @@ export default function AuditLogsTab() {
     const [search, setSearch] = useState('');
 
     const filteredLogs = useMemo(() => {
-        if (!search) return globalAuditLogs;
+        const schoolLogs = globalAuditLogs.filter(log => !log.scope || log.scope === 'school');
+        if (!search) return schoolLogs;
         const lower = search.toLowerCase();
-        return globalAuditLogs.filter(log =>
+        return schoolLogs.filter(log =>
             log.action.toLowerCase().includes(lower) ||
             log.details.toLowerCase().includes(lower) ||
             log.user.toLowerCase().includes(lower)
@@ -39,69 +40,72 @@ export default function AuditLogsTab() {
     };
 
     return (
-        <div className="animate-fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div className="animate-fade-in px-1 md:px-0">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
                 <div>
-                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <ShieldAlert className="text-blue-500" /> System Audit Trail
+                    <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                        <ShieldAlert className="text-blue-500 w-5 h-5 md:w-6 md:h-6" /> System Audit Trail
                     </h2>
-                    <p style={{ opacity: 0.6, fontSize: '0.9rem' }}>Comprehensive log of administrative actions and financial corrections.</p>
+                    <p className="opacity-60 text-xs md:text-sm mt-1">Comprehensive log of administrative actions and financial corrections.</p>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                    <div style={{ position: 'relative', width: '300px' }}>
-                        <Search style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} size={16} />
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative w-full sm:w-[250px] lg:w-[350px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-40" size={16} />
                         <input
-                            className="premium-input"
-                            style={{ paddingLeft: '2.5rem' }}
+                            className="premium-input !pl-10 !w-full"
                             placeholder="Search logs..."
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
-                    <button onClick={handleExportCSV} className="premium-btn btn-secondary" style={{ whiteSpace: 'nowrap' }}>
-                        📄 Export CSV
+                    <button onClick={handleExportCSV} className="premium-btn btn-secondary !py-2.5 flex items-center justify-center gap-2">
+                        <span>📄</span> Export CSV
                     </button>
                 </div>
             </div>
 
-            <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
-                        <tr>
-                            <th style={{ textAlign: 'left', padding: '1rem', fontSize: '0.8rem', opacity: 0.6 }}>TIMESTAMP</th>
-                            <th style={{ textAlign: 'left', padding: '1rem', fontSize: '0.8rem', opacity: 0.6 }}>USER</th>
-                            <th style={{ textAlign: 'left', padding: '1rem', fontSize: '0.8rem', opacity: 0.6 }}>ACTION</th>
-                            <th style={{ textAlign: 'left', padding: '1rem', fontSize: '0.8rem', opacity: 0.6 }}>DETAILS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredLogs.map((log) => (
-                            <tr key={log.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.2s' }} className="hover:bg-white/5">
-                                <td style={{ padding: '1rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <Clock size={12} style={{ opacity: 0.4 }} />
-                                        {new Date(log.timestamp).toLocaleString()}
-                                    </div>
-                                </td>
-                                <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
-                                    <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                                        {log.user}
-                                    </span>
-                                </td>
-                                <td style={{ padding: '1rem', fontSize: '0.85rem', fontWeight: 'bold' }}>{log.action}</td>
-                                <td style={{ padding: '1rem', fontSize: '0.85rem', opacity: 0.8 }}>{log.details}</td>
-                            </tr>
-                        ))}
-                        {filteredLogs.length === 0 && (
+            <div className="card !p-0 overflow-hidden border border-white/5 bg-slate-900/40 backdrop-blur-md">
+                <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full border-collapse min-w-[700px] md:min-w-full">
+                        <thead className="bg-white/[0.03]">
                             <tr>
-                                <td colSpan={4} style={{ padding: '4rem', textAlign: 'center', opacity: 0.4 }}>
-                                    <History size={48} style={{ margin: '0 auto 1rem', display: 'block' }} />
-                                    No audit logs found.
-                                </td>
+                                <th className="text-left p-4 text-[10px] md:text-xs font-black uppercase tracking-widest opacity-60">TIMESTAMP</th>
+                                <th className="text-left p-4 text-[10px] md:text-xs font-black uppercase tracking-widest opacity-60">USER</th>
+                                <th className="text-left p-4 text-[10px] md:text-xs font-black uppercase tracking-widest opacity-60">ACTION</th>
+                                <th className="text-left p-4 text-[10px] md:text-xs font-black uppercase tracking-widest opacity-60">DETAILS</th>
                             </tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.03]">
+                            {filteredLogs.map((log) => (
+                                <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
+                                    <td className="p-4 text-xs md:text-[0.85rem] whitespace-nowrap">
+                                        <div className="flex items-center gap-2">
+                                            <Clock size={12} className="opacity-40" />
+                                            {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-xs md:text-[0.85rem]">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                            {log.user}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-xs md:text-[0.85rem] font-bold text-white/90 whitespace-nowrap">{log.action}</td>
+                                    <td className="p-4 text-xs md:text-[0.85rem] text-slate-400 max-w-[300px] truncate md:max-w-none md:whitespace-normal">
+                                        {log.details}
+                                    </td>
+                                </tr>
+                            ))}
+                            {filteredLogs.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="p-16 text-center opacity-40">
+                                        <History size={48} className="mx-auto mb-4" />
+                                        <p className="text-sm font-medium">No audit logs found.</p>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );

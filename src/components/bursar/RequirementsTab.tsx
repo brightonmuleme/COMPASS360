@@ -10,7 +10,8 @@ interface RequirementsTabProps {
 // const AVAILABLE_LEVELS = ... (moved inside)
 
 export default function RequirementsTab({ students, updateStudent }: RequirementsTabProps) {
-    const { schoolProfile, batchUpdateStudents, logGlobalAction } = useSchoolData();
+    const { schoolProfile, batchUpdateStudents, logGlobalAction, activeRole } = useSchoolData();
+    const isDirector = activeRole === 'Director';
     const AVAILABLE_LEVELS = useMemo(() => {
         const lvls = new Set<string>();
         students.forEach(s => {
@@ -357,7 +358,7 @@ export default function RequirementsTab({ students, updateStudent }: Requirement
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Physical Requirements</h2>
-                <button onClick={() => setCreateModal({ open: true, name: '', color: '#3b82f6' })} className="btn btn-primary" style={{ background: '#f59e0b' }}>+ New Requirement</button>
+                {!isDirector && <button onClick={() => setCreateModal({ open: true, name: '', color: '#3b82f6' })} className="btn btn-primary" style={{ background: '#f59e0b' }}>+ New Requirement</button>}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
@@ -376,7 +377,7 @@ export default function RequirementsTab({ students, updateStudent }: Requirement
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.025em' }}>{req.name}</h3>
-                            <button onClick={() => setEditReqModal({ open: true, originalName: req.name, newName: req.name })} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', fontSize: '0.9rem', padding: '0.4rem', borderRadius: '8px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>✏️</button>
+                            {!isDirector && <button onClick={() => setEditReqModal({ open: true, originalName: req.name, newName: req.name })} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', fontSize: '0.9rem', padding: '0.4rem', borderRadius: '8px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>✏️</button>}
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -388,7 +389,7 @@ export default function RequirementsTab({ students, updateStudent }: Requirement
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                <button onClick={() => setSubModal({ open: true, reqName: req.name })} className="premium-btn btn-primary-gradient" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>+ Add Subscriber</button>
+                                {!isDirector && <button onClick={() => setSubModal({ open: true, reqName: req.name })} className="premium-btn btn-primary-gradient" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>+ Add Subscriber</button>}
                                 <button onClick={() => setHistoryModal({ open: true, reqName: req.name })} className="premium-btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>View History</button>
                             </div>
                         </div>
@@ -628,7 +629,7 @@ export default function RequirementsTab({ students, updateStudent }: Requirement
                                         {visibleColumns.date && <th style={{ padding: '1rem' }}>Date (Latest)</th>}
                                         {visibleColumns.name && <th style={{ padding: '1rem' }}>Student Name</th>}
                                         {visibleColumns.qty && <th style={{ padding: '1rem' }}>Progress (Brought / Req)</th>}
-                                        {visibleColumns.action && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
+                                        {visibleColumns.action && !isDirector && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -643,7 +644,7 @@ export default function RequirementsTab({ students, updateStudent }: Requirement
                                                     </span> <span style={{ opacity: 0.5 }}>/ {item.req!.required}</span>
                                                 </td>
                                             )}
-                                            {visibleColumns.action && (
+                                            {visibleColumns.action && !isDirector && (
                                                 <td className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => setDelEntryModal({ open: true, reqName: historyModal.reqName, studentId: item.student.id })}

@@ -1,11 +1,13 @@
 "use client";
 
 import { useSchoolData } from "@/lib/store";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { User, Link as LinkIcon, Shield, CreditCard, School, CheckCircle, AlertCircle, Lock, Phone, Save, Eye, EyeOff } from "lucide-react";
 
 export default function StudentProfile() {
     const { studentProfile, students, updateStudentProfile, schoolProfile } = useSchoolData();
+    const router = useRouter();
     const [selectedSchool, setSelectedSchool] = useState("");
     const [payCodeInput, setPayCodeInput] = useState("");
     const [compassInput, setCompassInput] = useState("");
@@ -13,7 +15,8 @@ export default function StudentProfile() {
     const [success, setSuccess] = useState("");
     const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
 
-    const availableSchools = [{ id: schoolProfile?.id || 'vine', name: schoolProfile?.name || 'Vine International Institute' }];
+    const { featuredSchools } = useSchoolData();
+    const availableSchools = featuredSchools.filter(s => s.status === 'Active');
 
     const linkedStudent = studentProfile.linkedStudentCode
         ? (students.find(s => s.payCode === studentProfile.linkedStudentCode && s.origin === 'registrar') ||
@@ -50,6 +53,11 @@ export default function StudentProfile() {
             setPayCodeInput("");
             setCompassInput("");
             setSelectedSchool("");
+
+            // Auto-redirect to the statement after a brief success delay
+            setTimeout(() => {
+                router.push('/student/statement');
+            }, 1000);
         } else {
             setError("Authentication failed. No student found with this Pay Code and Compass ID combination.");
         }

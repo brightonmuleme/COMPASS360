@@ -1,193 +1,143 @@
 "use client";
-import React from 'react';
-import { useSchoolData } from '@/lib/store';
-import { CreditCard, AlertTriangle, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { useSchoolData, formatMoney, PayoutRequest } from "@/lib/store";
+import {
+    Wallet,
+    ArrowUpRight,
+    Clock,
+    CheckCircle2,
+    AlertCircle,
+    TrendingUp,
+    ShieldCheck,
+    Loader2
+} from "lucide-react";
 
-export default function TutorBilling() {
-    const { tutorProfile, tutorSubscriptions, generalTransactions, addGeneralTransaction } = useSchoolData();
-    const [activeTab, setActiveTab] = React.useState<'income' | 'withdrawals'>('income');
+export default function TutorBillingPage() {
+    const { tutors, tutorProfile, claimTutorEarnings } = useSchoolData();
+    const [amount, setAmount] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
-    // Financial Calculations
-    const totalRevenue = tutorSubscriptions
-        .filter(s => s.tutorId === tutorProfile?.id)
-        .reduce((sum, s) => sum + s.amount, 0);
+    const tutor = tutors.find(t => t.id === tutorProfile?.id);
 
-    const withdrawals = generalTransactions
-        .filter(t => t.category === 'Tutor Payout' && t.toAccount === tutorProfile?.id)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (!tutor) return <div className="p-8 text-gray-400">Loading billing data...</div>;
 
-    const totalWithdrawn = withdrawals.reduce((sum, t) => sum + t.amount, 0);
-    const balance = totalRevenue - totalWithdrawn;
-
-    const handleRequestPayout = () => {
-        if (balance < 10000) {
-            alert("Minimum withdrawal threshold is 10,000 UGX.");
+    const handleClaim = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const numAmount = Number(amount);
+        if (!amount || numAmount < 1000) {
+            setError('Minimum payout is 1,000 UGX');
             return;
         }
 
-        const amountStr = prompt(`Enter amount to withdraw (Max: ${balance.toLocaleString()} UGX):`);
-        if (!amountStr) return;
+        setIsSubmitting(true);
+        setError('');
+        setSuccess('');
 
-        const amount = parseInt(amountStr.replace(/,/g, ''));
-        if (isNaN(amount) || amount <= 0) {
-            alert("Invalid amount.");
-            return;
+        try {
+            await claimTutorEarnings(tutor.id, numAmount);
+            setSuccess('Payout request submitted successfully.');
+            setAmount('');
+        } catch (err: any) {
+            setError(err.message || 'Failed to claim earnings');
+        } finally {
+            setIsSubmitting(false);
         }
-
-        if (amount > balance) {
-            alert("Insufficient funds.");
-            return;
-        }
-
-        // Create Payout Transaction
-        addGeneralTransaction({
-            id: `payout_${Date.now()}`,
-            date: new Date().toISOString(),
-            amount: amount,
-            type: 'Expense',
-            category: 'Tutor Payout',
-            description: `Payout to ${tutorProfile?.name}`,
-            mode: 'Mobile Money',
-            method: 'Mobile Money',
-            recordedBy: 'System',
-            toAccount: tutorProfile?.id || '',
-            fromAccount: 'School Operations'
-        });
-
-        alert("Payout request submitted successfully!");
-    };
-
-    const handleExport = () => {
-        const data = activeTab === 'income'
-            ? tutorSubscriptions.filter(s => s.tutorId === tutorProfile?.id)
-            : withdrawals;
-
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + data.map(row => JSON.stringify(row)).join("\n");
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `${activeTab}_report.csv`);
-        document.body.appendChild(link);
-        link.click();
     };
 
     return (
-        <div className="max-w-5xl mx-auto py-12 px-6">
-            <header className="mb-12 text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-600/10 text-blue-500 mb-6 border border-blue-500/20">
-                    <CreditCard size={32} />
-                </div>
-                <h1 className="text-4xl font-bold mb-4">Billing & Earnings</h1>
-                <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-                    Track your revenue from student subscriptions and manage your payouts.
-                </p>
+        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+            <header>
+                <h1 className="text-3xl font-black text-white tracking-tight">Billing & Earnings</h1>
+                <p className="text-gray-500 font-medium">Track your content revenue and settlement history.</p>
             </header>
 
-            {/* Revenue Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
-                    <div className="text-sm text-gray-400 mb-1">Total Revenue</div>
-                    <div className="text-3xl font-bold text-green-400">{totalRevenue.toLocaleString()} UGX</div>
-                </div>
-                <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
-                    <div className="text-sm text-gray-400 mb-1">Available Balance</div>
-                    <div className="text-3xl font-bold text-white">{balance.toLocaleString()} UGX</div>
-                    <div className="text-xs text-gray-500 mt-1">Total Withdrawn: {totalWithdrawn.toLocaleString()} UGX</div>
-                </div>
-                <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
-                    <div className="text-sm text-gray-400 mb-1">Next Payout</div>
-                    <div className="text-3xl font-bold text-blue-400">
-                        {balance >= 10000 ? 'Eligible' : 'Pending'}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Balance Card */}
+                <div className="bg-gradient-to-br from-[#111] to-black p-8 rounded-[2rem] border border-gray-800 shadow-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
+                        <TrendingUp size={100} />
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">Minimum threshold: 10k UGX</div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Available for Payout</p>
+                    <h2 className="text-4xl font-black text-white mb-6 tracking-tighter">
+                        {formatMoney(tutor.walletBalance || 0)}
+                    </h2>
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase text-blue-400 bg-blue-400/5 border border-blue-400/20 px-3 py-1 rounded-full w-fit">
+                        <ShieldCheck size={12} /> 80/20 Revenue Split Active
+                    </div>
+                </div>
+
+                {/* Claim Form */}
+                <div className="bg-[#0f0f0f] p-8 rounded-[2rem] border border-gray-800">
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <ArrowUpRight size={16} className="text-red-500" /> Request Settlement
+                    </h3>
+                    <form onSubmit={handleClaim} className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 block">Payout Amount (UGX)</label>
+                            <input
+                                type="number"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                placeholder="Enter amount..."
+                                className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 outline-none focus:border-red-500 transition-all font-bold text-white"
+                            />
+                        </div>
+                        {error && <div className="text-red-500 text-[10px] font-bold flex items-center gap-1"><AlertCircle size={12} /> {error}</div>}
+                        {success && <div className="text-green-500 text-[10px] font-bold flex items-center gap-1"><CheckCircle2 size={12} /> {success}</div>}
+                        <button
+                            disabled={isSubmitting || (tutor.walletBalance || 0) < 1000}
+                            className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin mx-auto" size={16} /> : 'Request Payout'}
+                        </button>
+                    </form>
                 </div>
             </div>
 
-            {/* Actions & Tabs */}
-            <div className="flex flex-col md:flex-row justify-between items-end md:items-center mb-6 gap-4">
-                <div className="flex bg-gray-900 p-1 rounded-xl border border-gray-800">
-                    <button
-                        onClick={() => setActiveTab('income')}
-                        className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'income' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}
-                    >
-                        Incoming
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('withdrawals')}
-                        className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'withdrawals' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}
-                    >
-                        Withdrawals
-                    </button>
-                </div>
-                <div className="flex gap-3">
-                    <button onClick={handleExport} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl border border-gray-700 transition-all font-medium text-sm">
-                        Export {activeTab === 'income' ? 'Income' : 'Payouts'}
-                    </button>
-                    <button onClick={handleRequestPayout} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all text-sm">
-                        Request Payout
-                    </button>
-                </div>
-            </div>
-
-            {/* Dynamic Table */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 shadow-sm overflow-hidden min-h-[300px]">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-950 border-b border-gray-800">
-                        <tr>
-                            <th className="p-4 font-semibold text-gray-400 text-sm">Date</th>
-                            {activeTab === 'income' ? (
-                                <>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm">Student ID</th>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm">Plan</th>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm text-right">Amount</th>
-                                </>
+            {/* History */}
+            <div className="space-y-4">
+                <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest px-2">Settlement History</h3>
+                <div className="bg-[#0f0f0f] rounded-[2rem] border border-gray-800 overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="border-b border-gray-800">
+                                <th className="p-6 text-[10px] font-black uppercase text-gray-500">Date</th>
+                                <th className="p-6 text-[10px] font-black uppercase text-gray-500">Amount</th>
+                                <th className="p-6 text-[10px] font-black uppercase text-gray-500">Status</th>
+                                <th className="p-6 text-[10px] font-black uppercase text-gray-500">Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-900">
+                            {(!tutor.payoutRequests || tutor.payoutRequests.length === 0) ? (
+                                <tr>
+                                    <td colSpan={4} className="p-10 text-center text-gray-600 italic text-sm">No payout requests found.</td>
+                                </tr>
                             ) : (
-                                <>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm">Reference</th>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm">Method</th>
-                                    <th className="p-4 font-semibold text-gray-400 text-sm text-right">Withdrawn</th>
-                                </>
-                            )}
-                            <th className="p-4 font-semibold text-gray-400 text-sm text-right">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {activeTab === 'income' ? (
-                            useSchoolData().tutorSubscriptions
-                                .filter(s => s.tutorId === tutorProfile?.id)
-                                .slice(0, 10).map(sub => (
-                                    <tr key={sub.id} className="border-b border-gray-800 last:border-0 hover:bg-white/5 transition-colors">
-                                        <td className="p-4 text-gray-400 text-sm font-mono">{new Date(sub.startDate).toLocaleDateString()}</td>
-                                        <td className="p-4 text-gray-200 text-sm">{sub.studentId}</td>
-                                        <td className="p-4 text-gray-400 text-sm">Standard Access</td>
-                                        <td className="p-4 text-green-400 text-sm text-right font-mono font-bold">+{sub.amount.toLocaleString()}</td>
-                                        <td className="p-4 text-right"><span className="bg-green-500/10 text-green-400 text-xs px-2 py-1 rounded border border-green-500/20">Completed</span></td>
+                                tutor.payoutRequests.map(req => (
+                                    <tr key={req.id} className="hover:bg-white/5 transition-colors">
+                                        <td className="p-6 text-sm font-medium text-gray-300">
+                                            {new Date(req.requestedAt).toLocaleDateString()}
+                                        </td>
+                                        <td className="p-6 text-sm font-bold text-white">
+                                            {formatMoney(req.amount)}
+                                        </td>
+                                        <td className="p-6">
+                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${req.status === 'Paid' ? 'bg-green-500/10 text-green-500' : req.status === 'Rejected' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                                                {req.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-6 text-xs text-gray-500 font-mono">
+                                            {req.paymentReference || '---'}
+                                        </td>
                                     </tr>
                                 ))
-                        ) : (
-                            withdrawals.length > 0 ? withdrawals.map(tx => (
-                                <tr key={tx.id} className="border-b border-gray-800 last:border-0 hover:bg-white/5 transition-colors">
-                                    <td className="p-4 text-gray-400 text-sm font-mono">{new Date(tx.date).toLocaleDateString()}</td>
-                                    <td className="p-4 text-gray-200 text-sm font-mono text-xs">{tx.id}</td>
-                                    <td className="p-4 text-gray-400 text-sm">{tx.method}</td>
-                                    <td className="p-4 text-red-400 text-sm text-right font-mono font-bold">-{tx.amount.toLocaleString()}</td>
-                                    <td className="p-4 text-right"><span className="bg-blue-500/10 text-blue-400 text-xs px-2 py-1 rounded border border-blue-500/20">Processed</span></td>
-                                </tr>
-                            )) : (
-                                <tr>
-                                    <td colSpan={5} className="p-12 text-center text-gray-500">No withdrawals yet.</td>
-                                </tr>
-                            )
-                        )}
-                    </tbody>
-                </table>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-
-            <footer className="mt-16 pt-8 border-t border-zinc-900 text-center text-gray-500 text-sm">
-                Need a custom plan for your school department? <button className="text-blue-500 hover:underline font-medium">Contact Sales</button>
-            </footer>
         </div>
     );
 }

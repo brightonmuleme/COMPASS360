@@ -4,6 +4,9 @@ import RoleSelection from "@/components/bursar/RoleSelection";
 import { useSchoolData, SchoolProvider } from "@/lib/store";
 import { useEffect, useState } from "react";
 
+// Global flag to prevent flashing loading state during layout swaps
+let portalAlreadyMounted = false;
+
 export default function BursarLayout({
     children,
 }: {
@@ -23,7 +26,7 @@ function BursarLayoutContent({
     children: React.ReactNode;
 }) {
     const { activeRole, hydrated, studentProfile, tutorProfile } = useSchoolData();
-    const [mounted, setMounted] = useState(false);
+    const [mounted, setMounted] = useState(() => (typeof window !== 'undefined' && portalAlreadyMounted));
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
@@ -31,53 +34,61 @@ function BursarLayoutContent({
     const roleName = activeRole === 'Bursar' ? 'Admin' : activeRole === 'Expense Manager' ? 'Finance' : activeRole === 'Estate Manager' ? 'Estate' : 'Admin';
 
     useEffect(() => {
+        portalAlreadyMounted = true;
         setMounted(true);
     }, []);
 
     // --- SECURITY: Redirect students away from Bursar Portal ---
     useEffect(() => {
-        const isLoggedStudent = studentProfile?.id && studentProfile.id !== 'std_user_1';
-        if (mounted && hydrated && isLoggedStudent && !activeRole && !tutorProfile) {
-            router.replace('/student');
-        }
+        // Students are now handled primarily by the activeRole check below.
     }, [mounted, hydrated, studentProfile, activeRole, tutorProfile, router]);
 
     // --- ACCESS CONTROL LOGIC ---
     useEffect(() => {
-        if (!mounted || !hydrated || !activeRole) return;
+        if (!mounted || !hydrated) return;
+
+        // If no active role, send to portal selection
+        if (!activeRole) {
+            router.replace('/portal');
+            return;
+        }
 
         const path = pathname || '';
 
         // 1. EXPENSE MANAGER
-        // Can ONLY access: /bursar/requisitions, /bursar/expenses, /bursar/budget
         if (activeRole === 'Expense Manager') {
-            const allowed = ['/bursar/requisitions', '/bursar/expenses', '/bursar/budget', '/bursar/activity-ledger', '/bursar/stats', '/bursar/settings'];
+            const allowed = ['/bursar/requisitions', '/bursar/expenses', '/bursar/budget', '/bursar/activity-ledger', '/bursar/stats', '/bursar/settings', '/bursar/my-account'];
             if (!allowed.some(p => path.startsWith(p))) {
-                // Redirect to home if trying to access restricted
                 router.replace('/bursar/requisitions');
             }
         }
 
         // 2. ESTATE MANAGER
-        // Can ONLY access: /bursar/inventory, /bursar/estate-settings, /bursar/transfers
         if (activeRole === 'Estate Manager') {
-            const allowed = ['/bursar/inventory', '/bursar/estate-settings', '/bursar/transfers', '/bursar/activity-ledger'];
+            const allowed = ['/bursar/inventory', '/bursar/estate-settings', '/bursar/transfers', '/bursar/activity-ledger', '/bursar/my-account'];
             if (!allowed.some(p => path.startsWith(p))) {
                 router.replace('/bursar/inventory');
             }
         }
 
         // 3. BURSAR
-        // Can access EVERYTHING EXCEPT the restricted Expense/Estate pages above? 
-        // Or explicitly define what they CAN access. 
-        // For now, let's restrict them from Expense/Estate pages to be safe.
         if (activeRole === 'Bursar') {
             const restricted = [
                 '/bursar/requisitions', '/bursar/expenses', '/bursar/budget',
-                '/bursar/inventory', '/bursar/estate-settings', '/bursar/activity-ledger'
+                '/bursar/inventory', '/bursar/estate-settings', '/bursar/activity-ledger',
+                '/bursar/approvals'
             ];
+            // My Account is implicitly allowed for Bursar as it's not and isn't restricted
             if (restricted.some(p => path.startsWith(p))) {
                 router.replace('/bursar');
+            }
+        }
+
+        // 4. DIRECTOR (VIEW ONLY + APPROVALS)
+        if (activeRole === 'Director') {
+            const allowed = ['/admin/dashboard', '/bursar/learners', '/bursar/services', '/bursar/approvals', '/bursar/results', '/bursar/approvals/log', '/bursar/my-account', '/bursar/branding'];
+            if (!allowed.some(p => path.startsWith(p))) {
+                router.replace('/bursar/learners');
             }
         }
 
@@ -85,17 +96,28 @@ function BursarLayoutContent({
 
 
     if (!mounted || !hydrated) {
-        return <div className="flex h-screen items-center justify-center bg-gray-100 text-gray-500">Loading Portal...</div>;
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-slate-950 text-slate-500">
+                <div className="animate-pulse flex flex-col items-center">
+                    <div className="h-12 w-12 rounded-full bg-slate-900 mb-4 border border-white/5"></div>
+                    <div className="h-4 w-32 bg-slate-900 rounded border border-white/5 text-xs text-center flex items-center justify-center">Loading Portal...</div>
+                </div>
+            </div>
+        );
     }
 
-    const bursarRoles = ['Bursar', 'Expense Manager', 'Estate Manager', 'Director'];
-    const isAuthorized = activeRole && bursarRoles.includes(activeRole);
+    // ALL Staff Roles are allowed in this Layout
+    const allStaffRoles = [
+        'Bursar', 'Expense Manager', 'Estate Manager', 'Director',
+        'Registrar', 'School News Coordinator'
+    ];
+    const isAuthorized = activeRole && allStaffRoles.includes(activeRole);
 
     if (!isAuthorized) {
         return (
             <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans text-slate-400">
                 <div className="text-center">
-                    <p className="mb-4">Redirecting to Master Portal...</p>
+                    <p className="mb-4">Redirecting to Staff Portal...</p>
                     <button
                         onClick={() => router.replace('/portal')}
                         className="text-xs text-blue-400 underline"
@@ -164,7 +186,7 @@ function BursarLayoutContent({
                 />
 
 
-                <main className="flex-1 p-3 pt-20 md:pt-8 md:p-8 overflow-x-hidden w-full max-w-full">
+                <main className="flex-1 p-0 pt-16 md:pt-8 md:p-8 overflow-x-hidden w-full max-w-full">
                     {children}
                 </main>
             </div>

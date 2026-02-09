@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo, Suspense, useRef } from 'react';
-import { calculateStudentFinancials as calculateFinancials } from '@/lib/financialCore';
+import { calculateStudentFinancials as calculateFinancials, normalizeKey } from '@/lib/financialCore';
 import { useSearchParams } from 'next/navigation';
 import { MOCK_ENROLLED_STUDENTS, MOCK_TRANSACTIONS, Transaction, FEE_STRUCTURE, BURSARY_SCHEMES, OPTIONAL_SERVICES } from '../sharedData';
 import { useSchoolData, Payment, CompulsoryFee, EnrolledStudent } from '@/lib/store';
@@ -31,13 +31,22 @@ function LearnersContent() {
         schoolProfile,
         portalData,
         updatePortalData,
-        getSyncedDate
+        getSyncedDate,
+        activeRole
     } = useSchoolData();
+    const isDirector = activeRole === 'Director';
 
     // State
     const [selectedStudent, setSelectedStudent] = useState<EnrolledStudent | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'matrix'>(isDirector ? 'matrix' : 'list');
+
+    useEffect(() => {
+        if (isDirector) {
+            setViewMode('matrix');
+        }
+    }, [isDirector]);
+
     const [filterLevel, setFilterLevel] = useState('');
     const [filterProgramme, setFilterProgramme] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
@@ -46,6 +55,7 @@ function LearnersContent() {
     const [maxBalance, setMaxBalance] = useState<number>(100000000);
     const [showParticularsDropdown, setShowParticularsDropdown] = useState(false);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [sortBy, setSortBy] = useState<'name' | 'balance_desc' | 'balance_asc'>('name');
     const [localClearancePct, setLocalClearancePct] = useState<number>(100);
     const [localProbationPct, setLocalProbationPct] = useState<number>(80);
     const [localCompulsoryFees, setLocalCompulsoryFees] = useState<CompulsoryFee[]>([]);
@@ -81,16 +91,7 @@ function LearnersContent() {
     };
 
     const isPastTerm = (term: string, current: string) => compareTerms(term, current) < 0;
-    const matrixRef = useRef<HTMLDivElement>(null);
 
-    const scrollMatrix = (direction: 'left' | 'right') => {
-        if (!matrixRef.current) return;
-        const scrollAmount = 400;
-        matrixRef.current.scrollBy({
-            left: direction === 'left' ? -scrollAmount : scrollAmount,
-            behavior: 'smooth'
-        });
-    };
 
     // --- DERIVED GLOBAL STATE ---
     const transactions = useMemo(() => {
@@ -112,7 +113,8 @@ function LearnersContent() {
                 receiptNumber: p.receiptNumber,
                 particulars: p.allocations ? Object.keys(p.allocations).join(', ') : 'General Payment',
                 allocations: p.allocations,
-                term: p.term // Map term to transaction
+                term: p.term, // Map term to transaction
+                status: p.status
             }));
 
         // 2. Map Billings (Debits)
@@ -220,6 +222,24 @@ function LearnersContent() {
         }
     };
 
+    // --- COUNT PENDING TRANSACTIONS FOR DIRECTOR ---
+    const pendingTransactionCounts = useMemo(() => {
+        if (!isDirector) return {};
+
+        const counts: Record<number, number> = {};
+
+        // Count pending payments (includes manual balance fixes which are stored as Payment objects)
+        // CASE-INSENSITIVE CHECK: status can be 'Pending', 'pending', or 'PENDING'
+        (payments || []).forEach(p => {
+            const status = (p.status || '').toLowerCase();
+            if (status === 'pending') {
+                counts[p.studentId] = (counts[p.studentId] || 0) + 1;
+            }
+        });
+
+        return counts;
+    }, [payments, isDirector]);
+
     // --- ADVANCED TRANSACTION & FINANCIAL STATE ---
     const [showTransModal, setShowTransModal] = useState(false);
     const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -256,8 +276,8 @@ function LearnersContent() {
                 particulars: payment.description
             };
 
-            const currentTx = transactions.filter(t => t.studentName === selectedStudent.name);
-            const { outstandingBalance, totalBilled } = calculateStudentFinancials(selectedStudent, [...currentTx, newTx]);
+            const currentTerm = filterLevel || selectedStudent.semester;
+            const { outstandingBalance, totalBilled } = calculateStudentFinancials(selectedStudent, null, currentTerm);
 
             setSelectedStudent(prev => prev ? ({ ...prev, balance: outstandingBalance, totalFees: totalBilled }) : null);
         }
@@ -290,8 +310,8 @@ function LearnersContent() {
 
     // --- DYNAMIC VIEW HANDLER ---
     const handleViewStudent = (student: EnrolledStudent) => {
-        const studentTx = transactions.filter(t => t.studentName === student.name);
-        const { totalBilled, outstandingBalance } = calculateStudentFinancials(student, studentTx);
+        const currentTerm = filterLevel || student.semester;
+        const { totalBilled, outstandingBalance } = calculateStudentFinancials(student, null, currentTerm);
 
         setSelectedStudent({
             ...student,
@@ -510,8 +530,8 @@ function LearnersContent() {
 
     // --- FLUID MATH HELPERS ---
 
-    const calculateStudentFinancials = (student: EnrolledStudent, _unusedTx?: Transaction[]) => {
-        return calculateFinancials(student, billings, payments, bursaries);
+    const calculateStudentFinancials = (student: EnrolledStudent, _unusedTx?: any, targetTerm?: string) => {
+        return calculateFinancials(student, billings, payments, bursaries, targetTerm);
     };
 
     // --- FINANCIAL ACTIONS ---
@@ -798,19 +818,28 @@ function LearnersContent() {
 
     // --- UI COMPONENTS ---
 
-    const StatusRing = ({ student, size = 60 }: { student: EnrolledStudent, size?: number }) => {
+    const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
         let rawPercentage = 0;
+        let clearanceTarget = 0;
+        let clearancePaid = 0;
 
-        // Use Total Financials for Visuals (Clearing Debt = Clearance)
-        const studentTx = transactions.filter(t => t.studentName === student.name);
-        const { clearanceTarget, clearancePaid } = calculateStudentFinancials(student, studentTx);
-
-        // Percentage based on Clearance Target (Tuition + Arrears) and Paid (Tuition + Arrears Allocations)
-        if (clearanceTarget > 0) {
-            rawPercentage = (clearancePaid / clearanceTarget) * 100;
+        if (propPercentage !== undefined) {
+            rawPercentage = propPercentage;
+            // Optionally fetch these for the tooltip if needed, but for now we'll just use 0 or skip
         } else {
-            // No Tuition/Arrears to pay = 100% Cleared (even if Services pending? User said Status Ring ignores Services)
-            rawPercentage = 100;
+            // Use Total Financials for Visuals (Clearing Debt = Clearance)
+            const studentTx = transactions.filter(t => t.studentName === student.name);
+            const financials = calculateStudentFinancials(student, studentTx);
+            clearanceTarget = financials.clearanceTarget;
+            clearancePaid = financials.clearancePaid;
+
+            // Percentage based on Clearance Target (Tuition + Arrears) and Paid (Tuition + Arrears Allocations)
+            if (clearanceTarget > 0) {
+                rawPercentage = (clearancePaid / clearanceTarget) * 100;
+            } else {
+                // No Tuition/Arrears to pay = 100% Cleared (even if Services pending? User said Status Ring ignores Services)
+                rawPercentage = 100;
+            }
         }
 
         const percentage = Math.max(0, rawPercentage); // Allow > 100%
@@ -873,19 +902,19 @@ function LearnersContent() {
     const filteredStudents = useMemo(() => {
         // First, calculate dynamic financials for everyone using the central engine
         const calculatedList = enrolledStudents.map(student => {
-            const studentTx = transactions.filter(t => t.studentName === student.name);
-            const stats = calculateStudentFinancials(student, studentTx);
+            const currentTerm = filterLevel || student.semester;
+            const stats = calculateStudentFinancials(student, null, currentTerm);
 
             return {
                 ...student,
                 balance: stats.outstandingBalance,
-                totalFees: stats.totalBilled
+                totalFees: stats.totalBilled,
+                // Attach stats for easier downstream use
+                stats
             };
         });
 
-        // Then apply filters to this calculated list
-        return calculatedList.filter(s => {
-            // Filter out non-active students (Graduated / Deactivated) AND enforce portal separation
+        const filtered = calculatedList.filter(s => {
             if (s.origin !== 'bursar') return false;
             if (s.status === 'graduated' || s.status === 'deactivated') return false;
 
@@ -894,15 +923,12 @@ function LearnersContent() {
             const matchesProg = filterProgramme === '' || s.programme === filterProgramme;
             const matchesBal = s.balance >= minBalance && s.balance <= maxBalance;
 
-            // Status matching
             const effectiveStatus = determineAutoStatus(s);
             const matchesStatus = filterStatus === '' || effectiveStatus === filterStatus;
 
-            // Check for specific particular payment if filter active
             let matchesParticular = true;
             if (filterParticulars.length > 0) {
                 const studentTx = transactions.filter(t => t.studentName === s.name);
-                // Check if student has transactions matching ALL of the selected particulars
                 matchesParticular = filterParticulars.every(p =>
                     studentTx.some(t => t.particulars && t.particulars.includes(p))
                 );
@@ -910,7 +936,32 @@ function LearnersContent() {
 
             return matchesSearch && matchesLevel && matchesProg && matchesBal && matchesStatus && matchesParticular;
         });
-    }, [enrolledStudents, billings, payments, bursaries, searchTerm, filterLevel, filterProgramme, filterStatus, filterParticulars, minBalance, maxBalance, localClearancePct, localProbationPct, localCompulsoryFees, programmes, services]);
+
+        return filtered.sort((a, b) => {
+            if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+            if (sortBy === 'balance_desc') return b.balance - a.balance;
+            if (sortBy === 'balance_asc') return a.balance - b.balance;
+            return 0;
+        });
+    }, [enrolledStudents, billings, payments, bursaries, searchTerm, filterLevel, filterProgramme, filterStatus, filterParticulars, minBalance, maxBalance, localClearancePct, localProbationPct, localCompulsoryFees, programmes, services, sortBy]);
+
+    const globalStats = useMemo(() => {
+        let totalPaid = 0;
+        let totalTarget = 0;
+        let totalOutstanding = 0;
+        filteredStudents.forEach(s => {
+            const stats = (s as any).stats;
+            if (stats) {
+                totalPaid += stats.clearancePaid;
+                totalTarget += stats.clearanceTarget;
+                totalOutstanding += s.balance;
+            }
+        });
+        const percentage = totalTarget > 0 ? (totalPaid / totalTarget) * 100 : 0;
+        const avgArrears = filteredStudents.length > 0 ? totalOutstanding / filteredStudents.length : 0;
+        return { totalPaid, totalTarget, totalOutstanding, percentage, avgArrears };
+    }, [filteredStudents]);
+
 
     // Helper to recalculate status with custom fees list (for immediate updates)
     const recalculateStatusWithFees = (
@@ -1062,136 +1113,105 @@ function LearnersContent() {
         alert("Configuration Saved & Logged to History!");
     };
 
+    // --- FINANCIAL CALCULATIONS (Matrix & List) ---
+
     const getCellData = (studentId: number, colName: string, isInstallment = false) => {
+
         const student = enrolledStudents.find(s => s.id === studentId);
         if (!student) return { paid: 0, billed: 0, status: 'none' as any };
 
         const currentTerm = filterLevel || student.semester;
-        // Helper to clean and match keys consistently
-        const cleanKey = (k: string) => k.toLowerCase().replace(/service:\s*/g, '').replace(/billed:\s*/g, '').replace(/fees?\s*/g, '').trim();
-        const targetKey = cleanKey(colName);
+        const targetKey = normalizeKey(colName);
+
+
+        // TERM CONTEXT (Critical for isolation)
+        const isTargetTerm = (t?: string) => t === currentTerm || (!t && currentTerm === student.semester);
 
         if (targetKey === 'brought forward' || targetKey === 'arrears') {
-            // Aggregate all PAST data + any current BF bills + any MISMATCHED semester columns (Zombies)
-            const pastBillings = billings.filter(b => {
-                if (b.studentId !== student.id) return false;
-                const isPast = isPastTerm(b.term || '', currentTerm);
-                const desc = b.description || b.type || '';
-
-                // Pattern match for semester indicators (e.g., "Year 1 Semester 1", "Y1S1", "Year 1 Sem 1")
-                const semMatch = desc.match(/(Year\s*\d+\s*(Semester|Sem)\s*\d+|Y\d+S\d+)/i);
-                const isMismatch = semMatch ? compareTerms(semMatch[0], currentTerm) !== 0 : false;
-
-                // It's a "Past" bill if it's historic (term tag) OR if the description mentions a different semester
-                return isPast || isMismatch;
-            });
-            const pastPayments = payments.filter(p => p.studentId === student.id && isPastTerm(p.term || '', currentTerm));
-
-            // Check for BF bills in CURRENT term (summaries)
-            const bfBills = billings.filter(b =>
+            // BF Logic: Arrears from past semesters ONLY
+            // 1. Check for explicit BF bills in CURRENT term
+            const currentBFBills = billings.filter(b =>
                 b.studentId === student.id &&
-                !isPastTerm(b.term || '', currentTerm) &&
-                (/brought|forward|bf/i.test(b.description || "") || /brought|forward|bf/i.test(b.type || ""))
+                isTargetTerm(b.term) &&
+                /brought|forward|bf|arrears/i.test(b.description || b.type || "")
             );
-
-            // Calculation logic:
-            // If bfBills exist, they are the preferred source for "Past debt" balance
-            // If not, we use the manual previousBalance field + calculated past arrears.
-            const hasActualBFBill = bfBills.length > 0;
 
             let billed = 0;
             let paid = 0;
 
-            if (hasActualBFBill) {
-                billed = bfBills.reduce((sum, b) => sum + b.amount, 0);
-
-                // Also check for CURRENT TERM payments that are allocated to this BF bill
-                const currentPayments = payments.filter(p => p.studentId === student.id && !isPastTerm(p.term || '', currentTerm));
-                currentPayments.forEach(p => {
-                    if (p.allocations) {
-                        const matchingKey = Object.keys(p.allocations).find(k => {
-                            const ck = cleanKey(k);
-                            return ck === 'brought forward' || ck === 'bf' || ck === 'arrears' || ck === 'prev balance';
-                        });
-                        if (matchingKey) paid += (Number(p.allocations[matchingKey]) || 0);
-                    }
-                });
+            if (currentBFBills.length > 0) {
+                billed = currentBFBills.reduce((sum, b) => sum + b.amount, 0);
             } else {
-                // Manual field + Historic calculation
-                const historicBilled = pastBillings.reduce((sum, b) => sum + b.amount, 0);
-                const historicPaid = pastPayments.reduce((sum, p) => sum + p.amount, 0);
-                billed = historicBilled + (student.previousBalance || 0);
-                paid = historicPaid;
+                // Fallback to student.previousBalance
+                billed = student.previousBalance || 0;
             }
+
+            // BF Payments: Check ALL term-matching payments for "Brought Forward" allocations
+            const studentPayments = payments.filter(p => p.studentId === student.id && isTargetTerm(p.term));
+            studentPayments.forEach(p => {
+                if (p.allocations) {
+                    const matchingKey = Object.keys(p.allocations).find(k => {
+                        const ck = normalizeKey(k);
+                        return ck === 'brought forward' || ck === 'bf' || ck === 'arrears' || ck === 'prev balance';
+                    });
+
+                    if (matchingKey) paid += (Number(p.allocations[matchingKey]) || 0);
+                }
+            });
 
             const bal = billed - paid;
             return { paid, billed, status: bal <= 0 ? (billed > 0 ? 'full' : 'none') : 'partial' as any };
         }
 
-        if (targetKey === 'bursary') {
-            return { paid: 0, billed: 0, status: 'none' as any };
-        }
-
-        if (isInstallment) {
-            const installPayments = payments.filter(p => p.studentId === studentId);
-            const paid = installPayments.reduce((sum, p) => {
-                let amt = 0;
-                if (p.allocations) {
-                    const key = Object.keys(p.allocations).find(k => k.toLowerCase().includes(colName.toLowerCase()));
-                    if (key) amt = Number(p.allocations[key]) || 0;
-                }
-                return sum + amt;
-            }, 0);
-            return { paid, billed: 0, status: paid > 0 ? 'full' : ('none' as any) };
-        }
-
+        // Specific Fee Columns (Tuition, Guild, etc.)
         const studentBillings = billings.filter(b => {
             if (b.studentId !== studentId) return false;
-            const desc = b.description || '';
-            const isPast = isPastTerm(b.term || '', currentTerm);
+            if (!isTargetTerm(b.term)) return false; // STRICT ISOLATION
 
-            // Zombie Rule: If bill mentions a different semester, it is NOT part of this column
-            const semMatch = desc.match(/(Year\s*\d+\s*(Semester|Sem)\s*\d+|Y\d+S\d+)/i);
-            if (semMatch && compareTerms(semMatch[0], currentTerm) !== 0) return false;
+            const desc = b.description || b.type || '';
+            const descLower = desc.toLowerCase();
 
-            return !isPast && cleanKey(desc).includes(targetKey);
+            // Exclude BF/Arrears as they live in the BF column
+            if (/brought|forward|bf|arrears/i.test(descLower)) return false;
+
+            const billKey = normalizeKey(desc);
+            return billKey === targetKey || billKey.includes(targetKey) || targetKey.includes(billKey);
         });
+
 
         let billed = studentBillings.reduce((sum, b) => sum + b.amount, 0);
 
-        // Net Tuition Model logic:
+        // Tuition Fallback & Bursary
         if (targetKey === 'tuition') {
-            // Fallback to Fee Structure if no billings found
             if (billed === 0) {
                 const prog = programmes.find(p => p.id === student.programme || p.name === student.programme);
                 const feeConfig = prog?.feeStructure?.find(f => f.level === (filterLevel || student.level));
                 if (feeConfig) billed = feeConfig.tuitionFee;
             }
             const bursaryData = bursaries.find(b => b.id === student.bursary);
-            const bursaryValue = bursaryData ? bursaryData.value : 0;
-            billed = Math.max(0, billed - bursaryValue);
+            billed = Math.max(0, billed - (bursaryData?.value || 0));
         }
 
-        const studentPayments = payments.filter(p => p.studentId === studentId);
+        // Payments: STRICT ALLOCATION MATCHING
+        const studentPayments = payments.filter(p => p.studentId === studentId && isTargetTerm(p.term));
         let paid = 0;
         studentPayments.forEach(p => {
             if (p.allocations) {
-                // STRICT MATCHING for allocations - ignore descriptions entirely
-                const matchingKey = Object.keys(p.allocations).find(k => cleanKey(k) === targetKey);
+                const matchingKey = Object.keys(p.allocations).find(k => normalizeKey(k) === targetKey);
                 if (matchingKey) paid += Number(p.allocations[matchingKey]) || 0;
             }
         });
+
 
         let status: 'none' | 'partial' | 'full' = 'none';
         if (billed > 0) {
             if (paid >= billed) status = 'full';
             else if (paid > 0) status = 'partial';
-        } else if (paid > 0) {
-            status = 'full';
-        }
+        } else if (paid > 0) status = 'full';
 
         return { paid, billed, status };
     };
+
 
     const calculateCreditPool = (studentId: number, stats: any) => {
         let identifiedPaid = 0;
@@ -1205,68 +1225,51 @@ function LearnersContent() {
         const billingCategories = new Set<string>();
         const installmentCategories = new Set<string>();
 
-        // Dynamic Priority Billings
         const priorityBillings = ['Brought Forward', 'Tuition Fees'];
-
-        // Add Registration & Functional Fees only if non-zero or Compulsory
         const potentialFees = ['Functional Fees', 'Guild Fee', 'Registration'];
+
         potentialFees.forEach(feeName => {
             const isCompulsory = localCompulsoryFees.some(f => f.name.toLowerCase() === feeName.toLowerCase());
-
-            // Check if ANY student in the current filtered list has a non-zero feeStructure or billing for this
             const hasValue = enrolledStudents.some(s => {
-                const prog = programmes.find(p => p.id === s.programme || p.name === s.programme);
-                const feeConfig = prog?.feeStructure?.find(f => f.level === s.level);
-                const structureVal = feeConfig ? (feeConfig as any)[feeName.toLowerCase().replace(' ', '')] || 0 : 0;
-                if (structureVal > 0) return true;
-
-                // Also check actual billings
-                return billings.some(b => b.studentId === s.id && (b.description || '').toLowerCase().includes(feeName.toLowerCase()) && b.amount > 0);
+                const currentTerm = filterLevel || s.semester;
+                // Only consider values in the TARGET TERM to avoid Zombie Columns
+                return billings.some(b =>
+                    b.studentId === s.id &&
+                    b.term === currentTerm &&
+                    (b.description || '').toLowerCase().includes(feeName.toLowerCase()) &&
+                    b.amount > 0
+                );
             });
 
-            if (isCompulsory || hasValue) {
-                priorityBillings.push(feeName);
-            }
+            if (isCompulsory || hasValue) priorityBillings.push(feeName);
         });
 
         filteredStudents.forEach(s => {
-            // Identify the Relevant Semester for column generation
-            const studentTerm = s.semester || s.level || 'Year 1 Semester 1';
-            const activeAuditingTerm = filterLevel || studentTerm;
+            const activeAuditingTerm = filterLevel || s.semester;
 
-            billings.filter(b => b.studentId === s.id).forEach(b => {
+            billings.filter(b => b.studentId === s.id && b.term === activeAuditingTerm).forEach(b => {
                 const desc = b.description || b.type || '';
                 const descLower = desc.toLowerCase();
 
-                // 1. BROAD TUITION & BF SUPPRESSION (Regex-based)
                 if (/tuition|brought|forward|bf|arrears/i.test(descLower)) return;
 
-                // 2. SEMESTER MISMATCH SUPPRESSION (The Service Zombie Killer)
-                const semMatch = desc.match(/(Year\s*\d+\s*(Semester|Sem)\s*\d+|Y\d+S\d+)/i);
-                if (semMatch) {
-                    const descSemester = semMatch[0];
-                    // If the bill's specified semester doesn't match the relevant viewing context, suppress column header
-                    if (compareTerms(descSemester, activeAuditingTerm) !== 0) {
-                        return; // This flows into BF via getCellData
-                    }
-                }
+                let name = desc.replace(/Billed:\s*/i, '').trim();
+                // Strip semester tags for cleaner merging
+                name = name.replace(/(Year\s*\d+\s*(Semester|Sem)\s*\d+|Y\d+S\d+)/i, '').replace(/-?\s*$/, '').trim();
 
-                // 3. SUPPRESS PAST-TERM COLUMNS based on metadata tag if filterLevel is active
-                if (filterLevel && b.term && isPastTerm(b.term, filterLevel)) {
-                    return;
-                }
+                // Wise Merger: Check against both Priority and existing Dynamic columns
+                const normName = normalizeKey(name);
+                const isDuplicate =
+                    priorityBillings.some(p => normalizeKey(p) === normName) ||
+                    Array.from(billingCategories).some(ExistingName => normalizeKey(ExistingName) === normName);
 
-                // 4. NORMALIZATION: Strip semester tags from column name for cleaner headers and merging
-                if (!priorityBillings.some(p => descLower.includes(p.toLowerCase()))) {
-                    let name = desc.replace(/Billed:\s*/i, '').trim();
-                    if (semMatch) {
-                        // Strip the "- Year X Sem Y" part to merge columns like "Development Fees - Y1" into one "Development Fees"
-                        name = name.replace(semMatch[0], '').replace(/-?\s*$/, '').trim();
-                    }
-                    if (name) billingCategories.add(name);
+                if (name && !isDuplicate) {
+                    billingCategories.add(name);
                 }
             });
-            payments.filter(p => p.studentId === s.id).forEach(p => {
+
+
+            payments.filter(p => p.studentId === s.id && p.term === activeAuditingTerm).forEach(p => {
                 const desc = p.description || '';
                 if (desc.toLowerCase().includes('installment')) {
                     const match = desc.match(/(\d+(st|nd|rd|th)|First|Second|Third|Fourth)\s+Installment/i);
@@ -1279,14 +1282,11 @@ function LearnersContent() {
         return {
             priority: priorityBillings,
             billings: Array.from(billingCategories).sort(),
-            installments: Array.from(installmentCategories).sort((a, b) => {
-                const numA = parseInt(a) || 0;
-                const numB = parseInt(b) || 0;
-                return numA - numB;
-            }),
+            installments: Array.from(installmentCategories).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0)),
             audit: ['Credit Pool', 'Total Billed', 'Total Paid', 'Balance', '% Cleared']
         };
-    }, [filteredStudents, billings, payments, localCompulsoryFees, programmes, filterLevel]);
+    }, [filteredStudents, billings, payments, localCompulsoryFees, enrolledStudents, filterLevel]);
+
 
     const handleExportCSV = () => {
         const allCols = [
@@ -1450,6 +1450,51 @@ function LearnersContent() {
                 }
                     color: white;
                 }
+                /* Premium Styles */
+                .glass-button {
+                    background: rgba(255, 255, 255, 0.03);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    color: white;
+                    padding: 0.6rem 1.2rem;
+                    border-radius: 12px;
+                    font-weight: 600;
+                    font-size: 0.85rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.6rem;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    cursor: pointer;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                }
+                .glass-button:hover {
+                    background: rgba(255, 255, 255, 0.08);
+                    border-color: rgba(255, 255, 255, 0.2);
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+                }
+                .glass-button:active {
+                    transform: translateY(0);
+                }
+                .glass-button.active {
+                    background: #3b82f6;
+                    border-color: #3b82f6;
+                    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+                }
+                .premium-input {
+                    background: rgba(255, 255, 255, 0.03) !important;
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                    border-radius: 14px !important;
+                    padding: 0.7rem 1.2rem !important;
+                    transition: all 0.3s ease;
+                }
+                .premium-input:focus {
+                    background: rgba(255, 255, 255, 0.06) !important;
+                    border-color: rgba(59, 130, 246, 0.5) !important;
+                    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+                }
+
                 .matrix-table th, .matrix-table td {
                     border: 1px solid rgba(255,255,255,0.05);
                     padding: 0.5rem;
@@ -1472,28 +1517,6 @@ function LearnersContent() {
                 }
                 .matrix-container::-webkit-scrollbar-thumb:hover {
                     background: #60a5fa !important;
-                }
-                .matrix-nav-btn {
-                    background: #3b82f6;
-                    color: white;
-                    border: none;
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-                    transition: all 0.2s;
-                    z-index: 100;
-                }
-                .matrix-nav-btn:hover {
-                    transform: scale(1.1);
-                    background: #2563eb;
-                }
-                .matrix-nav-btn:active {
-                    transform: scale(0.95);
                 }
                 /* Custom Checkbox for particular filter */
                 .custom-checkbox {
@@ -1588,525 +1611,619 @@ function LearnersContent() {
                 </div>
             </div>
 
-            <header className="flex flex-col md:flex-row justify-between items-start gap-6 md:gap-4" style={{ marginBottom: '2.5rem' }}>
-                <div>
-                    <h1 className="text-2xl md:text-3xl lg:text-4xl font-black tracking-tight uppercase">Learners <span className="text-blue-500">Accounts</span></h1>
-                    <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>Manage academic billing and requirement status.</p>
-                </div>
-                <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-end' }}>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <button
-                            onClick={() => setShowMobileFilters(!showMobileFilters)}
-                            className="btn btn-outline"
-                            style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                        >
-                            {showMobileFilters ? '✕ Hide Filters' : '🔍 Filters'}
-                        </button>
-                        <button
-                            onClick={handleExportCSV}
-                            className="btn"
-                            style={{ background: '#22c55e', color: 'white', fontWeight: 'bold' }}
-                        >
-                            📊 Export CSV
-                        </button>
-                        <button
-                            onClick={() => window.print()}
-                            className="btn"
-                            style={{ background: 'white', color: 'black', fontWeight: 'bold' }}
-                        >
-                            🖨️ Print Report
-                        </button>
-
-
-                        <div className={`${showMobileFilters ? 'flex' : 'hidden'} flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6`}>
-                            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
-                                <div className="hidden md:flex" style={{
-                                    display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '10px'
-                                }}>
-                                    <button
-                                        onClick={() => setViewMode('list')}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            borderRadius: '8px',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: 'bold',
-                                            background: viewMode === 'list' ? '#3b82f6' : 'transparent',
-                                            color: 'white',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        📋 List View
-                                    </button>
-                                    <button
-                                        onClick={() => setViewMode('matrix')}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            borderRadius: '8px',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: 'bold',
-                                            background: viewMode === 'matrix' ? '#3b82f6' : 'transparent',
-                                            color: 'white',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        📊 Matrix View
-                                    </button>
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="Search name or code..."
-                                    className="input w-full md:w-[350px]"
-                                    value={searchTerm}
-                                    list="search-suggestions"
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', color: 'white' }}
-                                />
-                                <datalist id="search-suggestions">
-                                    {enrolledStudents.map(s => <option key={s.id} value={s.name} />)}
-                                </datalist>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2 items-center">
-                                {/* Column Toggle Dropdown */}
-                                <div style={{ position: 'relative' }}>
-                                    <button
-                                        onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                                        className="p-3 bg-gray-800 border border-gray-700 text-white rounded-xl text-sm flex items-center gap-2"
-                                    >
-                                        👁️ Columns
-                                    </button>
-                                    {showColumnDropdown && (
-                                        <div style={{
-                                            position: 'absolute', top: '110%', right: 0,
-                                            background: '#222', border: '1px solid #444', borderRadius: '10px',
-                                            padding: '1rem', zIndex: 100, minWidth: '150px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                                        }}>
-                                            <label style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer', fontSize: '13px' }}>
-                                                <input type="checkbox" checked={visibleColumns.details} onChange={() => setVisibleColumns(p => ({ ...p, details: !p.details }))} style={{ marginRight: '0.5rem' }} /> Student Details
-                                            </label>
-                                            <label style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer', fontSize: '13px' }}>
-                                                <input type="checkbox" checked={visibleColumns.outstanding} onChange={() => setVisibleColumns(p => ({ ...p, outstanding: !p.outstanding }))} style={{ marginRight: '0.5rem' }} /> Current Arrears
-                                            </label>
-                                            <label style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer', fontSize: '13px' }}>
-                                                <input type="checkbox" checked={visibleColumns.ring} onChange={() => setVisibleColumns(p => ({ ...p, ring: !p.ring }))} style={{ marginRight: '0.5rem' }} /> Clearance Ring
-                                            </label>
-                                            <label style={{ display: 'block', marginBottom: '0px', cursor: 'pointer', fontSize: '13px' }}>
-                                                <input type="checkbox" checked={visibleColumns.sync} onChange={() => setVisibleColumns(p => ({ ...p, sync: !p.sync }))} style={{ marginRight: '0.5rem' }} /> Portal Sync
-                                            </label>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <select
-                                    value={filterProgramme}
-                                    onChange={(e) => setFilterProgramme(e.target.value)}
-                                    className="flex-1 md:flex-initial p-2 bg-white/5 border border-white/10 text-white rounded-lg text-sm"
-                                >
-                                    <option value="">All Programmes</option>
-                                    {programmes?.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                                </select>
-
-                                <select
-                                    value={filterStatus}
-                                    onChange={(e) => setFilterStatus(e.target.value)}
-                                    className="flex-1 md:flex-initial p-2 bg-white/5 border border-white/10 text-white rounded-lg text-sm"
-                                >
-                                    <option value="">All Statuses</option>
-                                    <option value="clearance">Cleared</option>
-                                    <option value="probation">Probation</option>
-                                    <option value="defaulter">Defaulter</option>
-                                </select>
-                            </div>
-                        </div>     {/* MULTI-SELECT PARTICULARS DROPDOWN */}
-                        <div style={{ position: 'relative' }}>
-                            <button
-                                onClick={() => setShowParticularsDropdown(!showParticularsDropdown)}
-                                style={{
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: 'white',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    padding: '0.5rem',
-                                    borderRadius: '8px',
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <span>{filterParticulars.length > 0 ? `${filterParticulars.length} Selected` : 'Filter Payments...'}</span>
-                                <span style={{ fontSize: '0.7rem' }}>▼</span>
-                            </button>
-
-                            {showParticularsDropdown && (
-                                <div style={{
-                                    position: 'absolute', top: '110%', left: 0,
-                                    background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: '8px', padding: '0.5rem', zIndex: 100,
-                                    width: '220px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-                                }}>
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '0.5rem', paddingLeft: '0.4rem' }}>SELECT MULTIPLE:</div>
-                                    {['Tuition Fees', ...services.map(s => s.name)].map(p => (
-                                        <div key={p} className="custom-checkbox" onClick={() => toggleFilterParticular(p)}>
-                                            <input
-                                                type="checkbox"
-                                                checked={filterParticulars.includes(p)}
-                                                onChange={() => { }} // Handled by div click
-                                                style={{ pointerEvents: 'none' }}
-                                            />
-                                            <span style={{ fontSize: '0.85rem' }}>{p}</span>
-                                        </div>
-                                    ))}
-                                    <div
-                                        onClick={() => { setFilterParticulars([]); setShowParticularsDropdown(false); }}
-                                        style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', fontSize: '0.8rem', color: '#ef4444', cursor: 'pointer' }}
-                                    >
-                                        Clear Filter
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <select
-                            value={filterLevel}
-                            onChange={(e) => setFilterLevel(e.target.value)}
-                            style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '0.5rem', borderRadius: '8px' }}
-                        >
-                            <option value="">All Levels</option>
-                            {levels && levels.length > 0 ? (
-                                levels.map(l => (
-                                    <option key={l.id} value={l.name}>{l.name}</option>
-                                ))
-                            ) : (
-                                <>
-                                    <option value="Year 1">Year 1</option>
-                                    <option value="Year 2">Year 2</option>
-                                    <option value="Year 3">Year 3</option>
-                                </>
-                            )}
-                        </select>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', padding: '0 0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <span style={{ fontSize: '0.7rem', opacity: 0.4 }}>Balance Range:</span>
-                            <input
-                                type="number"
-                                placeholder="Min"
-                                value={minBalance}
-                                onChange={(e) => setMinBalance(Number(e.target.value))}
-                                style={{ width: '80px', background: 'none', border: 'none', color: 'white', fontSize: '0.8rem' }}
-                            />
-                            <span>-</span>
-                            <input
-                                type="number"
-                                placeholder="Max"
-                                value={maxBalance}
-                                onChange={(e) => setMaxBalance(Number(e.target.value))}
-                                style={{ width: '80px', background: 'none', border: 'none', color: 'white', fontSize: '0.8rem' }}
-                            />
-                        </div>
-                        <button
-                            onClick={() => { setFilterLevel(''); setFilterProgramme(''); setFilterStatus(''); setMinBalance(0); setMaxBalance(10000000); setSearchTerm(''); setFilterParticulars([]); }}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.8rem', cursor: 'pointer' }}
-                        >
-                            Clear
-                        </button>
+            <header className="flex flex-col md:flex-row justify-between items-center gap-6" style={{ marginBottom: '3rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div style={{
+                        width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                        borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 8px 30px rgba(59, 130, 246, 0.4)', fontSize: '1.8rem'
+                    }}>
+                        👤
+                    </div>
+                    <div>
+                        <h1 className="text-3xl lg:text-4xl font-black tracking-tight uppercase" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            Learners <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '0.2rem 1rem', borderRadius: '12px', fontSize: '0.8em' }}>Accounts</span>
+                        </h1>
+                        <p style={{ color: 'rgba(255,255,255,0.4)', marginTop: '0.3rem', fontSize: '0.9rem', fontWeight: '500' }}>Efficient Academic Billing & Requirement Tracking</p>
                     </div>
                 </div>
+
+                <div className="no-print" style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+                    <button
+                        onClick={() => setShowMobileFilters(!showMobileFilters)}
+                        className="glass-button"
+                    >
+                        <span>{showMobileFilters ? '✕' : '🔍'}</span>
+                        <span>{showMobileFilters ? 'Hide Filters' : 'Filters'}</span>
+                    </button>
+
+                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem' }} />
+
+                    <button
+                        onClick={handleExportCSV}
+                        className="glass-button"
+                        style={{ borderLeft: '4px solid #22c55e' }}
+                    >
+                        <span style={{ fontSize: '1.1rem' }}>📊</span>
+                        <span>Export CSV</span>
+                    </button>
+                    <button
+                        onClick={() => window.print()}
+                        className="glass-button"
+                        style={{ background: 'white', color: 'black' }}
+                    >
+                        <span style={{ fontSize: '1.1rem' }}>🖨️</span>
+                        <span>Print Report</span>
+                    </button>
+                </div>
             </header>
+
+
+            <div className={`${showMobileFilters ? 'flex' : 'hidden'} flex-col md:flex-row justify-between items-stretch md:items-center gap-6 mb-8`}>
+                <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center flex-1">
+                    {!isDirector && (
+                        <div className="hidden md:flex" style={{
+                            display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)'
+                        }}>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={viewMode === 'list' ? 'glass-button active' : 'glass-button'}
+                                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', minWidth: '100px', justifyContent: 'center' }}
+                            >
+                                📋 List View
+                            </button>
+                            <button
+                                onClick={() => setViewMode('matrix')}
+                                className={viewMode === 'matrix' ? 'glass-button active' : 'glass-button'}
+                                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', minWidth: '100px', justifyContent: 'center' }}
+                            >
+                                📊 Matrix View
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="relative flex-1 max-w-[450px]">
+                        <input
+                            type="text"
+                            placeholder="Search learners by name or code..."
+                            className="premium-input w-full pl-11"
+                            value={searchTerm}
+                            list="search-suggestions"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>🔍</span>
+                        <datalist id="search-suggestions">
+                            {enrolledStudents.map(s => <option key={s.id} value={s.name} />)}
+                        </datalist>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 items-center">
+                    {/* Column Toggle Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+                            className="glass-button"
+                            style={{ background: 'rgba(255,255,255,0.05)' }}
+                        >
+                            👁️ Columns <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>▼</span>
+                        </button>
+                        {showColumnDropdown && (
+                            <div style={{
+                                position: 'absolute', top: '120%', right: 0,
+                                background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px',
+                                padding: '1rem', zIndex: 100, minWidth: '180px', boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+                                backdropFilter: 'blur(20px)'
+                            }}>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.4, marginBottom: '0.8rem', letterSpacing: '1px', fontWeight: 'bold' }}>TOGGLE COLUMNS</div>
+                                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '0.6rem', cursor: 'pointer', fontSize: '13px', gap: '0.8rem' }}>
+                                    <input type="checkbox" checked={visibleColumns.details} onChange={() => setVisibleColumns(p => ({ ...p, details: !p.details }))} />
+                                    <span>Student Details</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '0.6rem', cursor: 'pointer', fontSize: '13px', gap: '0.8rem' }}>
+                                    <input type="checkbox" checked={visibleColumns.outstanding} onChange={() => setVisibleColumns(p => ({ ...p, outstanding: !p.outstanding }))} />
+                                    <span>Current Arrears</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '0.6rem', cursor: 'pointer', fontSize: '13px', gap: '0.8rem' }}>
+                                    <input type="checkbox" checked={visibleColumns.ring} onChange={() => setVisibleColumns(p => ({ ...p, ring: !p.ring }))} />
+                                    <span>Clearance Ring</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '13px', gap: '0.8rem' }}>
+                                    <input type="checkbox" checked={visibleColumns.sync} onChange={() => setVisibleColumns(p => ({ ...p, sync: !p.sync }))} />
+                                    <span>Portal Sync</span>
+                                </label>
+                            </div>
+                        )}
+                    </div>
+
+                    <select
+                        value={filterProgramme}
+                        onChange={(e) => setFilterProgramme(e.target.value)}
+                        className="premium-input text-sm"
+                        style={{ minWidth: '160px' }}
+                    >
+                        <option value="">All Programmes</option>
+                        {programmes?.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="premium-input text-sm"
+                        style={{ minWidth: '140px' }}
+                    >
+                        <option value="">All Statuses</option>
+                        <option value="clearance">Cleared</option>
+                        <option value="probation">Probation</option>
+                        <option value="defaulter">Defaulter</option>
+                    </select>
+
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="premium-input text-sm font-bold"
+                        style={{ background: 'rgba(59, 130, 246, 0.05) !important', borderColor: 'rgba(59, 130, 246, 0.3) !important', color: '#60a5fa' }}
+                    >
+                        <option value="name">Sort: Name (A-Z)</option>
+                        <option value="balance_desc">Sort: Highest Balance</option>
+                        <option value="balance_asc">Sort: Lowest Balance</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ position: 'relative' }}>
+                    <button
+                        onClick={() => setShowParticularsDropdown(!showParticularsDropdown)}
+                        className="glass-button"
+                        style={{ fontSize: '0.8rem' }}
+                    >
+                        <span>{filterParticulars.length > 0 ? `${filterParticulars.length} Selected` : '🔍 Filter Payments...'}</span>
+                        <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>▼</span>
+                    </button>
+
+                    {showParticularsDropdown && (
+                        <div style={{
+                            position: 'absolute', top: '120%', left: 0,
+                            background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '16px', padding: '1rem', zIndex: 100,
+                            width: '240px', boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+                        }}>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.4, marginBottom: '0.8rem', letterSpacing: '1px', fontWeight: 'bold' }}>SELECT PARTICULARS</div>
+                            {['Tuition Fees', ...services.map(s => s.name)].map(p => (
+                                <div key={p} className="custom-checkbox" onClick={() => toggleFilterParticular(p)}>
+                                    <input
+                                        type="checkbox"
+                                        checked={filterParticulars.includes(p)}
+                                        onChange={() => { }}
+                                        style={{ pointerEvents: 'none' }}
+                                    />
+                                    <span style={{ fontSize: '0.85rem' }}>{p}</span>
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => { setFilterParticulars([]); setShowParticularsDropdown(false); }}
+                                style={{
+                                    width: '100%', marginTop: '0.8rem', padding: '0.5rem',
+                                    background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
+                                    border: 'none', borderRadius: '8px', fontSize: '0.75rem',
+                                    fontWeight: 'bold', cursor: 'pointer'
+                                }}
+                            >
+                                Clear All
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <select
+                    value={filterLevel}
+                    onChange={(e) => setFilterLevel(e.target.value)}
+                    className="premium-input text-xs"
+                    style={{ padding: '0.5rem 1rem !important' }}
+                >
+                    <option value="">All Levels</option>
+                    {levels?.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+                </select>
+
+                <div className="premium-input flex items-center gap-3 text-xs" style={{ padding: '0.4rem 1rem !important' }}>
+                    <span style={{ opacity: 0.4 }}>Arrears Range:</span>
+                    <input
+                        type="number"
+                        placeholder="Min"
+                        value={minBalance}
+                        onChange={(e) => setMinBalance(Number(e.target.value))}
+                        style={{ width: '70px', background: 'none', border: 'none', fontWeight: 'bold' }}
+                    />
+                    <span style={{ opacity: 0.2 }}>|</span>
+                    <input
+                        type="number"
+                        placeholder="Max"
+                        value={maxBalance}
+                        onChange={(e) => setMaxBalance(Number(e.target.value))}
+                        style={{ width: '70px', background: 'none', border: 'none', fontWeight: 'bold' }}
+                    />
+                </div>
+
+                <button
+                    onClick={() => { setFilterLevel(''); setFilterProgramme(''); setFilterStatus(''); setMinBalance(-1000000); setMaxBalance(10000000); setSearchTerm(''); setFilterParticulars([]); }}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', padding: '0.5rem', opacity: 0.7 }}
+                >
+                    Reset All
+                </button>
+            </div>
 
             {/* --- SMART STATUS SETTINGS --- */}
             <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div
                     onClick={() => setShowStatusSettings(!showStatusSettings)}
+                    className="glass-button"
                     style={{
-                        padding: '0.8rem 1.2rem',
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid rgba(59, 130, 246, 0.2)',
-                        borderRadius: '12px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        color: '#3b82f6',
-                        fontWeight: 'bold',
-                        fontSize: '0.9rem'
+                        padding: '1rem 1.5rem',
+                        background: 'rgba(59, 130, 246, 0.05)',
+                        borderColor: 'rgba(59, 130, 246, 0.2)',
+                        width: '100%',
+                        justifyContent: 'space-between'
                     }}
                 >
-                    <span>⚙️ CONFIGURE SMART STATUS CRITERIA</span>
-                    <span>{showStatusSettings ? 'Collapse ↑' : 'Expand ↓'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                        <span style={{ fontSize: '1.2rem' }}>⚙️</span>
+                        <span style={{ letterSpacing: '1px', textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: '800' }}>Configure Smart Status Criteria</span>
+                    </div>
+                    <span style={{ opacity: 0.5 }}>{showStatusSettings ? 'Collapse ↑' : 'Expand ↓'}</span>
                 </div>
 
-                {showStatusSettings && (
-                    <div className="animate-fade-in" style={{
-                        padding: '1.5rem',
-                        background: 'rgba(255,255,255,0.03)',
-                        borderRadius: '16px',
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1.5rem'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                            <h4 style={{ margin: 0, color: '#60a5fa' }}>SMART STATUS CRITERIA</h4>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    onClick={() => setShowHistoryModal(!showHistoryModal)}
-                                    className="btn"
-                                    style={{
-                                        background: 'rgba(255,255,255,0.1)',
-                                        color: '#aaa',
-                                        fontSize: '0.8rem',
-                                        padding: '0.4rem 0.8rem',
-                                        borderRadius: '20px',
-                                        display: 'flex', alignItems: 'center', gap: '0.5rem'
-                                    }}
-                                >
-                                    <span>🕒 History</span>
-                                </button>
-                                {showHistoryModal && (
-                                    <div style={{
-                                        position: 'fixed', inset: 0,
-                                        background: 'rgba(0,0,0,0.8)', zIndex: 9999,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                    }}>
-                                        <div style={{
-                                            background: '#222', border: '1px solid #444', borderRadius: '10px',
-                                            padding: '1.5rem', width: '400px',
-                                            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                                            maxHeight: '80vh', overflowY: 'auto'
-                                        }}>
-                                            <h5 style={{ margin: '0 0 1rem 0', color: 'white', borderBottom: '1px solid #444', paddingBottom: '0.5rem', fontSize: '1.1rem' }}>Recent Status Updates</h5>
-
-                                            <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '0.8rem', borderRadius: '6px', marginBottom: '1.5rem', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                                                <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.4rem', textTransform: 'uppercase' }}>Current Active Criteria</div>
-                                                <div style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: '1.5' }}>
-                                                    ✅ <strong>Clear:</strong> ≥{financialSettings.clearancePct}% + Requirements<br />
-                                                    ⚠️ <strong>Probation:</strong> ≥{financialSettings.probationPct}%<br />
-                                                    💰 <strong>Mandatory Fees:</strong> {financialSettings.compulsoryFees?.length || 0} items
-                                                </div>
-                                            </div>
-
-                                            {statusHistory.length === 0 ? (
-                                                <p style={{ fontSize: '0.9rem', opacity: 0.5, textAlign: 'center', padding: '1rem' }}>No history yet.</p>
-                                            ) : (
-                                                statusHistory.map((h, i) => (
-                                                    <div key={i} style={{ marginBottom: '1rem', fontSize: '0.85rem', opacity: 0.8, paddingBottom: '0.5rem', borderBottom: '1px solid #333' }}>
-                                                        <div style={{ fontWeight: 'bold', color: '#60a5fa', marginBottom: '0.2rem' }}>{h.date}</div>
-                                                        <div style={{ color: '#ccc' }}>{h.rules}</div>
-                                                    </div>
-                                                ))
-                                            )}
-                                            <button
-                                                onClick={() => setShowHistoryModal(false)}
-                                                className="btn"
-                                                style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', background: '#333', color: 'white', borderRadius: '8px', border: 'none', cursor: 'pointer' }}
-                                            >
-                                                Close History
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-                            <div style={{ flex: 1 }}>
-                                <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>CLEARANCE TARGET (%)</label>
-                                <input
-                                    type="number"
-                                    className="input"
-                                    min="0"
-                                    max="100"
-                                    value={localClearancePct}
-                                    onChange={(e) => {
-                                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                                        setLocalClearancePct(val);
-                                    }}
-                                    style={{ background: 'rgba(0,0,0,0.2)', width: '100%' }}
-                                />
-                                <p style={{ fontSize: '0.65rem', color: '#10b981', marginTop: '0.4rem' }}>Students with ≥ {localClearancePct}% paid will be marked "Cleared"</p>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>PROBATION TARGET (%)</label>
-                                <input
-                                    type="number"
-                                    className="input"
-                                    min="0"
-                                    max="100"
-                                    value={localProbationPct}
-                                    onChange={(e) => {
-                                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                                        setLocalProbationPct(val);
-                                    }}
-                                    style={{ background: 'rgba(0,0,0,0.2)', width: '100%' }}
-                                />
-                                <p style={{ fontSize: '0.65rem', color: '#8b5cf6', marginTop: '0.4rem' }}>Students with {localProbationPct}% to {localClearancePct - 1}% paid will be marked "Probation"</p>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>DEFAULTER RANGE (%)</label>
-                                <input
-                                    type="text"
-                                    className="input"
-                                    value={`< ${localProbationPct}%`}
-                                    readOnly // Auto-calculated
-                                    style={{ background: 'rgba(0,0,0,0.5)', width: '100%', cursor: 'not-allowed', color: 'rgba(255,255,255,0.5)' }}
-                                />
-                                <p style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '0.4rem' }}>Auto-calculated: Below {localProbationPct}%</p>
-                            </div>
-                        </div>
-
-                        {/* COMPULSORY FEES SECTION */}
-                        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                            <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '1rem', color: '#fbbf24' }}>MANDATORY FEE ITEMS (Required for Clearance)</label>
-
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-                                {localCompulsoryFees.map(fee => (
-                                    <div key={fee.id} style={{
-                                        display: 'flex', alignItems: 'center',
-                                        background: fee.type === 'probation' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                                        border: `1px solid ${fee.type === 'probation' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
-                                        borderRadius: '20px', padding: '0.3rem 0.8rem', gap: '0.5rem'
-                                    }}>
-                                        <span style={{ fontSize: '0.8rem', color: fee.type === 'probation' ? '#a78bfa' : '#34d399' }}>
-                                            {fee.type === 'probation' ? '[Probation] ' : '[Clearance] '}
-                                            {fee.category === 'physical' ? '📦 ' : ''}
-                                            {fee.name}
-                                            {fee.category !== 'physical' && `: ${fee.amount.toLocaleString()}`}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                if (window.confirm(`Remove "${fee.name}"? Statuses will be updated.`)) {
-                                                    const newFees = localCompulsoryFees.filter(f => f.id !== fee.id);
-                                                    setLocalCompulsoryFees(newFees);
-
-                                                    // Trigger Immediate Recalc for ALL students
-                                                    const updatedStudents = recalculateStatusWithFees(enrolledStudents, newFees);
-                                                    setEnrolledStudents(updatedStudents);
-                                                }
-                                            }}
-                                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', marginLeft: '0.5rem' }}>×</button>
-                                    </div>
-                                ))}
-                                {localCompulsoryFees.length === 0 && <span style={{ fontSize: '0.8rem', opacity: 0.5, fontStyle: 'italic' }}>No mandatory fees configured.</span>}
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'end' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Fee Name (Select from Particulars)</label>
-                                    <select
-                                        value={newFeeName}
-                                        className="input"
-                                        style={{ width: '100%', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setNewFeeName(val);
-
-                                            // Auto-populate amount logic
-                                            const service = services.find(s => s.name === val);
-
-                                            if (val === 'Physical Requirements') {
-                                                setNewFeeAmount("0"); // Amount irrelevant for physical
-                                            } else if (service) {
-                                                setNewFeeAmount(service.cost.toString());
-                                            } else if (val === 'custom') {
-                                                const customName = prompt("Enter Custom Fee Name:");
-                                                if (customName) setNewFeeName(customName);
-                                                else setNewFeeName(""); // Reset if cancelled
-                                                setNewFeeAmount("");
-                                            } else {
-                                                setNewFeeAmount("");
-                                            }
+                {
+                    showStatusSettings && (
+                        <div className="animate-fade-in" style={{
+                            padding: '1.5rem',
+                            background: 'rgba(255,255,255,0.03)',
+                            borderRadius: '16px',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.5rem'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                                <h4 style={{ margin: 0, color: '#60a5fa' }}>SMART STATUS CRITERIA</h4>
+                                <div style={{ position: 'relative' }}>
+                                    <button
+                                        onClick={() => setShowHistoryModal(!showHistoryModal)}
+                                        className="btn"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.1)',
+                                            color: '#aaa',
+                                            fontSize: '0.8rem',
+                                            padding: '0.4rem 0.8rem',
+                                            borderRadius: '20px',
+                                            display: 'flex', alignItems: 'center', gap: '0.5rem'
                                         }}
                                     >
-                                        <option value="">-- Select Fee Item --</option>
-                                        {['Tuition Fees', ...services.map(s => s.name)].map(p => (
-                                            <option key={p} value={p}>{p}</option>
-                                        ))}
-                                        <option value="Physical Requirements">Inventory / Physical Requirements</option>
-                                        <option value="custom">-- Custom / Other --</option>
-                                    </select>
+                                        <span>🕒 History</span>
+                                    </button>
+                                    {showHistoryModal && (
+                                        <div style={{
+                                            position: 'fixed', inset: 0,
+                                            background: 'rgba(0,0,0,0.8)', zIndex: 9999,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            <div style={{
+                                                background: '#222', border: '1px solid #444', borderRadius: '10px',
+                                                padding: '1.5rem', width: '400px',
+                                                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                                                maxHeight: '80vh', overflowY: 'auto'
+                                            }}>
+                                                <h5 style={{ margin: '0 0 1rem 0', color: 'white', borderBottom: '1px solid #444', paddingBottom: '0.5rem', fontSize: '1.1rem' }}>Recent Status Updates</h5>
+
+                                                <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '0.8rem', borderRadius: '6px', marginBottom: '1.5rem', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                                    <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.4rem', textTransform: 'uppercase' }}>Current Active Criteria</div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: '1.5' }}>
+                                                        ✅ <strong>Clear:</strong> ≥{financialSettings.clearancePct.toFixed(1)}% + Requirements<br />
+                                                        ⚠️ <strong>Probation:</strong> ≥{financialSettings.probationPct.toFixed(1)}%<br />
+                                                        💰 <strong>Mandatory Fees:</strong> {financialSettings.compulsoryFees?.length || 0} items
+                                                    </div>
+                                                </div>
+
+                                                {statusHistory.length === 0 ? (
+                                                    <p style={{ fontSize: '0.9rem', opacity: 0.5, textAlign: 'center', padding: '1rem' }}>No history yet.</p>
+                                                ) : (
+                                                    statusHistory.map((h, i) => (
+                                                        <div key={i} style={{ marginBottom: '1rem', fontSize: '0.85rem', opacity: 0.8, paddingBottom: '0.5rem', borderBottom: '1px solid #333' }}>
+                                                            <div style={{ fontWeight: 'bold', color: '#60a5fa', marginBottom: '0.2rem' }}>{h.date}</div>
+                                                            <div style={{ color: '#ccc' }}>{h.rules}</div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                                <button
+                                                    onClick={() => setShowHistoryModal(false)}
+                                                    className="btn"
+                                                    style={{ width: '100%', marginTop: '1rem', padding: '0.8rem', background: '#333', color: 'white', borderRadius: '8px', border: 'none', cursor: 'pointer' }}
+                                                >
+                                                    Close History
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div style={{ width: '150px' }}>
-                                    <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Amount (UGX)</label>
+                            </div>
+                            <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>CLEARANCE TARGET (%)</label>
                                     <input
                                         type="number"
                                         className="input"
-                                        placeholder="0"
-                                        value={newFeeAmount}
-                                        onChange={(e) => setNewFeeAmount(e.target.value)}
-                                        disabled={newFeeName === 'Physical Requirements'}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        style={{ width: '100%', background: newFeeName === 'Physical Requirements' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.2)', opacity: newFeeName === 'Physical Requirements' ? 0.5 : 1 }}
+                                        min="0"
+                                        max="100"
+                                        step="0.1"
+                                        value={localClearancePct}
+                                        onChange={(e) => {
+                                            const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                            setLocalClearancePct(val);
+                                        }}
+                                        disabled={isDirector}
+                                        style={{ background: 'rgba(0,0,0,0.2)', width: '100%', cursor: isDirector ? 'not-allowed' : 'auto' }}
                                     />
+                                    <p style={{ fontSize: '0.65rem', color: '#10b981', marginTop: '0.4rem' }}>Students with ≥ {localClearancePct.toFixed(1)}% paid will be marked "Cleared"</p>
                                 </div>
-                                <div style={{ width: '200px' }}>
-                                    <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Requirement Type</label>
-                                    <select
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>PROBATION TARGET (%)</label>
+                                    <input
+                                        type="number"
                                         className="input"
-                                        style={{ width: '100%', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                        value={newFeeType}
-                                        onChange={(e) => setNewFeeType(e.target.value as 'clearance' | 'probation')}
-                                    >
-                                        <option value="clearance">Required for Clearance</option>
-                                        <option value="probation">Required for Probation</option>
-                                    </select>
+                                        min="0"
+                                        max="100"
+                                        step="0.1"
+                                        value={localProbationPct}
+                                        onChange={(e) => {
+                                            const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                            setLocalProbationPct(val);
+                                        }}
+                                        disabled={isDirector}
+                                        style={{ background: 'rgba(0,0,0,0.2)', width: '100%', cursor: isDirector ? 'not-allowed' : 'auto' }}
+                                    />
+                                    <p style={{ fontSize: '0.65rem', color: '#8b5cf6', marginTop: '0.4rem' }}>Students with {localProbationPct.toFixed(1)}% to {(localClearancePct - 0.1).toFixed(1)}% paid will be marked "Probation"</p>
                                 </div>
-                                <button
-                                    className="btn btn-outline"
-                                    onClick={() => {
-                                        if (newFeeName && (newFeeAmount || newFeeName === 'Physical Requirements')) {
-                                            if (localCompulsoryFees.some(f => f.name === newFeeName && f.type === newFeeType)) {
-                                                alert("This requirement is already in the list!");
-                                                return;
-                                            }
-                                            // Explicitly create a new array ref to force update
-                                            const isPhysical = newFeeName === 'Physical Requirements';
-                                            const newFee: CompulsoryFee = {
-                                                id: Date.now().toString(),
-                                                name: newFeeName,
-                                                amount: isPhysical ? 0 : Number(newFeeAmount),
-                                                type: newFeeType,
-                                                category: isPhysical ? 'physical' : 'monetary'
-                                            };
-                                            setLocalCompulsoryFees(prev => [...prev, newFee]);
-
-                                            setNewFeeName("");
-                                            setNewFeeAmount("");
-                                        }
-                                    }}
-                                    style={{ borderColor: '#fbbf24', color: '#fbbf24' }}
-                                >
-                                    + Add Req
-                                </button>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.7rem', opacity: 0.5, display: 'block', marginBottom: '0.5rem' }}>DEFAULTER RANGE (%)</label>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={`< ${localProbationPct}%`}
+                                        readOnly // Auto-calculated
+                                        style={{ background: 'rgba(0,0,0,0.5)', width: '100%', cursor: 'not-allowed', color: 'rgba(255,255,255,0.5)' }}
+                                    />
+                                    <p style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '0.4rem' }}>Auto-calculated: Below {localProbationPct}%</p>
+                                </div>
                             </div>
-                            <p style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '0.8rem' }}>
-                                * Students MUST pay these items fully (via 'Allocations' or 'Particulars') to be marked "Cleared" even if they meet the percentage.
-                            </p>
+
+                            {/* COMPULSORY FEES SECTION */}
+                            <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '1rem', color: '#fbbf24' }}>MANDATORY FEE ITEMS (Required for Clearance)</label>
+
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                                    {localCompulsoryFees.map(fee => (
+                                        <div key={fee.id} style={{
+                                            display: 'flex', alignItems: 'center',
+                                            background: fee.type === 'probation' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                            border: `1px solid ${fee.type === 'probation' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+                                            borderRadius: '20px', padding: '0.3rem 0.8rem', gap: '0.5rem'
+                                        }}>
+                                            <span style={{ fontSize: '0.8rem', color: fee.type === 'probation' ? '#a78bfa' : '#34d399' }}>
+                                                {fee.type === 'probation' ? '[Probation] ' : '[Clearance] '}
+                                                {fee.category === 'physical' ? '📦 ' : ''}
+                                                {fee.name}
+                                                {fee.category !== 'physical' && `: ${fee.amount.toLocaleString()}`}
+                                            </span>
+                                            {!isDirector && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm(`Remove "${fee.name}"? Statuses will be updated.`)) {
+                                                            const newFees = localCompulsoryFees.filter(f => f.id !== fee.id);
+                                                            setLocalCompulsoryFees(newFees);
+
+                                                            // Trigger Immediate Recalc for ALL students
+                                                            const updatedStudents = recalculateStatusWithFees(enrolledStudents, newFees);
+                                                            setEnrolledStudents(updatedStudents);
+                                                        }
+                                                    }}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', marginLeft: '0.5rem' }}>×</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {localCompulsoryFees.length === 0 && <span style={{ fontSize: '0.8rem', opacity: 0.5, fontStyle: 'italic' }}>No mandatory fees configured.</span>}
+                                </div>
+
+                                {!isDirector && (
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'end' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Fee Name (Select from Particulars)</label>
+                                            <select
+                                                value={newFeeName}
+                                                className="input"
+                                                style={{ width: '100%', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setNewFeeName(val);
+
+                                                    // Auto-populate amount logic
+                                                    const service = services.find(s => s.name === val);
+
+                                                    if (val === 'Physical Requirements') {
+                                                        setNewFeeAmount("0"); // Amount irrelevant for physical
+                                                    } else if (service) {
+                                                        setNewFeeAmount(service.cost.toString());
+                                                    } else if (val === 'custom') {
+                                                        const customName = prompt("Enter Custom Fee Name:");
+                                                        if (customName) setNewFeeName(customName);
+                                                        else setNewFeeName(""); // Reset if cancelled
+                                                        setNewFeeAmount("");
+                                                    } else {
+                                                        setNewFeeAmount("");
+                                                    }
+                                                }}
+                                            >
+                                                <option value="">-- Select Fee Item --</option>
+                                                {['Tuition Fees', ...services.map(s => s.name)].map(p => (
+                                                    <option key={p} value={p}>{p}</option>
+                                                ))}
+                                                <option value="Physical Requirements">Inventory / Physical Requirements</option>
+                                                <option value="custom">-- Custom / Other --</option>
+                                            </select>
+                                        </div>
+                                        <div style={{ width: '150px' }}>
+                                            <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Amount (UGX)</label>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                placeholder="0"
+                                                value={newFeeAmount}
+                                                onChange={(e) => setNewFeeAmount(e.target.value)}
+                                                disabled={newFeeName === 'Physical Requirements'}
+                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                style={{ width: '100%', background: newFeeName === 'Physical Requirements' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.2)', opacity: newFeeName === 'Physical Requirements' ? 0.5 : 1 }}
+                                            />
+                                        </div>
+                                        <div style={{ width: '200px' }}>
+                                            <label style={{ fontSize: '0.7rem', opacity: 0.5 }}>Requirement Type</label>
+                                            <select
+                                                className="input"
+                                                style={{ width: '100%', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                                                value={newFeeType}
+                                                onChange={(e) => setNewFeeType(e.target.value as 'clearance' | 'probation')}
+                                            >
+                                                <option value="clearance">Required for Clearance</option>
+                                                <option value="probation">Required for Probation</option>
+                                            </select>
+                                        </div>
+                                        <button
+                                            className="btn btn-outline"
+                                            onClick={() => {
+                                                if (newFeeName && (newFeeAmount || newFeeName === 'Physical Requirements')) {
+                                                    if (localCompulsoryFees.some(f => f.name === newFeeName && f.type === newFeeType)) {
+                                                        alert("This requirement is already in the list!");
+                                                        return;
+                                                    }
+                                                    // Explicitly create a new array ref to force update
+                                                    const isPhysical = newFeeName === 'Physical Requirements';
+                                                    const newFee: CompulsoryFee = {
+                                                        id: Date.now().toString(),
+                                                        name: newFeeName,
+                                                        amount: isPhysical ? 0 : Number(newFeeAmount),
+                                                        type: newFeeType,
+                                                        category: isPhysical ? 'physical' : 'monetary'
+                                                    };
+                                                    setLocalCompulsoryFees(prev => [...prev, newFee]);
+
+                                                    setNewFeeName("");
+                                                    setNewFeeAmount("");
+                                                }
+                                            }}
+                                            style={{ borderColor: '#fbbf24', color: '#fbbf24' }}
+                                        >
+                                            + Add Req
+                                        </button>
+                                    </div>
+                                )}
+                                <p style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '0.8rem' }}>
+                                    * Students MUST pay these items fully (via 'Allocations' or 'Particulars') to be marked "Cleared" even if they meet the percentage.
+                                </p>
+                            </div>
+                            {!isDirector && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <button
+                                        onClick={() => {
+                                            if (confirm("⚠️ FACTORY RESET: This will clear ALL data (Students, Transactions, Settings) and reload the page.\n\nAre you sure?")) {
+                                                localStorage.clear();
+                                                window.location.reload();
+                                            }
+                                        }}
+                                        className="btn"
+                                        style={{ background: '#ef4444', color: 'white', fontWeight: 'bold', padding: '0.6rem 1.5rem', borderRadius: '10px' }}
+                                    >
+                                        🗑️ Reset Data
+                                    </button>
+                                    <button
+                                        onClick={handleSaveConfig}
+                                        className="btn"
+                                        style={{ background: '#3b82f6', color: 'white', fontWeight: 'bold', padding: '0.6rem 2rem', borderRadius: '10px' }}
+                                    >
+                                        ✅ Save Configuration
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                            <button
-                                onClick={() => {
-                                    if (confirm("⚠️ FACTORY RESET: This will clear ALL data (Students, Transactions, Settings) and reload the page.\n\nAre you sure?")) {
-                                        localStorage.clear();
-                                        window.location.reload();
-                                    }
-                                }}
-                                className="btn"
-                                style={{ background: '#ef4444', color: 'white', fontWeight: 'bold', padding: '0.6rem 1.5rem', borderRadius: '10px' }}
-                            >
-                                🗑️ Reset Data
-                            </button>
-                            <button
-                                onClick={handleSaveConfig}
-                                className="btn"
-                                style={{ background: '#3b82f6', color: 'white', fontWeight: 'bold', padding: '0.6rem 2rem', borderRadius: '10px' }}
-                            >
-                                ✅ Save Configuration
-                            </button>
+                    )
+                }
+            </div >
+
+            <div className="card print-area" style={{ padding: '2rem', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px' }}>
+                {/* OVERALL CLEARANCE PROGRESS BAR */}
+                <div className="no-print" style={{
+                    marginBottom: '3rem',
+                    background: 'linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
+                    padding: '2rem',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.5rem',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Decorative Background Glow */}
+                    <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(59, 130, 246, 0.1)', filter: 'blur(60px)', borderRadius: '50%' }} />
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', position: 'relative', zIndex: 1 }}>
+                        <div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.5, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '800', marginBottom: '8px', color: '#60a5fa' }}>
+                                Collection Momentum • {filteredStudents.length} Students
+                            </div>
+                            <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#fff', lineHeight: 1 }}>
+                                {globalStats.percentage.toFixed(1)}% <span style={{ fontSize: '1rem', opacity: 0.5, fontWeight: '600', color: '#10b981', verticalAlign: 'middle', marginLeft: '0.5rem' }}>COLLECTED</span>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4rem' }}>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Avg. Arrears</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fbbf24' }}>{formatMoney(globalStats.avgArrears)}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Projected Target</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#60a5fa' }}>{formatMoney(globalStats.totalTarget)}</div>
+                            </div>
                         </div>
                     </div>
-                )}
-            </div>
 
-            <div className="card print-area" style={{ padding: '0.5rem md:1rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ height: '14px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                        <div style={{
+                            width: `${globalStats.percentage}%`,
+                            height: '100%',
+                            background: 'linear-gradient(90deg, #3b82f6, #10b981)',
+                            borderRadius: '10px',
+                            transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: '0 0 20px rgba(16, 185, 129, 0.4)'
+                        }} />
+                    </div>
+                </div>
+
+                <div className="print-only" style={{ marginBottom: '20px', padding: '15px', border: '1px solid #000', borderRadius: '5px' }}>
+                    <div style={{ fontSize: '14pt', fontWeight: 'bold', marginBottom: '10px', borderBottom: '1px solid #eee' }}>Executive Summary</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+                        <div>
+                            <div style={{ fontSize: '9pt', opacity: 0.6 }}>Total Projected</div>
+                            <div style={{ fontSize: '12pt', fontWeight: 'bold' }}>{formatMoney(globalStats.totalTarget)}</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '9pt', opacity: 0.6 }}>Total Collected</div>
+                            <div style={{ fontSize: '12pt', fontWeight: 'bold', color: '#059669' }}>{formatMoney(globalStats.totalPaid)}</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '9pt', opacity: 0.6 }}>Outstanding</div>
+                            <div style={{ fontSize: '12pt', fontWeight: 'bold', color: '#dc2626' }}>{formatMoney(globalStats.totalTarget - globalStats.totalPaid)}</div>
+                        </div>
+                    </div>
+                </div>
                 {viewMode === 'list' ? (
                     <>
                         <div className="overflow-x-auto -mx-2 md:mx-0 custom-scrollbar">
@@ -2161,6 +2278,23 @@ function LearnersContent() {
                                                 >
                                                     <div style={{ fontWeight: '700', fontSize: '1.1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.8rem' }} className="print:text-black">
                                                         {student.name}
+                                                        {isDirector && pendingTransactionCounts[student.id] > 0 && (
+                                                            <span
+                                                                title={`${pendingTransactionCounts[student.id]} transaction(s) pending approval`}
+                                                                style={{
+                                                                    fontSize: '0.7rem',
+                                                                    background: '#f59e0b',
+                                                                    color: 'white',
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontWeight: '900',
+                                                                    boxShadow: '0 0 10px rgba(245, 158, 11, 0.6)',
+                                                                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                                                }}
+                                                            >
+                                                                {pendingTransactionCounts[student.id]}
+                                                            </span>
+                                                        )}
                                                         {student.compassNumber && (
                                                             <span title="Compass Number" style={{
                                                                 fontSize: '0.75rem',
@@ -2194,26 +2328,33 @@ function LearnersContent() {
                                             )}
                                             {visibleColumns.ring && (
                                                 <td className="col-ring" style={{ padding: '1rem' }} onClick={() => handleViewStudent(student)}>
-                                                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                                        <StatusRing student={student} size={50} />
-                                                    </div>
+                                                    <StatusRing
+                                                        student={student}
+                                                        size={50}
+                                                        percentage={(student as any).stats?.clearanceTarget > 0
+                                                            ? ((student as any).stats.clearancePaid / (student as any).stats.clearanceTarget) * 100
+                                                            : 100
+                                                        }
+                                                    />
                                                 </td>
                                             )}
                                             {visibleColumns.sync && (
                                                 <td className="col-sync" style={{ padding: '1rem', textAlign: 'right', borderRadius: '0 16px 16px 0' }}>
-                                                    <button
-                                                        className="btn btn-primary"
-                                                        onClick={(e) => { e.stopPropagation(); handlePostToPortal(student); }}
-                                                        style={{
-                                                            background: '#3b82f6',
-                                                            borderColor: '#3b82f6',
-                                                            fontSize: '0.8rem',
-                                                            padding: '0.4rem 1rem',
-                                                            display: 'flex', alignItems: 'center', gap: '0.4rem'
-                                                        }}
-                                                    >
-                                                        🚀 Post
-                                                    </button>
+                                                    {!isDirector && (
+                                                        <button
+                                                            className="btn btn-primary"
+                                                            onClick={(e) => { e.stopPropagation(); handlePostToPortal(student); }}
+                                                            style={{
+                                                                background: '#3b82f6',
+                                                                borderColor: '#3b82f6',
+                                                                fontSize: '0.8rem',
+                                                                padding: '0.4rem 1rem',
+                                                                display: 'flex', alignItems: 'center', gap: '0.4rem'
+                                                            }}
+                                                        >
+                                                            🚀 Post
+                                                        </button>
+                                                    )}
                                                     {student.lastPosted && (
                                                         <div style={{ fontSize: '0.65rem', opacity: 0.4, marginTop: '0.3rem' }}>Last Sync: {student.lastPosted}</div>
                                                     )}
@@ -2234,8 +2375,8 @@ function LearnersContent() {
                                 </div>
                             )}
                             {filteredStudents.map((student) => {
-                                const studentTx = transactions.filter(t => t.studentName === student.name);
-                                const stats = calculateStudentFinancials(student, studentTx);
+                                const stats = (student as any).stats;
+
 
                                 return (
                                     <div key={student.id}
@@ -2251,7 +2392,26 @@ function LearnersContent() {
                                         }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
-                                                <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#fff' }}>{student.name}</div>
+                                                <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    {student.name}
+                                                    {isDirector && pendingTransactionCounts[student.id] > 0 && (
+                                                        <span
+                                                            title={`${pendingTransactionCounts[student.id]} pending`}
+                                                            style={{
+                                                                fontSize: '0.65rem',
+                                                                background: '#f59e0b',
+                                                                color: 'white',
+                                                                padding: '2px 6px',
+                                                                borderRadius: '10px',
+                                                                fontWeight: '900',
+                                                                boxShadow: '0 0 8px rgba(245, 158, 11, 0.6)',
+                                                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                                            }}
+                                                        >
+                                                            {pendingTransactionCounts[student.id]}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.2rem' }}>
                                                     {student.payCode} • {student.semester}
                                                 </div>
@@ -2262,7 +2422,11 @@ function LearnersContent() {
                                                         #{student.compassNumber}
                                                     </span>
                                                 )}
-                                                <StatusRing student={student} size={30} />
+                                                <StatusRing
+                                                    student={student}
+                                                    size={30}
+                                                    percentage={stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100}
+                                                />
                                             </div>
                                         </div>
 
@@ -2275,32 +2439,41 @@ function LearnersContent() {
                                             </div>
                                             <div style={{ textAlign: 'right' }}>
                                                 <div style={{ fontSize: '0.65rem', opacity: 0.4, textTransform: 'uppercase' }}>% Cleared</div>
-                                                <div style={{ fontWeight: '800', color: '#60a5fa' }}>
-                                                    {stats.clearanceTarget > 0 ? Math.round((stats.clearancePaid / stats.clearanceTarget) * 100) : 100}%
+                                                <div style={{
+                                                    fontWeight: '800',
+                                                    color: (stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100) >= localClearancePct
+                                                        ? '#10b981'
+                                                        : (stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100) >= localProbationPct
+                                                            ? '#8b5cf6'
+                                                            : '#ef4444'
+                                                }}>
+                                                    {stats.clearanceTarget > 0 ? ((stats.clearancePaid / stats.clearanceTarget) * 100).toFixed(1) : '100.0'}%
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handlePostToPortal(student); }}
-                                                style={{
-                                                    flex: 1,
-                                                    background: '#3b82f6',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    padding: '0.6rem',
-                                                    borderRadius: '10px',
-                                                    fontSize: '0.8rem',
-                                                    fontWeight: 'bold',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    gap: '0.5rem'
-                                                }}
-                                            >
-                                                🚀 Post to Portal
-                                            </button>
+                                            {!isDirector && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handlePostToPortal(student); }}
+                                                    style={{
+                                                        flex: 1,
+                                                        background: '#3b82f6',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        padding: '0.6rem',
+                                                        borderRadius: '10px',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: 'bold',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '0.5rem'
+                                                    }}
+                                                >
+                                                    🚀 Post to Portal
+                                                </button>
+                                            )}
                                             <button
                                                 style={{
                                                     flex: 1,
@@ -2324,7 +2497,6 @@ function LearnersContent() {
                 ) : (
                     <div style={{ position: 'relative' }}>
                         <div
-                            ref={matrixRef}
                             className="matrix-container"
                             style={{
                                 overflowX: 'auto',
@@ -2382,9 +2554,9 @@ function LearnersContent() {
                                 </thead>
                                 <tbody>
                                     {filteredStudents.map((student, idx) => {
-                                        const studentTx = transactions.filter(t => t.studentName === student.name);
-                                        const stats = calculateStudentFinancials(student, studentTx);
+                                        const stats = (student as any).stats;
                                         const pct = stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100;
+
 
                                         const studentCreditPoolTotal = calculateCreditPool(student.id, stats);
                                         let remainingCredit = studentCreditPoolTotal;
@@ -2440,7 +2612,26 @@ function LearnersContent() {
                                                         cursor: 'pointer', fontWeight: 'bold', color: '#3b82f6'
                                                     }}
                                                 >
-                                                    {student.name}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        {student.name}
+                                                        {pendingTransactionCounts[student.id] > 0 && (
+                                                            <span
+                                                                title={`${pendingTransactionCounts[student.id]} transaction(s) pending approval`}
+                                                                style={{
+                                                                    fontSize: '0.7rem',
+                                                                    background: '#f59e0b',
+                                                                    color: 'white',
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '10px',
+                                                                    fontWeight: '900',
+                                                                    boxShadow: '0 0 8px rgba(245, 158, 11, 0.6)',
+                                                                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                                                }}
+                                                            >
+                                                                {pendingTransactionCounts[student.id]}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ background: '#1a1a1a' }}>{student.payCode}</td>
 
@@ -2464,7 +2655,7 @@ function LearnersContent() {
                                                     if (col === 'Total Paid') return <td key={col} style={{ background: 'rgba(16,185,129,0.05)', textAlign: 'right' }}>{formatMoney(stats.totalPayments)}</td>;
                                                     if (col === 'Balance') return <td key={col} style={{ background: 'rgba(16,185,129,0.05)', textAlign: 'right', color: stats.outstandingBalance > 0 ? '#ef4444' : '#10b981' }}>{formatMoney(stats.outstandingBalance)}</td>;
                                                     if (col === '% Cleared') {
-                                                        const statusColor = pct >= localClearancePct ? '#10b981' : pct >= localProbationPct ? '#f59e0b' : '#ef4444';
+                                                        const statusColor = pct >= localClearancePct ? '#10b981' : pct >= localProbationPct ? '#8b5cf6' : '#ef4444';
                                                         return (
                                                             <td key={col} style={{
                                                                 background: '#1a1a1a',
@@ -2529,82 +2720,76 @@ function LearnersContent() {
                             </table>
                         </div>
 
-                        {/* Floating Scroll Controls */}
-                        <div style={{
-                            position: 'absolute',
-                            bottom: '20px',
-                            right: '25px',
-                            display: 'flex',
-                            gap: '12px',
-                            zIndex: 100,
-                            background: 'rgba(0,0,0,0.6)',
-                            padding: '10px',
-                            borderRadius: '30px',
-                            backdropFilter: 'blur(8px)',
-                            border: '1px solid rgba(255,255,255,0.1)'
-                        }}>
-                            <button onClick={() => scrollMatrix('left')} className="matrix-nav-btn" style={{ background: '#333' }} title="Scroll Left">◀</button>
-                            <button onClick={() => scrollMatrix('right')} className="matrix-nav-btn" title="Scroll Right">▶</button>
-                        </div>
                     </div>
                 )}
             </div>
 
             {/* --- STUDENT DETAIL MODAL --- */}
-            {selectedStudent && (
-                <LearnerAccountModal
-                    studentId={selectedStudent.id}
-                    onClose={() => setSelectedStudent(null)}
-                    auditingContext={filterLevel || undefined}
-                />
-            )}
+            {
+                selectedStudent && (
+                    <LearnerAccountModal
+                        studentId={selectedStudent.id}
+                        onClose={() => setSelectedStudent(null)}
+                        auditingContext={filterLevel || undefined}
+                        mode={isDirector ? 'director' : 'bursar'}
+                    />
+                )
+            }
 
             {/* --- BULK ACTION BAR --- */}
             {
                 selectedIds.length > 0 && (
                     <div style={{
                         position: 'fixed',
-                        bottom: '2rem',
+                        bottom: '2.5rem',
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        background: '#3b82f6',
-                        padding: '1rem 2rem',
-                        borderRadius: '20px',
+                        background: 'rgba(59, 130, 246, 0.95)',
+                        backdropFilter: 'blur(20px)',
+                        padding: '1.2rem 2.5rem',
+                        borderRadius: '24px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '2rem',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                        gap: '2.5rem',
+                        boxShadow: '0 20px 50px rgba(59, 130, 246, 0.3)',
                         zIndex: 2100,
                         border: '1px solid rgba(255,255,255,0.2)',
-                        animation: 'slideUp 0.3s ease-out'
+                        animation: 'slideUp 0.4s cubic-bezier(0, 1, 0, 1)'
                     }}>
                         <style>{`
                         @keyframes slideUp { from { transform: translate(-50%, 100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
                     `}</style>
-                        <div style={{ fontWeight: 'bold', color: 'white' }}>{selectedIds.length} learners selected</div>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button
-                                onClick={handleSmartBulkStatus}
-                                className="btn"
-                                style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)' }}
-                            >
-                                🧠 Smart Categorize Status
-                            </button>
-                            <button
-                                onClick={() => {
-                                    enrolledStudents.filter(s => selectedIds.includes(s.id)).forEach(handlePostToPortal);
-                                    setSelectedIds([]);
-                                }}
-                                className="btn"
-                                style={{ background: '#fff', color: '#000', fontWeight: 'bold', borderRadius: '10px' }}
-                            >
-                                🚀 Bulk Post to Portal
-                            </button>
+                        <div style={{ color: 'white', display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.7rem', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>Selection Active</span>
+                            <span style={{ fontSize: '1.2rem', fontWeight: '900' }}>{selectedIds.length} Learners</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.8rem' }}>
+                            {!isDirector && (
+                                <>
+                                    <button
+                                        onClick={handleSmartBulkStatus}
+                                        className="glass-button"
+                                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem' }}
+                                    >
+                                        🧠 Smart Status
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            enrolledStudents.filter(s => selectedIds.includes(s.id)).forEach(handlePostToPortal);
+                                            setSelectedIds([]);
+                                        }}
+                                        className="glass-button"
+                                        style={{ background: 'white', color: '#2563eb', fontSize: '0.8rem' }}
+                                    >
+                                        🚀 Post to Portal
+                                    </button>
+                                </>
+                            )}
                             <button
                                 onClick={() => setSelectedIds([])}
-                                style={{ background: 'none', border: 'none', color: 'white', opacity: 0.8, cursor: 'pointer' }}
+                                style={{ background: 'none', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', marginLeft: '0.5rem' }}
                             >
-                                Cancel
+                                Dismiss
                             </button>
                         </div>
                     </div>
@@ -2615,20 +2800,18 @@ function LearnersContent() {
                 showDeleteModal && (
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
                     }}>
-                        <div style={{ background: '#1e1e1e', padding: '2rem', borderRadius: '16px', width: '400px', border: '1px solid #333' }}>
-                            <h3 style={{ marginTop: 0 }}>Confirm Deletion</h3>
-                            <p style={{ opacity: 0.7 }}>Please select a reason for removing this item:</p>
+                        <div style={{ background: '#1a1a1a', padding: '2.5rem', borderRadius: '32px', width: '450px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 30px 60px rgba(0,0,0,0.8)' }}>
+                            <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', marginBottom: '0.5rem' }}>Confirm Removal</div>
+                            <p style={{ opacity: 0.5, fontSize: '0.9rem', marginBottom: '2rem' }}>Please specify a reason for deactivating this record. This action will be logged in the audit trail.</p>
 
                             <select
                                 value={deleteReason}
                                 onChange={e => setDeleteReason(e.target.value)}
-                                style={{
-                                    width: '100%', padding: '1rem', background: '#333',
-                                    color: 'white', border: '1px solid #555', borderRadius: '8px',
-                                    marginBottom: '1.5rem', outline: 'none'
-                                }}
+                                className="premium-input w-full mb-8"
+                                style={{ padding: '1rem !important' }}
                             >
                                 {DELETE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
@@ -2636,15 +2819,15 @@ function LearnersContent() {
                             <div style={{ display: 'flex', gap: '1rem' }}>
                                 <button
                                     onClick={confirmDelete}
-                                    className="btn"
-                                    style={{ flex: 1, background: '#ef4444', color: 'white', border: 'none', padding: '0.8rem', borderRadius: '8px', fontWeight: 'bold' }}
+                                    className="glass-button"
+                                    style={{ flex: 1, background: '#ef4444', border: 'none', justifyContent: 'center', padding: '1rem' }}
                                 >
                                     Confirm Delete
                                 </button>
                                 <button
                                     onClick={() => setShowDeleteModal(false)}
-                                    className="btn"
-                                    style={{ flex: 1, background: 'transparent', color: 'white', border: '1px solid #555', padding: '0.8rem', borderRadius: '8px' }}
+                                    className="glass-button"
+                                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', justifyContent: 'center', padding: '1rem' }}
                                 >
                                     Cancel
                                 </button>
@@ -2653,7 +2836,7 @@ function LearnersContent() {
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 }
 

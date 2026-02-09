@@ -1,7 +1,11 @@
 "use client";
-import React, { useState } from 'react';
-import { useSchoolData, PaymentIntegration, ManualPaymentMethod, BankAccount } from '@/lib/store';
+import React, { useState, useEffect } from 'react';
+import { useSchoolData, PaymentIntegration, ManualPaymentMethod, BankAccount, Payment } from '@/lib/store';
 import { numberToWords } from '@/lib/numberToWords';
+import { schoolPayService } from '@/services/schoolPayService';
+
+const generateId = () => Math.random().toString(36).substring(2, 10);
+const logGlobalAction = (action: string, details: string) => console.log(action, details);
 
 export default function PaymentModesPage() {
     const {
@@ -11,7 +15,7 @@ export default function PaymentModesPage() {
         students, payments, generalTransactions, addPayment, deletePayment, // Restored
         deletedPayments, unclaimedPayments, // Get deleted and unclaimed payments
         documentTemplates, programmes, // Added for receipt printing
-        activeRole, updatePayment // Restored for Approval Workflow
+        activeRole, updatePayment, developerSettings
     } = useSchoolData();
 
     // --- STATE MANAGEMENT ---
@@ -20,6 +24,21 @@ export default function PaymentModesPage() {
     // 1. Integration Config
     const [configModal, setConfigModal] = useState<{ open: boolean, integration: PaymentIntegration | null }>({ open: false, integration: null });
     const [configForm, setConfigForm] = useState({ merchantId: '', apiKey: '', clientSecret: '' });
+    const [showApiKey, setShowApiKey] = useState(false);
+
+    // NEW: Sync Range Modal
+    const [syncRangeModal, setSyncRangeModal] = useState<{ open: boolean, integration: PaymentIntegration | null }>({ open: false, integration: null });
+    const [syncDates, setSyncDates] = useState({
+        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 7 days ago
+        to: new Date().toISOString().split('T')[0]
+    });
+
+    const [origin, setOrigin] = useState('https://compass360.ac.ug');
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setOrigin(window.location.origin);
+        }
+    }, []);
 
     // 2. Bank Account Modal
     const [bankModal, setBankModal] = useState<{ open: boolean, account: BankAccount | null }>({ open: false, account: null });
@@ -34,12 +53,29 @@ export default function PaymentModesPage() {
     const [methodModal, setMethodModal] = useState<{ open: boolean, method: any | null, type: 'digital_fallback' | 'cash' }>({ open: false, method: null, type: 'cash' });
     const [methodForm, setMethodForm] = useState<{ name: string, mappedId: string, description: string }>({ name: '', mappedId: '', description: '' });
 
-    // --- TRANSACTION MODAL STATE ---
     const [viewTxs, setViewTxs] = useState<{ open: boolean, sourceName: string, sourceType: 'digital' | 'bank' | 'manual' | 'cash', transactions: any[], filter: 'all' | 'unsynced' | 'trash' }>({ open: false, sourceName: '', sourceType: 'digital', transactions: [], filter: 'all' });
+
+    // NEW: Non-blocking Link Confirmation State
+    const [linkConfirm, setLinkConfirm] = useState<{ open: boolean, tx: any, student: any | null }>({ open: false, tx: null, student: null });
 
     // --- MOBILE FILTER STATES ---
     const [showPendingFilters, setShowPendingFilters] = useState(false);
     const [showUnsyncedFilters, setShowUnsyncedFilters] = useState(false);
+
+    // --- COMPUTED DATA ---
+    const bankAccounts = accounts.filter(a => a.group === 'Bank Accounts');
+    const cashAccounts = accounts.filter(a => a.group === 'Cash');
+    const cashMethods = manualPaymentMethods.filter(m => m.category === 'cash');
+    const digitalFallbackMethods = manualPaymentMethods.filter(m => m.category === 'digital_fallback');
+
+    // --- VIEW STATE ---
+    const [activeView, setActiveView] = useState<'config' | 'credits'>('config');
+
+    // --- PENDING FIXES FILTERS ---
+    const [pendingSearch, setPendingSearch] = useState('');
+    const [pendingDateStart, setPendingDateStart] = useState('');
+    const [pendingDateEnd, setPendingDateEnd] = useState('');
+    const [pendingReasonFilter, setPendingReasonFilter] = useState('all');
 
     // --- HELPERS: INTEGRATIONS ---
     const handleConfigureClick = (integration: PaymentIntegration) => {
@@ -49,6 +85,102 @@ export default function PaymentModesPage() {
             clientSecret: integration.clientSecret || ''
         });
         setConfigModal({ open: true, integration });
+    };
+
+    const [syncingInteg, setSyncingInteg] = useState<string | null>(null);
+
+    const handleSyncPayments = (integ: PaymentIntegration) => {
+        if (integ.status !== 'active') {
+            alert("Please activate the integration first by providing API credentials.");
+            return;
+        }
+        setSyncRangeModal({ open: true, integration: integ });
+    };
+
+    const processSyncRange = async () => {
+        const integ = syncRangeModal.integration;
+        if (!integ || !integ.merchantId || !integ.apiKey) return;
+
+        setSyncingInteg(integ.id);
+
+        try {
+            const results = await schoolPayService.syncRange(
+                integ.merchantId,
+                integ.apiKey,
+                syncDates.from,
+                syncDates.to
+            );
+
+            if (results.returnCode !== 0) {
+                alert(`SchoolPay Error: ${results.returnMessage}`);
+                return;
+            }
+
+            const allTxs = [...(results.transactions || []), ...(results.supplementaryFeePayments || [])];
+
+            let newCount = 0;
+            allTxs.forEach(tx => {
+                const existingIndex = payments.findIndex(p => p.reference === tx.schoolpayReceiptNumber);
+                const student = students.find(s => s.payCode === tx.studentPaymentCode);
+
+                if (existingIndex !== -1) {
+                    const existing = payments[existingIndex];
+                    if ((existing.studentId === 0 || !existing.studentId) && student) {
+                        updatePayment({
+                            ...existing,
+                            studentId: student.id,
+                            term: student.semester,
+                            description: tx.supplementaryFeeDescription || 'School Fees',
+                            status: 'approved',
+                            method: 'SchoolPay', // Ensure correct field is set
+                            metadata: {
+                                ...existing.metadata,
+                                payCode: tx.studentPaymentCode,
+                                lastAutoRelink: new Date().toISOString()
+                            }
+                        });
+                        newCount++;
+                    }
+                    return;
+                }
+
+                const newPayment: Payment = {
+                    id: `sp_sync_${tx.schoolpayReceiptNumber}`,
+                    studentId: student ? student.id : 0,
+                    amount: parseFloat(tx.amount),
+                    date: tx.paymentDateAndTime,
+                    method: 'SchoolPay', // FIXED: store.ts Payment interface uses 'method'
+                    reference: tx.schoolpayReceiptNumber,
+                    particulars: `Sync: ${tx.sourcePaymentChannel}`,
+                    description: tx.supplementaryFeeDescription || 'School Fees',
+                    term: student ? student.semester : 'Unknown',
+                    status: 'approved', // FIXED: store.ts uses 'approved' | 'pending' | 'rejected'
+                    recordedBy: 'SchoolPay System',
+                    metadata: {
+                        syncSource: 'Manual Range Sync',
+                        payCode: tx.studentPaymentCode,
+                        bankName: tx.settlementBank // Adding bank from SchoolPay for better tracking
+                    },
+                    history: [{
+                        id: `sp_hist_${tx.schoolpayReceiptNumber}`,
+                        action: 'Created',
+                        details: 'Automatically synced from SchoolPay API Range Search',
+                        user: 'Bursar',
+                        timestamp: new Date().toISOString()
+                    }]
+                };
+
+                addPayment(newPayment);
+                newCount++;
+            });
+
+            alert(`Sync Complete!\n\nFound: ${allTxs.length} transactions.\nSaved: ${newCount} new records.`);
+            setSyncRangeModal({ open: false, integration: null });
+        } catch (error) {
+            alert("Sync Failed: Could not connect to SchoolPay API.");
+        } finally {
+            setSyncingInteg(null);
+        }
     };
 
     const handleSaveConfig = () => {
@@ -288,9 +420,18 @@ export default function PaymentModesPage() {
         const allTxs = [
             ...(generalTransactions || []).map(t => ({ ...t, source: 'General' })),
             ...(payments || []).map(p => ({
-                id: p.id, date: p.date, amount: p.amount, description: `Student Payment (${p.studentId})`,
-                mode: p.method, method: p.method, type: 'Income', source: 'Student',
-                studentId: p.studentId, reference: p.reference, status: p.status
+                id: p.id,
+                date: p.date,
+                amount: p.amount,
+                description: p.description || `Student Payment (${p.studentId || p.metadata?.payCode || 'Manual'})`,
+                mode: p.method || (p as any).mode, // Handle potential 'mode' vs 'method' split
+                method: p.method || (p as any).mode,
+                type: 'Income',
+                source: 'Student',
+                studentId: p.studentId,
+                reference: p.reference,
+                status: p.status,
+                metadata: p.metadata
             }))
         ];
 
@@ -349,7 +490,7 @@ export default function PaymentModesPage() {
                 studentId: 0, // Use 0 for unclaimed payments
                 reference: p.reference,
                 status: 'pending_sync' as any, // Treat as unsynced
-                possiblePayCode: null
+                possiblePayCode: (p as any).metadata?.payCode || (p as any).payCode || null
             }));
 
             txs = [...deletedTxs, ...realUnclaimed]; // Combine deleted and unclaimed
@@ -440,101 +581,102 @@ export default function PaymentModesPage() {
                 });
             }
 
-            // Mock 4: Duplicate B
-            if (!payments.some((p: any) => p.reference === 'REF-DUP-004')) {
-                txs.push({
-                    id: 'unsync_demo_4',
-                    date: new Date().toISOString(),
-                    amount: 60000,
-                    description: 'SchoolPay - Conflict B',
-                    mode: name,
-                    method: name,
-                    type: 'Income',
-                    source: 'Conflict',
-                    studentId: 0, // FIXED
-                    reference: 'REF-DUP-004',
-                    status: 'pending_sync' as any,
-                    possiblePayCode: '4000000444'
-                });
-            }
-
-            // Mock 5: Manual Entry Existing
-            if (!payments.some((p: any) => p.reference === 'REF-MANUAL-EXISTING-2')) {
-                txs.push({
-                    id: 'unsync_demo_5',
-                    date: new Date().toISOString(),
-                    amount: 50000,
-                    description: 'SchoolPay - Manual Exists',
-                    mode: name,
-                    method: name,
-                    type: 'Income',
-                    source: 'Conflict',
-                    studentId: 0, // FIXED
-                    reference: 'REF-MANUAL-EXISTING-2',
-                    status: 'pending_sync' as any,
-                    possiblePayCode: '3000000333'
-                });
-            }
-
-            // Mock 6: User Requested Conflict (Ref 999)
-            const conflictRef6 = '999';
-            // Check if resolved
-            const res6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy === 'System Replace');
-            // Check if conflict exists (Manual payment with ref 999)
-            const hasConflict6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy !== 'System Replace');
-
-            if (!res6) {
-                txs.push({
-                    id: 'unsync_demo_6',
-                    date: new Date().toISOString(),
-                    amount: 500000, // Matching the manual amount from screenshot
-                    description: 'SchoolPay - Conflict DR DR',
-                    mode: name,
-                    method: name,
-                    type: 'Income',
-                    source: 'Unknown',
-                    studentId: 0,
-                    reference: conflictRef6,
-                    status: 'pending_sync',
-                    possiblePayCode: '10000000',
-                    isDuplicate: !!hasConflict6, // Only duplicate if the manual one exists
-                    conflictingPaymentId: hasConflict6 ? hasConflict6.id : undefined
-                });
-            }
-
-            // --- NEW REQUESTED MOCKS ---
-            const newMocks = [
-                { id: '1212', code: '2000000222', amount: 55000 },
-                { id: '1313', code: '300000', amount: 75000 },
-                { id: '1414', code: '10000000111', amount: 150000 },
-                { id: '1515', code: '10000000', amount: 200000 },
-                { id: '1616', code: '1000000111', amount: 80000 }, // Claimable (Hamis)
-                { id: '1717', code: '077999888', amount: 20000 } // Unsynced/Unknown
-            ];
-
-            newMocks.forEach(m => {
-                if (!payments.some((p: any) => p.reference === m.id)) {
+            if (developerSettings?.showMockData) {
+                // Mock 4: Duplicate B
+                if (!payments.some((p: any) => p.reference === 'REF-DUP-004')) {
                     txs.push({
-                        id: `unsync_mock_${m.id}`,
+                        id: 'unsync_demo_4',
                         date: new Date().toISOString(),
-                        amount: m.amount,
-                        description: `Payment ${m.id}`,
+                        amount: 60000,
+                        description: 'SchoolPay - Conflict B',
+                        mode: name,
+                        method: name,
+                        type: 'Income',
+                        source: 'Conflict',
+                        studentId: 0, // FIXED
+                        reference: 'REF-DUP-004',
+                        status: 'pending_sync' as any,
+                        possiblePayCode: '4000000444'
+                    });
+                }
+
+                // Mock 5: Manual Entry Existing
+                if (!payments.some((p: any) => p.reference === 'REF-MANUAL-EXISTING-2')) {
+                    txs.push({
+                        id: 'unsync_demo_5',
+                        date: new Date().toISOString(),
+                        amount: 50000,
+                        description: 'SchoolPay - Manual Exists',
+                        mode: name,
+                        method: name,
+                        type: 'Income',
+                        source: 'Conflict',
+                        studentId: 0, // FIXED
+                        reference: 'REF-MANUAL-EXISTING-2',
+                        status: 'pending_sync' as any,
+                        possiblePayCode: '3000000333'
+                    });
+                }
+
+                // Mock 6: User Requested Conflict (Ref 999)
+                const conflictRef6 = '999';
+                // Check if resolved
+                const res6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy === 'System Replace');
+                // Check if conflict exists (Manual payment with ref 999)
+                const hasConflict6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy !== 'System Replace');
+
+                if (!res6) {
+                    txs.push({
+                        id: 'unsync_demo_6',
+                        date: new Date().toISOString(),
+                        amount: 500000, // Matching the manual amount from screenshot
+                        description: 'SchoolPay - Conflict DR DR',
                         mode: name,
                         method: name,
                         type: 'Income',
                         source: 'Unknown',
-                        studentId: null,
-                        reference: m.id,
+                        studentId: 0,
+                        reference: conflictRef6,
                         status: 'pending_sync',
-                        possiblePayCode: m.code,
-                        isDuplicate: false // Assume fresh for these unless conflict found
+                        possiblePayCode: '10000000',
+                        isDuplicate: !!hasConflict6, // Only duplicate if the manual one exists
+                        conflictingPaymentId: hasConflict6 ? hasConflict6.id : undefined
                     });
                 }
-            });
+
+                // --- NEW REQUESTED MOCKS ---
+                const newMocks = [
+                    { id: '1212', code: '2000000222', amount: 55000 },
+                    { id: '1313', code: '300000', amount: 75000 },
+                    { id: '1414', code: '10000000111', amount: 150000 },
+                    { id: '1515', code: '10000000', amount: 200000 },
+                    { id: '1616', code: '1000000111', amount: 80000 }, // Claimable (Hamis)
+                    { id: '1717', code: '077999888', amount: 20000 } // Unsynced/Unknown
+                ];
+                newMocks.forEach(m => {
+                    if (!payments.some((p: any) => p.reference === m.id)) {
+                        txs.push({
+                            id: `unsync_mock_${m.id}`,
+                            date: new Date().toISOString(),
+                            amount: m.amount,
+                            description: `Payment ${m.id}`,
+                            mode: name,
+                            method: name,
+                            type: 'Income',
+                            source: 'Unknown',
+                            studentId: 0,
+                            reference: m.id,
+                            status: 'pending_sync',
+                            possiblePayCode: m.code,
+                            isDuplicate: false
+                        });
+                    }
+                });
+            }
         }
 
         // Sort by date desc
-        txs.sort((a, b) => {
+        txs.sort((a: any, b: any) => {
             const dateA = new Date(a.date).getTime();
             const dateB = new Date(b.date).getTime();
             if (dateA !== dateB) return dateB - dateA;
@@ -543,70 +685,61 @@ export default function PaymentModesPage() {
         setViewTxs({ open: true, sourceName: name, sourceType: type, transactions: txs, filter });
     };
 
-    const handleManualSync = (tx: any) => {
-        // Fix 4: Prevent multiple clicks with loading state
-        if (isSyncing) {
-            alert('⏳ Sync in progress. Please wait...');
-            return;
-        }
+    const handleLinkStudentTrigger = (tx: any) => {
+        // Find student by payCode if it exists in metadata or mock
+        const payCode = tx.possiblePayCode || tx.metadata?.payCode;
+        const student = students.find(s => s.payCode === payCode);
+        setLinkConfirm({ open: true, tx, student });
+    };
 
+    const handleManualSync = (tx: any) => {
+        const student = linkConfirm.student;
+        if (!student) return;
+
+        if (isSyncing) return;
         setIsSyncing(true);
 
         try {
-            // 1. Identification Strategy: Use 'possiblePayCode' mock or prompt user if missing
-            let targetPayCode = tx.possiblePayCode;
-
-            if (!targetPayCode) {
-                targetPayCode = prompt("Enter Student Pay Code to link this transaction:", "");
-            } else {
-                // Confirm with user they want to try auto-match
-                if (!confirm(`Attempt to sync Account: ${targetPayCode}?`)) {
-                    setIsSyncing(false);
-                    return;
-                }
-            }
-
-            if (!targetPayCode) {
+            // Check for duplicates before adding
+            const isDuplicate = payments.some(p => p.reference === tx.reference);
+            if (isDuplicate) {
+                alert(`❌ ERROR: Transaction ${tx.reference} already exists in the system records.`);
                 setIsSyncing(false);
                 return;
             }
 
-            // 2. Lookup Student
-            const student = students.find(s => s.payCode === targetPayCode);
+            const newPayment: Payment = {
+                id: `sp_manual_${tx.reference}`,
+                studentId: student.id,
+                amount: tx.amount,
+                date: tx.date || new Date().toISOString(),
+                method: tx.method || 'SchoolPay',
+                reference: tx.reference,
+                receiptNumber: tx.reference, // Same thing for SchoolPay
+                recordedBy: 'SchoolPay System (Linked)',
+                description: tx.description || 'School Fees',
+                term: student.semester || 'Unknown',
+                status: 'approved',
+                allocations: { 'Tuition Fees': tx.amount },
+                history: [{
+                    id: generateId(),
+                    action: 'Created',
+                    details: 'Linked manual SchoolPay record to student account',
+                    user: 'Bursar',
+                    timestamp: new Date().toISOString()
+                }]
+            };
 
-            if (student) {
-                // 3. Success: Create real payment
-                const newPayment: any = {
-                    id: crypto.randomUUID(),
-                    studentId: student.id,
-                    amount: tx.amount,
-                    date: tx.date || new Date().toISOString(),
-                    method: tx.method,
-                    reference: tx.reference,
-                    receiptNumber: `RCP-${Date.now().toString().slice(-4)}`,
-                    recordedBy: 'Manual Sync',
-                    description: `Synced: ${tx.description}`,
-                    term: student.semester,
-                    status: 'approved',
-                    allocations: { 'Tuition Fees': tx.amount }, // Auto-allocate to tuition for simplicity
-                    history: []
-                };
+            addPayment(newPayment);
 
-                addPayment(newPayment);
+            // Update UI
+            setViewTxs(prev => ({
+                ...prev,
+                transactions: prev.transactions.filter(t => t.id !== tx.id)
+            }));
 
-                // 4. Update UI: Remove from unsynced list (local state update + visual feedback)
-                setViewTxs(prev => ({
-                    ...prev,
-                    transactions: prev.transactions.filter(t => t.id !== tx.id)
-                }));
-
-                alert(`✅ Successfully synced payment to ${student.name} (${student.payCode})!`);
-            } else {
-                // 4. Failure
-                alert(`❌ Sync Failed. Student with Pay Code '${targetPayCode}' not found.\n\nPlease enroll the student first or verify the code.`);
-            }
+            setLinkConfirm({ open: false, tx: null, student: null });
         } finally {
-            // Always reset loading state
             setIsSyncing(false);
         }
     };
@@ -623,18 +756,15 @@ export default function PaymentModesPage() {
         if (!confirm(confirmMessage)) return;
 
         // 1. Delete the conflicting manual payment
-        // In a real scenario, we'd find it by reference. For demo, we assume the ID is known or we search.
         if (existing) {
             deletePayment(existing.id, "Replaced by Digital Transaction Sync");
-        } else {
-            console.log("Simulating deletion of manual payment...");
         }
 
         // 2. Add the Digital Payment
         const newPayment: any = {
             id: crypto.randomUUID(),
-            studentId: existing ? existing.studentId : (students[0]?.id || 0), // Fallback for demo
-            amount: tx.amount, // Use Digital Amount
+            studentId: existing ? existing.studentId : (students[0]?.id || 0),
+            amount: tx.amount,
             date: tx.date || new Date().toISOString(),
             method: tx.method,
             reference: tx.reference,
@@ -659,15 +789,9 @@ export default function PaymentModesPage() {
 
     const handleApprovePayment = (tx: any) => {
         if (confirm(`Approve payment ${tx.reference} for ${formatMoney(tx.amount)}?`)) {
-            // Re-construct payment object to update status
-            // Note: tx comes from 'viewTxs' which might be a mapped object.
-            // We need to ensure we have the full payment object or at least necessary fields.
-            // Since we simply update the status, and store implementation uses ID map replacement:
-            // We should find the real payment from 'payments' first to be safe.
             const realPayment = payments.find((p: any) => p.id === tx.id);
             if (realPayment) {
                 updatePayment({ ...realPayment, status: 'approved' });
-                // Update local view state to reflect change immediately
                 setViewTxs(prev => ({
                     ...prev,
                     transactions: prev.transactions.map(t => t.id === tx.id ? { ...t, status: 'approved' } : t)
@@ -678,21 +802,6 @@ export default function PaymentModesPage() {
         }
     };
 
-
-    // --- FILTERED LISTS ---
-    const bankAccounts = accounts.filter(a => a.group === 'Bank Accounts');
-    const cashAccounts = accounts.filter(a => a.group === 'Cash');
-    const cashMethods = manualPaymentMethods.filter(m => m.category === 'cash');
-    const digitalFallbackMethods = manualPaymentMethods.filter(m => m.category === 'digital_fallback');
-
-    // --- VIEW STATE ---
-    const [activeView, setActiveView] = useState<'config' | 'credits'>('config');
-
-    // --- PENDING FIXES FILTERS ---
-    const [pendingSearch, setPendingSearch] = useState('');
-    const [pendingDateStart, setPendingDateStart] = useState('');
-    const [pendingDateEnd, setPendingDateEnd] = useState('');
-    const [pendingReasonFilter, setPendingReasonFilter] = useState('all');
 
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col font-sans text-slate-800 overflow-y-auto pb-20">
@@ -923,9 +1032,17 @@ export default function PaymentModesPage() {
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                                 Configure
                                             </button>
-                                            <button onClick={(e) => { e.stopPropagation(); handleSimulatePayment(integ); }} className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                Simulate Tx
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleSyncPayments(integ); }}
+                                                className={`flex-1 py-2.5 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm ${syncingInteg === integ.id ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                disabled={syncingInteg === integ.id}
+                                            >
+                                                {syncingInteg === integ.id ? (
+                                                    <span className="loading loading-spinner loading-xs"></span>
+                                                ) : (
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                                )}
+                                                {syncingInteg === integ.id ? 'Syncing...' : 'Sync Now'}
                                             </button>
                                         </div>
                                         <div className="bg-slate-50 px-4 pb-4">
@@ -1197,333 +1314,7 @@ export default function PaymentModesPage() {
                             </div>
                         </section>
                     </div>
-                )
-            }
-
-            {/* --- MODALS --- */}
-
-            {/* VIEW TRANSACTIONS MODAL */}
-            {
-                viewTxs.open && (
-                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-scale-up h-[80vh] flex flex-col relative">
-                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 sticky top-0 z-20 space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                            <span className={`w-3 h-3 rounded-full ${viewTxs.sourceType === 'digital' ? 'bg-blue-500' : viewTxs.sourceType === 'bank' ? 'bg-purple-500' : 'bg-emerald-500'}`}></span>
-                                            {viewTxs.filter === 'unsynced' ? 'Unsynced / Unclaimed ' : viewTxs.filter === 'trash' ? 'Trash Bin / Deleted ' : ''}Transactions from {viewTxs.sourceName}
-                                        </h3>
-                                        <p className="text-slate-500 text-xs mt-1">Found {viewTxs.transactions.length} records</p>
-                                    </div>
-                                    <button onClick={() => setViewTxs({ ...viewTxs, open: false })} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200">
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                    </button>
-                                </div>
-
-                                {/* FILTERS FOR UNSYNCED VIEW */}
-                                {viewTxs.filter === 'unsynced' && (
-                                    <div className="flex gap-3 items-center text-sm">
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                placeholder="Search Pay Code or Ref..."
-                                                className="border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none w-48"
-                                                value={unsyncedSearch}
-                                                onChange={e => setUnsyncedSearch(e.target.value)}
-                                            />
-                                            {/* Auto-Complete Suggestions */}
-                                            {unsyncedSearch && unsyncedSearch.length > 2 && (
-                                                <div className="absolute top-full left-0 w-64 bg-white border border-slate-200 shadow-lg rounded-lg mt-1 z-50 max-h-48 overflow-y-auto">
-                                                    {students
-                                                        .filter(s => s.payCode.includes(unsyncedSearch) || s.name.toLowerCase().includes(unsyncedSearch.toLowerCase()))
-                                                        .map(s => (
-                                                            <div
-                                                                key={s.id}
-                                                                className="px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-50 last:border-0"
-                                                                onClick={() => setUnsyncedSearch(s.payCode)}
-                                                            >
-                                                                <div className="font-bold text-slate-700">{s.name}</div>
-                                                                <div className="text-slate-500">{s.payCode}</div>
-                                                            </div>
-                                                        ))
-                                                    }
-                                                    {students.filter(s => s.payCode.includes(unsyncedSearch) || s.name.toLowerCase().includes(unsyncedSearch.toLowerCase())).length === 0 && (
-                                                        <div className="px-3 py-2 text-slate-400 text-xs italic">No matching students</div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <select
-                                            className="border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
-                                            value={unsyncedFilterType}
-                                            onChange={e => setUnsyncedFilterType(e.target.value as any)}
-                                        >
-                                            <option value="all">All Issues</option>
-                                            <option value="duplicate">Duplicate IDs</option>
-                                            <option value="unclaimed">Unclaimed (Exists)</option>
-                                            <option value="unsynced">Unsynced (Unknown)</option>
-                                        </select>
-
-                                        <div className="flex items-center gap-2 border border-slate-300 rounded-lg px-2 bg-white">
-                                            <span className="text-slate-400 text-xs uppercase font-bold">Date:</span>
-                                            <input
-                                                type="date"
-                                                className="py-1.5 outline-none text-slate-700 text-xs"
-                                                value={unsyncedDateRange.start}
-                                                onChange={e => setUnsyncedDateRange({ ...unsyncedDateRange, start: e.target.value })}
-                                            />
-                                            <span className="text-slate-400">-</span>
-                                            <input
-                                                type="date"
-                                                className="py-1.5 outline-none text-slate-700 text-xs"
-                                                value={unsyncedDateRange.end}
-                                                onChange={e => setUnsyncedDateRange({ ...unsyncedDateRange, end: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* FILTERS FOR TRASH BIN VIEW */}
-                                {viewTxs.filter === 'trash' && (
-                                    <div className="flex gap-3 items-center text-sm">
-                                        <input
-                                            type="text"
-                                            placeholder="Search Name or Ref..."
-                                            className="border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none w-48"
-                                            value={trashSearch}
-                                            onChange={e => setTrashSearch(e.target.value)}
-                                        />
-
-                                        <select
-                                            className="border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
-                                            value={trashReasonFilter}
-                                            onChange={e => setTrashReasonFilter(e.target.value)}
-                                        >
-                                            <option value="all">All Reasons</option>
-                                            <option value="Duplicate Entry">Duplicate Entry</option>
-                                            <option value="Data Error">Data Error</option>
-                                            <option value="Replaced by Sync">Replaced by Sync</option>
-                                        </select>
-
-                                        <div className="flex items-center gap-2 border border-slate-300 rounded-lg px-2 bg-white">
-                                            <span className="text-slate-400 text-xs uppercase font-bold">Date:</span>
-                                            <input
-                                                type="date"
-                                                className="py-1.5 outline-none text-slate-700 text-xs"
-                                                value={trashDateRange.start}
-                                                onChange={e => setTrashDateRange({ ...trashDateRange, start: e.target.value })}
-                                            />
-                                            <span className="text-slate-400">-</span>
-                                            <input
-                                                type="date"
-                                                className="py-1.5 outline-none text-slate-700 text-xs"
-                                                value={trashDateRange.end}
-                                                onChange={e => setTrashDateRange({ ...trashDateRange, end: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-0">
-                                <table className="w-full text-left">
-                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold text-left sticky top-0 shadow-sm z-10">
-                                        <tr>
-                                            <th className="px-6 py-3">Date & Time</th>
-                                            <th className="px-6 py-3">{viewTxs.filter === 'unsynced' ? 'Pay Code / Ref' : 'Student Name'}</th>
-                                            <th className="px-6 py-3">Transaction ID</th>
-                                            <th className="px-6 py-3">Type</th>
-                                            {viewTxs.filter === 'trash' && <th className="px-6 py-3">Deletion Reason</th>}
-                                            <th className="px-6 py-3">Status</th>
-                                            <th className="px-6 py-3 text-right">Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {viewTxs.transactions.filter(tx => {
-                                            // APPLY FILTERS
-                                            if (viewTxs.filter === 'unsynced') {
-                                                // 1. Search
-                                                const search = unsyncedSearch.toLowerCase();
-                                                if (search && !((tx.possiblePayCode || '').includes(search) || (tx.reference || '').toLowerCase().includes(search))) return false;
-
-                                                // 2. Date
-                                                if (unsyncedDateRange.start && new Date(tx.date) < new Date(unsyncedDateRange.start)) return false;
-                                                if (unsyncedDateRange.end && new Date(tx.date) > new Date(unsyncedDateRange.end + 'T23:59:59')) return false;
-
-                                                // 3. Status Type
-                                                if (unsyncedFilterType === 'duplicate' && !tx.isDuplicate) return false;
-                                                const enrolledMatch = students.find(s => s.payCode === tx.possiblePayCode);
-                                                if (unsyncedFilterType === 'unclaimed' && (!enrolledMatch || tx.isDuplicate)) return false;
-                                                if (unsyncedFilterType === 'unsynced' && (enrolledMatch || tx.isDuplicate)) return false;
-                                                return true;
-                                            }
-
-                                            if (viewTxs.filter === 'trash') {
-                                                const search = trashSearch.toLowerCase();
-                                                const student = students.find(s => s.id === tx.studentId);
-                                                const name = student ? student.name.toLowerCase() : '';
-                                                const ref = (tx.reference || '').toLowerCase();
-
-                                                // 1. Search (Name/Ref)
-                                                if (search && !(name.includes(search) || ref.includes(search))) return false;
-
-                                                // 2. Date
-                                                if (trashDateRange.start && new Date(tx.date) < new Date(trashDateRange.start)) return false;
-                                                if (trashDateRange.end && new Date(tx.date) > new Date(trashDateRange.end + 'T23:59:59')) return false;
-
-                                                // 3. Reason
-                                                if (trashReasonFilter !== 'all' && (tx.deleteReason || 'Unknown') !== trashReasonFilter) return false;
-
-                                                return true;
-                                            }
-
-                                            return true;
-                                        }).map((tx, i) => {
-                                            const student = students.find(s => s.id === tx.studentId);
-                                            const enrolledPossible = students.find(s => s.payCode === tx.possiblePayCode);
-                                            // Status Logic: Digital = Approved, Others = Check 'status' field or default to Pending
-                                            let status: 'pending' | 'approved' | 'rejected' = tx.status || 'pending';
-                                            if (viewTxs.sourceType === 'digital') status = 'approved';
-
-                                            return (
-                                                <tr key={i} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-6 py-4 font-mono text-sm text-slate-500">
-                                                        {new Date(tx.date).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        {viewTxs.filter === 'unsynced' ? (
-                                                            <div>
-                                                                <div className="font-bold text-slate-700 font-mono">{tx.possiblePayCode || 'Unknown'}</div>
-                                                                {tx.isDuplicate ? (
-                                                                    <div className="text-xs text-orange-600 font-bold bg-orange-50 px-1 rounded w-fit mt-1">⚠️ Duplicate ID</div>
-                                                                ) : enrolledPossible ? (
-                                                                    <div className="text-xs text-blue-600 font-bold bg-blue-50 px-1 rounded w-fit mt-1">Unclaimed (Enrolled)</div>
-                                                                ) : (
-                                                                    <div className="text-xs text-slate-500 bg-slate-100 px-1 rounded w-fit mt-1">Unsynced (Unknown)</div>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                <div className="font-bold text-slate-700">{student ? student.name : tx.description}</div>
-                                                                <div className="text-xs text-slate-400">{student ? student.payCode : (tx.source || 'Unknown Source')}</div>
-                                                            </>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-4 font-mono text-sm text-slate-600">
-                                                        {tx.reference || '-'}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                            {tx.type}
-                                                        </span>
-                                                    </td>
-                                                    {viewTxs.filter === 'trash' && (
-                                                        <td className="px-6 py-4">
-                                                            <span className="px-2 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                                                {tx.deleteReason || 'Unknown'}
-                                                            </span>
-                                                        </td>
-                                                    )}
-                                                    <td className="px-6 py-4">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase
-                                                        ${status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                                status === 'rejected' ? 'bg-rose-100 text-rose-700' :
-                                                                    'bg-amber-100 text-amber-700'}`}>
-                                                            {status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right font-bold font-mono text-slate-800">
-                                                        {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(tx.amount)}
-
-                                                        {/* Sync Button for Unsynced */}
-                                                        {viewTxs.filter === 'unsynced' ? (
-                                                            tx.isDuplicate ? (
-                                                                <button
-                                                                    onClick={() => handleReplaceManualPayment(tx)}
-                                                                    className="block mt-2 ml-auto text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded shadow-sm transition-colors"
-                                                                    title="Replace the existing manual payment with this one"
-                                                                >
-                                                                    ⇄ Replace Manual
-                                                                </button>
-                                                            ) : (
-                                                                <button
-                                                                    onClick={() => handleManualSync(tx)}
-                                                                    disabled={isSyncing}
-                                                                    className={`block mt-2 ml-auto text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow-sm transition-colors ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                >
-                                                                    {isSyncing ? '⏳ Syncing...' : (enrolledPossible ? '⚡ Auto-Link' : '↻ Retry Sync')}
-                                                                </button>
-                                                            )
-                                                        ) : (
-                                                            // Print Receipt Button for normal transactions
-                                                            <button
-                                                                onClick={() => handlePrintReceipt(tx)}
-                                                                className="block mt-2 ml-auto text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-400 px-3 py-1 rounded shadow-sm transition-colors flex items-center gap-1"
-                                                            >
-                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                                                                Receipt
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                        {viewTxs.transactions.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="p-12 text-center text-slate-400">
-                                                    <div className="flex flex-col items-center gap-2">
-                                                        <svg className="w-10 h-10 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                                        <span>No transactions found for this source.</span>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 text-right">
-                                <div className="text-sm font-bold text-slate-500">
-                                    {viewTxs.filter === 'unsynced' && (unsyncedSearch || unsyncedFilterType !== 'all') ? 'Filtered Total:' : 'Total:'}
-                                    <span className="text-slate-900 ml-2">
-                                        {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(
-                                            viewTxs.transactions.filter(tx => {
-                                                // RE-USE FILTER LOGIC FOR TOTAL
-                                                if (viewTxs.filter === 'unsynced') {
-                                                    const search = unsyncedSearch.toLowerCase();
-                                                    if (search && !((tx.possiblePayCode || '').includes(search) || (tx.reference || '').toLowerCase().includes(search))) return false;
-                                                    if (unsyncedDateRange.start && new Date(tx.date) < new Date(unsyncedDateRange.start)) return false;
-                                                    if (unsyncedDateRange.end && new Date(tx.date) > new Date(unsyncedDateRange.end + 'T23:59:59')) return false;
-                                                    if (unsyncedFilterType === 'duplicate' && !tx.isDuplicate) return false;
-                                                    const enrolledMatch = students.find(s => s.payCode === tx.possiblePayCode);
-                                                    if (unsyncedFilterType === 'unclaimed' && (!enrolledMatch || tx.isDuplicate)) return false;
-                                                    if (unsyncedFilterType === 'unsynced' && (enrolledMatch || tx.isDuplicate)) return false;
-                                                    return true;
-                                                }
-                                                if (viewTxs.filter === 'trash') {
-                                                    const search = trashSearch.toLowerCase();
-                                                    const student = students.find(s => s.id === tx.studentId);
-                                                    const name = student ? student.name.toLowerCase() : '';
-                                                    const ref = (tx.reference || '').toLowerCase();
-                                                    if (search && !(name.includes(search) || ref.includes(search))) return false;
-                                                    if (trashDateRange.start && new Date(tx.date) < new Date(trashDateRange.start)) return false;
-                                                    if (trashDateRange.end && new Date(tx.date) > new Date(trashDateRange.end + 'T23:59:59')) return false;
-                                                    if (trashReasonFilter !== 'all' && (tx.deleteReason || 'Unknown') !== trashReasonFilter) return false;
-                                                    return true;
-                                                }
-
-                                                return true;
-                                            }).reduce((s, t) => s + t.amount, 0)
-                                        )}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+                )}
 
             {/* --- MODALS (Global) --- */}
 
@@ -1531,7 +1322,7 @@ export default function PaymentModesPage() {
             {
                 viewTxs.open && (
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-scale-up h-[80vh] flex flex-col relative">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up h-[85vh] flex flex-col relative border border-slate-200">
                             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 sticky top-0 z-20 space-y-4">
                                 <div className="flex justify-between items-center">
                                     <div>
@@ -1542,22 +1333,22 @@ export default function PaymentModesPage() {
                                         <p className="text-slate-500 text-xs mt-1">Found {viewTxs.transactions.length} records</p>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <button onClick={() => setViewTxs({ ...viewTxs, open: false })} className="text-slate-400 hover:text-slate-600">✕</button>
+                                        <button onClick={() => setViewTxs({ ...viewTxs, open: false })} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">✕</button>
                                     </div>
                                 </div>
 
                                 {/* FILTERS UI */}
                                 {viewTxs.filter === 'unsynced' && (
-                                    <div className="flex gap-2 p-2 bg-slate-200 rounded-lg">
+                                    <div className="flex gap-2 p-2 bg-slate-200/50 rounded-lg border border-slate-200">
                                         <input
                                             type="text"
-                                            placeholder="Search reference, amount..."
-                                            className="flex-1 bg-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-0"
+                                            placeholder="Search reference, amount, pay code..."
+                                            className="flex-1 bg-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                             value={unsyncedSearch}
                                             onChange={(e) => setUnsyncedSearch(e.target.value)}
                                         />
                                         <select
-                                            className="bg-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-0"
+                                            className="bg-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                             value={unsyncedFilterType}
                                             onChange={(e) => setUnsyncedFilterType(e.target.value as any)}
                                         >
@@ -1581,16 +1372,16 @@ export default function PaymentModesPage() {
                                 )}
                             </div>
 
-                            <div className="overflow-y-auto flex-1 p-0">
+                            <div className="overflow-y-auto flex-1 p-0 custom-scrollbar">
                                 <table className="w-full text-left border-collapse">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase sticky top-0">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase sticky top-0 z-10">
                                         <tr>
-                                            <th className="px-6 py-4">Date</th>
-                                            {viewTxs.sourceType !== 'digital' && <th className="px-6 py-4">Student Name</th>}
+                                            <th className="px-6 py-4">Date & Time</th>
+                                            <th className="px-6 py-4 text-slate-800">Student / Owner</th>
                                             <th className="px-6 py-4">Reference</th>
+                                            <th className="px-6 py-4 text-blue-600 font-bold">Pay Code</th>
                                             <th className="px-6 py-4">Description</th>
                                             <th className="px-6 py-4 text-right">Amount</th>
-                                            <th className="px-6 py-4 text-center">Approval</th>
                                             <th className="px-6 py-4 text-center">Status</th>
                                             <th className="px-6 py-4 text-right">Action</th>
                                         </tr>
@@ -1599,7 +1390,8 @@ export default function PaymentModesPage() {
                                         {viewTxs.transactions
                                             .filter(t => {
                                                 if (viewTxs.filter === 'unsynced') {
-                                                    if (unsyncedSearch && !JSON.stringify(t).toLowerCase().includes(unsyncedSearch.toLowerCase())) return false;
+                                                    const s = unsyncedSearch.toLowerCase();
+                                                    if (s && !JSON.stringify(t).toLowerCase().includes(s)) return false;
                                                     if (unsyncedFilterType === 'duplicate' && !t.isDuplicate && t.source !== 'Conflict') return false;
                                                     if (unsyncedFilterType === 'unclaimed' && t.possiblePayCode) return false;
                                                 }
@@ -1609,109 +1401,171 @@ export default function PaymentModesPage() {
                                                 return true;
                                             })
                                             .map(tx => (
-                                                <tr key={tx.id} className={`hover:bg-slate-50 transition-colors ${tx.isDuplicate ? 'bg-red-50 hover:bg-red-100' : ''}`}>
+                                                <tr key={tx.id} className={`hover:bg-slate-50 transition-colors ${tx.isDuplicate || tx.source === 'Conflict' ? 'bg-amber-50/30 hover:bg-amber-100/30' : ''}`}>
                                                     <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">
-                                                        {new Date(tx.date).toLocaleDateString()}
-                                                        <div className="text-xs opacity-50">{new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                                        <div className="font-medium text-slate-900">{new Date(tx.date).toLocaleDateString()}</div>
+                                                        <div className="text-[10px] opacity-60 uppercase">{new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                                                     </td>
-                                                    {viewTxs.sourceType !== 'digital' && (
-                                                        <td className="px-6 py-4 text-sm font-bold text-slate-800">
-                                                            {students.find(s => s.id === tx.studentId)?.name || '-'}
-                                                        </td>
-                                                    )}
+                                                    <td className="px-6 py-4 text-sm font-bold text-slate-800">
+                                                        {(() => {
+                                                            const linked = payments.find(p => p.reference === tx.reference && p.studentId !== 0);
+                                                            const student = students.find(s => s.id === (tx.studentId || linked?.studentId));
+                                                            if (student) return <span className="text-blue-600">✓ {student.name}</span>;
+                                                            return <span className="text-slate-400 font-normal italic">Unlinked Record</span>;
+                                                        })()}
+                                                    </td>
                                                     <td className="px-6 py-4 text-sm font-mono text-slate-600 select-all">{tx.reference || '-'}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="font-mono text-xs font-bold bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 w-fit">
+                                                            {students.find(s => s.id === tx.studentId)?.payCode || tx.possiblePayCode || tx.metadata?.payCode || '-'}
+                                                        </div>
+                                                    </td>
                                                     <td className="px-6 py-4 text-sm text-slate-700">
-                                                        {tx.description}
-                                                        {tx.studentId && <div className="text-xs text-blue-600 bg-blue-50 px-1 py-0.5 rounded inline-block ml-2">Linked</div>}
+                                                        <div className="font-medium">{tx.description}</div>
+                                                        {tx.metadata?.bankName && (
+                                                            <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5 font-bold">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                                                Settled to: {tx.metadata.bankName}
+                                                            </div>
+                                                        )}
                                                         {viewTxs.filter === 'trash' && (
-                                                            <div className="mt-1 text-xs text-red-500 bg-red-50 p-1 rounded border border-red-100">
-                                                                <strong>Deleted by:</strong> {tx.deletedBy}<br />
-                                                                <strong>Reason:</strong> {tx.deleteReason}
+                                                            <div className="mt-1 text-xs text-red-500 bg-red-50 p-1.5 rounded border border-red-100">
+                                                                <div className="font-bold">Reason: {tx.deleteReason}</div>
+                                                                <div className="opacity-70 text-[10px]">By: {tx.deletedBy}</div>
                                                             </div>
                                                         )}
                                                     </td>
                                                     <td className="px-6 py-4 text-sm font-bold text-slate-800 text-right">{formatMoney(tx.amount)}</td>
                                                     <td className="px-6 py-4 text-center">
-                                                        {viewTxs.sourceType === 'digital' || tx.status === 'approved' ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
-                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                                                                Approved
-                                                            </span>
-                                                        ) : (
-                                                            <div className="flex flex-col items-center gap-1">
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                                    Pending
-                                                                </span>
-                                                                {activeRole === 'Director' && (
-                                                                    <button
-                                                                        onClick={() => handleApprovePayment(tx)}
-                                                                        className="text-[10px] bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 shadow-sm transition-colors uppercase font-bold tracking-wide"
-                                                                    >
-                                                                        Approve
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center">
-                                                        {tx.isDuplicate ? (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700">
+                                                        {tx.isDuplicate || tx.source === 'Conflict' ? (
+                                                            <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200 uppercase tracking-tighter">
                                                                 ⚠️ Conflict
                                                             </span>
-                                                        ) : tx.status === 'pending_sync' ? (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-700">
-                                                                Unclaimed
-                                                            </span>
-                                                        ) : tx.deletedAt ? (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                                                                Deleted
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700">
-                                                                synced
-                                                            </span>
-                                                        )}
+                                                        ) : (() => {
+                                                            const isLinked = payments.some(p => p.reference === tx.reference && p.studentId !== 0);
+                                                            return (
+                                                                <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold border uppercase tracking-tighter
+                                                                    ${isLinked ? 'bg-blue-100 text-blue-700 border-blue-200' : tx.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                                                                    {isLinked ? 'Linked' : tx.status === 'approved' ? 'Synced' : 'Pending'}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         {viewTxs.filter === 'trash' ? (
-                                                            <span className="text-xs text-slate-400 italic">No actions</span>
+                                                            <span className="text-[10px] text-slate-400 font-bold uppercase">Archived</span>
                                                         ) : viewTxs.filter === 'unsynced' && (
                                                             <div className="flex justify-end gap-2">
-                                                                {tx.isDuplicate ? (
+                                                                {tx.isDuplicate || tx.source === 'Conflict' ? (
                                                                     <button
                                                                         onClick={() => handleReplaceManualPayment(tx)}
-                                                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-sm"
+                                                                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded shadow-lg shadow-rose-200 uppercase tracking-wider transition-all"
                                                                     >
                                                                         Replace Manual
                                                                     </button>
                                                                 ) : (
                                                                     <button
-                                                                        onClick={() => handleManualSync(tx)}
-                                                                        disabled={isSyncing}
-                                                                        className={`px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded shadow-sm flex items-center gap-1 ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                        onClick={() => handleLinkStudentTrigger(tx)}
+                                                                        disabled={isSyncing || payments.some(p => p.reference === tx.reference && p.studentId !== 0)}
+                                                                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold rounded shadow-lg shadow-slate-200 flex items-center gap-1 uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                                                     >
-                                                                        <span>{isSyncing ? '⏳ Syncing...' : 'Link Student'}</span>
-                                                                        {!isSyncing && tx.possiblePayCode && <span className="bg-white/20 px-1 rounded text-[10px]">Auto?</span>}
+                                                                        <span>{payments.some(p => p.reference === tx.reference && p.studentId !== 0) ? 'Linked' : 'Link Student'}</span>
+                                                                        {tx.possiblePayCode && <span className="bg-white/20 px-1 rounded text-[8px]">AUTO</span>}
                                                                     </button>
                                                                 )}
                                                             </div>
                                                         )}
                                                         {viewTxs.filter === 'all' && (
-                                                            <div className="flex justify-end gap-2">
-                                                                <button onClick={() => handlePrintReceipt(tx)} className="text-slate-400 hover:text-slate-600" title="Print Receipt">🖨️</button>
-                                                            </div>
+                                                            <button onClick={() => handlePrintReceipt(tx)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors shadow-sm" title="Print Receipt">🖨️</button>
                                                         )}
                                                     </td>
                                                 </tr>
                                             ))}
                                         {viewTxs.transactions.length === 0 && (
-                                            <tr><td colSpan={6} className="p-12 text-center text-slate-400">No transactions found for this view.</td></tr>
+                                            <tr><td colSpan={8} className="p-12 text-center text-slate-400 italic font-medium">No transactions found for this view.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
+
+                            {/* FOOTER */}
+                            <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                <div className="flex items-center gap-4">
+                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> System Secure</span>
+                                    {viewTxs.filter === 'unsynced' && <span className="text-rose-500">Requires Action</span>}
+                                </div>
+                                <div className="text-slate-900 text-sm font-bold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                                    Total: {formatMoney(viewTxs.transactions.reduce((s, t) => s + t.amount, 0))}
+                                </div>
+                            </div>
                         </div>
+
+                        {/* LINK CONFIRMATION MINI-MODAL */}
+                        {linkConfirm.open && (
+                            <div className="absolute inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+                                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-up border border-slate-200">
+                                    <div className="p-8 text-center">
+                                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                                            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+                                        <h4 className="text-2xl font-bold text-slate-900 mb-2">Link Student</h4>
+                                        <p className="text-slate-500 text-sm mb-6">Confirm and assign this payment.</p>
+
+                                        {linkConfirm.student ? (
+                                            <div className="space-y-6">
+                                                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+                                                    <p className="text-[10px] text-slate-400 uppercase font-black mb-2 tracking-widest">Target Account</p>
+                                                    <p className="text-xl font-black text-slate-900 leading-tight">{linkConfirm.student.name}</p>
+                                                    <p className="text-xs text-blue-600 font-bold font-mono mt-1 bg-blue-50 px-2 py-0.5 rounded inline-block">{linkConfirm.student.payCode}</p>
+                                                </div>
+                                                <div className="flex flex-col gap-3">
+                                                    <button
+                                                        onClick={() => handleManualSync(linkConfirm.tx)}
+                                                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                                    >
+                                                        Confirm & Link {formatMoney(linkConfirm.tx.amount)}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setLinkConfirm({ open: false, tx: null, student: null })}
+                                                        className="w-full py-3 text-slate-400 hover:text-slate-600 font-bold uppercase text-[10px] tracking-widest transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-6">
+                                                <div className="p-5 bg-rose-50 rounded-2xl border border-rose-100">
+                                                    <p className="text-xs text-rose-600 font-black uppercase mb-1">Student Not Found</p>
+                                                    <p className="text-sm text-slate-600">The pay code <span className="font-mono font-bold text-rose-700">"{linkConfirm.tx.possiblePayCode || linkConfirm.tx.metadata?.payCode}"</span> is not recognized.</p>
+                                                </div>
+                                                <div className="flex flex-col gap-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            const code = prompt("Enter Student Pay Code manually:");
+                                                            if (code) {
+                                                                const s = students.find(st => st.payCode === code);
+                                                                if (s) setLinkConfirm(prev => ({ ...prev, student: s }));
+                                                                else alert("Student not found.");
+                                                            }
+                                                        }}
+                                                        className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold shadow-xl shadow-slate-200"
+                                                    >
+                                                        Enter Code Manually
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setLinkConfirm({ open: false, tx: null, student: null })}
+                                                        className="w-full py-2 text-slate-400 font-bold uppercase text-[10px] tracking-widest"
+                                                    >
+                                                        Discard
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )
             }
@@ -1731,17 +1585,115 @@ export default function PaymentModesPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Merchant ID</label>
-                                    <input type="text" className="premium-input w-full" value={configForm.merchantId} onChange={e => setConfigForm({ ...configForm, merchantId: e.target.value })} placeholder="e.g. 10023456" />
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">School Code (Merchant ID)</label>
+                                    <input type="text" className="premium-input w-full" value={configForm.merchantId} onChange={e => setConfigForm({ ...configForm, merchantId: e.target.value })} placeholder="e.g. 123456" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key</label>
-                                    <input type="password" className="premium-input w-full" value={configForm.apiKey} onChange={e => setConfigForm({ ...configForm, apiKey: e.target.value })} placeholder="••••••••••••••••" />
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Security Password (API KEY)</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showApiKey ? "text" : "password"}
+                                            className="premium-input w-full pr-10"
+                                            value={configForm.apiKey}
+                                            onChange={e => setConfigForm({ ...configForm, apiKey: e.target.value })}
+                                            placeholder="Paste from Authentication tab"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                            onClick={() => setShowApiKey(!showApiKey)}
+                                        >
+                                            {showApiKey ? '👁️' : '🔒'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* WEBHOOK INFO */}
+                                <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mt-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        <span className="text-sm font-bold text-blue-800">Real-time Webhook</span>
+                                    </div>
+                                    <p className="text-[10px] text-blue-600 mb-2 leading-relaxed">
+                                        To enable real-time notifications, copy this URL to your SchoolPay dashboard under <b>Webhooks</b>:
+                                    </p>
+                                    <div className="bg-white border border-blue-200 rounded p-2 font-mono text-[9px] text-slate-700 flex justify-between items-center select-all">
+                                        <span>{origin}/api/webhooks/schoolpay</span>
+                                        <button className="text-blue-500 hover:text-blue-700 uppercase font-bold text-[8px]" onClick={() => { navigator.clipboard.writeText(`${origin}/api/webhooks/schoolpay`); alert('Webhook URL Copied!'); }}>Copy</button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
                                 <button onClick={() => setConfigModal({ open: false, integration: null })} className="btn btn-ghost text-slate-500">Cancel</button>
                                 <button onClick={handleSaveConfig} className="btn bg-blue-600 hover:bg-blue-700 text-white border-none">Save & Connect</button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* NEW: SYNC RANGE MODAL */}
+            {
+                syncRangeModal.open && (
+                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up">
+                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                    Sync Transactions
+                                </h3>
+                                <button onClick={() => setSyncRangeModal({ open: false, integration: null })} className="text-slate-400 hover:text-slate-600">✕</button>
+                            </div>
+                            <div className="p-6 space-y-6">
+                                <div className="flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                                    <div className="p-2 bg-amber-100 text-amber-600 rounded-full">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    </div>
+                                    <div className="text-xs text-amber-900 leading-relaxed">
+                                        Select the date range to check for payments. SchoolPay allows a maximum range of <b>31 days</b> per sync.
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">From Date</label>
+                                        <input
+                                            type="date"
+                                            className="premium-input w-full"
+                                            value={syncDates.from}
+                                            onChange={e => setSyncDates({ ...syncDates, from: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">To Date (Today)</label>
+                                        <input
+                                            type="date"
+                                            className="premium-input w-full"
+                                            value={syncDates.to}
+                                            onChange={e => setSyncDates({ ...syncDates, to: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-slate-600 uppercase">What this will do:</h4>
+                                    <ul className="text-xs text-slate-500 space-y-1 ml-4 list-disc">
+                                        <li>Connect to SchoolPay API using your secure hash.</li>
+                                        <li>Fetch all regular tuition and supplementary fee payments.</li>
+                                        <li>Automatically match payments to students using Pay Codes.</li>
+                                        <li>Prevent duplicates by checking receipt numbers.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                                <button onClick={() => setSyncRangeModal({ open: false, integration: null })} className="btn btn-ghost text-slate-500">Cancel</button>
+                                <button
+                                    onClick={processSyncRange}
+                                    disabled={syncingInteg !== null}
+                                    className={`btn bg-blue-600 hover:bg-blue-700 text-white border-none min-w-[120px] ${syncingInteg ? 'loading' : ''}`}
+                                >
+                                    {syncingInteg ? 'Syncing...' : 'Start Full Sync'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1836,6 +1788,6 @@ export default function PaymentModesPage() {
                     </div>
                 )
             }
-        </div >
+        </div>
     );
 }

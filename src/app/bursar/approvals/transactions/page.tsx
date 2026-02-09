@@ -7,8 +7,10 @@ export default function TransactionsApprovalPage() {
         accounts,
         manualPaymentMethods,
         payments,
+        billings,
         generalTransactions,
         updatePayment,
+        updateBilling,
         students,
         programmes
     } = useSchoolData();
@@ -37,7 +39,7 @@ export default function TransactionsApprovalPage() {
 
     const getTransactionsForSource = (name: string, type: 'bank' | 'manual' | 'cash' | 'credit') => {
         if (type === 'credit') {
-            return payments.filter(p => {
+            const studentCredits = payments.filter(p => {
                 const isFix = (p.reference && String(p.reference).startsWith('FIX_BAL')) ||
                     (p.id && String(p.id).startsWith('FIX_BAL')) ||
                     (p.description && p.description.toLowerCase().includes('balance correction (credit)'));
@@ -46,8 +48,24 @@ export default function TransactionsApprovalPage() {
                 ...p,
                 studentName: studentMap.get(p.studentId)?.name || 'Unknown Student',
                 source: 'Balance Adjustment',
-                mode: 'Credit'
+                mode: 'Credit',
+                txType: 'payment'
             }));
+
+            const studentDebits = billings.filter(b => {
+                const isFix = (b.id && String(b.id).startsWith('FIX_BAL')) ||
+                    (b.description && b.description.toLowerCase().includes('balance correction (debit)')) ||
+                    (b.type === 'Adjustment');
+                return isFix;
+            }).map(b => ({
+                ...b,
+                studentName: studentMap.get(b.studentId)?.name || 'Unknown Student',
+                source: 'Balance Adjustment',
+                mode: 'Debit',
+                txType: 'billing'
+            }));
+
+            return [...studentCredits, ...studentDebits];
         }
 
         const allTxs = [
@@ -110,8 +128,23 @@ export default function TransactionsApprovalPage() {
             methodStat.pendingAmount += p.amount;
         });
 
+        billings.forEach(b => {
+            const isPending = (b.status || 'pending') !== 'approved';
+            if (!isPending) return;
+
+            const isFix = (b.id && String(b.id).startsWith('FIX_BAL')) ||
+                (b.description && b.description.toLowerCase().includes('balance correction (debit)')) ||
+                (b.type === 'Adjustment');
+
+            if (isFix) {
+                const s = getStat('balance_fixes');
+                s.pendingCount++;
+                s.pendingAmount += b.amount;
+            }
+        });
+
         return stats;
-    }, [payments]);
+    }, [payments, billings]);
 
     const handleViewSource = (source: any, type: 'bank' | 'manual' | 'cash' | 'credit') => {
         const txs = getTransactionsForSource(source.name || 'Balance Fixes', type);
@@ -136,30 +169,54 @@ export default function TransactionsApprovalPage() {
             if (!confirm(`Are you sure you want to approve this transaction for ${formatMoney(reviewTx.amount)}?`)) return;
         }
 
-        const realPayment = payments.find(p => String(p.id) === String(reviewTx.id));
-        if (realPayment) {
-            const isPending = (realPayment.status || 'pending') !== 'approved';
-            const updates: any = {
-                ...realPayment,
-                directorNote: directorNote,
-                attachments: [...(realPayment.attachments || []), ...files]
-            };
+        if (reviewTx.txType === 'billing') {
+            const realBilling = billings.find(b => String(b.id) === String(reviewTx.id));
+            if (realBilling) {
+                const isPending = (realBilling.status || 'pending') !== 'approved';
+                const updates: any = {
+                    ...realBilling,
+                    directorNote: directorNote,
+                    attachments: [...(realBilling.attachments || []), ...files]
+                };
 
-            if (action === 'approve' && isPending) {
-                updates.status = 'approved';
-                updates.approvedAt = new Date().toISOString();
+                if (action === 'approve' && isPending) {
+                    updates.status = 'approved';
+                    updates.approvedAt = new Date().toISOString();
+                }
+
+                updateBilling(updates);
+                setViewTxs(prev => ({
+                    ...prev,
+                    transactions: prev.transactions.map(t => t.id === reviewTx.id ? { ...t, ...updates } : t)
+                }));
+                setReviewTx(null);
+            } else {
+                alert("Billing adjustment not found.");
             }
-
-            updatePayment(updates);
-
-            setViewTxs(prev => ({
-                ...prev,
-                transactions: prev.transactions.map(t => t.id === reviewTx.id ? { ...t, ...updates } : t)
-            }));
-
-            setReviewTx(null);
         } else {
-            alert("Transaction not found in Store.");
+            const realPayment = payments.find(p => String(p.id) === String(reviewTx.id));
+            if (realPayment) {
+                const isPending = (realPayment.status || 'pending') !== 'approved';
+                const updates: any = {
+                    ...realPayment,
+                    directorNote: directorNote,
+                    attachments: [...(realPayment.attachments || []), ...files]
+                };
+
+                if (action === 'approve' && isPending) {
+                    updates.status = 'approved';
+                    updates.approvedAt = new Date().toISOString();
+                }
+
+                updatePayment(updates);
+                setViewTxs(prev => ({
+                    ...prev,
+                    transactions: prev.transactions.map(t => t.id === reviewTx.id ? { ...t, ...updates } : t)
+                }));
+                setReviewTx(null);
+            } else {
+                alert("Payment adjustment not found.");
+            }
         }
     };
 

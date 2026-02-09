@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense, useRef } from 'react';
-import { useSchoolData, EnrolledStudent, formatMoney } from '@/lib/store';
+import { useSchoolData, EnrolledStudent, formatMoney, Billing, Payment, Bursary } from '@/lib/store';
+import { calculateStudentFinancials as calculateFinancials } from '@/lib/financialCore';
 import { LearnerAccountModal } from '@/components/bursar/LearnerAccountModal';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { MOCK_ENROLLED_STUDENTS } from '../../bursar/sharedData';
@@ -12,7 +13,18 @@ function EnrollmentContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    const { filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials } = useSchoolData(); // Use global data
+    const { filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials, registrarStudents, activeRole } = useSchoolData(); // Use global data
+    const isDirector = activeRole === 'Director';
+
+    // Marketing Agent Autocompletion
+    const marketingAgentSuggestions = React.useMemo(() => {
+        const agents = new Set<string>();
+        // Check Admissions
+        (registrarStudents || []).forEach(s => { if (s.marketingAgent) agents.add(s.marketingAgent); });
+        // Check Active Enrollments
+        (enrolledStudents || []).forEach(s => { if (s.marketingAgent) agents.add(s.marketingAgent); });
+        return Array.from(agents).sort();
+    }, [registrarStudents, enrolledStudents]);
 
 
 
@@ -421,7 +433,7 @@ function EnrollmentContent() {
         }
 
         setViewMode('form');
-        setIsEditing(true);
+        setIsEditing(false); // Existing records are View-Only by default - LOCKED
     };
 
     // --- DYNAMIC CALCULATIONS ---
@@ -567,7 +579,8 @@ function EnrollmentContent() {
                 bursary: selectedBursary,
                 previousBalance: enrollmentData.previousBalance,
                 balance: grandTotal,
-                physicalRequirements: studentRequirements
+                physicalRequirements: studentRequirements,
+                marketingAgent: studentInfo.marketingAgent // Preserve marketing agent on update
             } : s));
             alert("Enrollment details updated!");
         } else {
@@ -610,7 +623,8 @@ function EnrollmentContent() {
                 status: 'active' as const,
                 level: enrollmentData.entryLevel, // Added required field
                 origin: 'bursar' as const, // Tag as Bursar Enrollment
-                compassNumber: nextCompassNumber // Auto-generated Compass Number
+                compassNumber: nextCompassNumber, // Auto-generated Compass Number
+                marketingAgent: studentInfo.marketingAgent // Persist marketing agent
             };
 
             setEnrolledStudents(prev => [newStudent, ...prev]);
@@ -700,7 +714,9 @@ function EnrollmentContent() {
         // STRICT SEPARATION: Only show Bursar Enrollments
         if (s.origin !== 'bursar') return false;
 
-        const matchesTerm = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.payCode.includes(searchTerm);
+        const matchesTerm = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            s.payCode.includes(searchTerm) ||
+            (s.marketingAgent || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesProgramme = filterProgramme ? s.programme === filterProgramme : true;
         const matchesSemester = filterSemester ? s.semester === filterSemester : true;
         const matchesAgent = filterAgent ? (s.marketingAgent || '').toLowerCase().includes(filterAgent.toLowerCase()) : true;
@@ -720,12 +736,14 @@ function EnrollmentContent() {
 
     // ARCHIVED (Graduated & Deactivated) FILTER
     const archivedStudents = enrolledStudents.filter(s => s.status === 'graduated' || s.status === 'deactivated');
-    const [archiveFilter, setArchiveFilter] = useState<{ status: string, name: string }>({ status: 'all', name: '' });
+    const [archiveFilter, setArchiveFilter] = useState<{ status: string, name: string, agent: string }>({ status: 'all', name: '', agent: '' });
 
     const filteredArchived = archivedStudents.filter(s => {
         const matchesStatus = archiveFilter.status === 'all' ? true : s.status === archiveFilter.status;
-        const matchesName = s.name.toLowerCase().includes(archiveFilter.name.toLowerCase()) || s.payCode.includes(archiveFilter.name);
-        return matchesStatus && matchesName;
+        const matchesName = s.name.toLowerCase().includes(archiveFilter.name.toLowerCase()) ||
+            s.payCode.includes(archiveFilter.name);
+        const matchesAgent = archiveFilter.agent ? (s.marketingAgent || '').toLowerCase().includes(archiveFilter.agent.toLowerCase()) : true;
+        return matchesStatus && matchesName && matchesAgent;
     });
 
     // Balances
@@ -1027,11 +1045,19 @@ function EnrollmentContent() {
                                 <option value="deactivated">Deactivated</option>
                             </select>
                             <input
+                                placeholder="Marketing Agent..."
+                                value={archiveFilter.agent}
+                                onChange={(e) => setArchiveFilter({ ...archiveFilter, agent: e.target.value })}
+                                list="agent-suggestions"
+                                className="input"
+                                style={{ background: 'hsl(var(--background))', color: 'white', border: '1px solid hsl(var(--border))', padding: '0.5rem', flex: 1 }}
+                            />
+                            <input
                                 placeholder="Search Name or Pay Code..."
                                 value={archiveFilter.name}
                                 onChange={(e) => setArchiveFilter({ ...archiveFilter, name: e.target.value })}
                                 className="input"
-                                style={{ background: 'hsl(var(--background))', color: 'white', border: '1px solid hsl(var(--border))', padding: '0.5rem', minWidth: '300px' }}
+                                style={{ background: 'hsl(var(--background))', color: 'white', border: '1px solid hsl(var(--border))', padding: '0.5rem', minWidth: '300px', flex: 2 }}
                             />
                         </div>
 
@@ -1149,7 +1175,7 @@ function EnrollmentContent() {
                                 className="input w-full md:w-auto touch-target px-3 py-2.5 md:py-2 bg-slate-900 text-white border border-slate-700 rounded-lg text-sm"
                             />
                             <datalist id="agent-suggestions">
-                                {Array.from(new Set(enrolledStudents.map(s => s.marketingAgent).filter(Boolean))).map(a => (
+                                {marketingAgentSuggestions.map(a => (
                                     <option key={a} value={a} />
                                 ))}
                             </datalist>
@@ -1243,13 +1269,8 @@ function EnrollmentContent() {
                                             {visibleColumns.includes('totalDue') && (
                                                 <td style={{ padding: '0.6rem md:0.8rem', textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem' }}>
                                                     {(() => {
-                                                        // Dynamic Calculation matching LearnerAccountModal
-                                                        const sBillings = billings.filter(b => b.studentId === student.id);
-                                                        const sPayments = payments.filter(p => p.studentId === student.id);
-                                                        const totalBilled = sBillings.reduce((sum, b) => sum + b.amount, 0);
-                                                        const totalPaid = sPayments.reduce((sum, p) => sum + p.amount, 0);
-                                                        const bursaryVal = student.bursary !== 'none' ? (bursaries.find(b => b.id === student.bursary)?.value || 0) : 0;
-                                                        const outstanding = totalBilled - bursaryVal + (student.previousBalance || 0) - totalPaid;
+                                                        const summary = calculateFinancials(student, billings, payments, bursaries, student.semester);
+                                                        const outstanding = summary.outstandingBalance;
 
                                                         return (
                                                             <span style={{ color: outstanding > 0 ? '#ef4444' : '#22c55e' }}>
@@ -1467,253 +1488,382 @@ function EnrollmentContent() {
                 )
             }
 
+            <style jsx global>{`
+                .premium-glass {
+                    background: rgba(18, 18, 18, 0.95) !important;
+                    backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+                }
+                .premium-card {
+                    background: rgba(22, 22, 22, 0.98) !important;
+                    border-radius: 2rem !important;
+                    padding: 2.5rem !important;
+                    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                    transition: all 0.3s ease;
+                }
+                .input-premium {
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                    border-radius: 12px !important;
+                    padding: 1rem !important;
+                    color: white !important;
+                    width: 100%;
+                    transition: all 0.2s ease;
+                }
+                .input-premium option {
+                    background: #1a1a1a !important;
+                    color: white !important;
+                }
+                .input-premium:focus {
+                    background: rgba(255, 255, 255, 0.08) !important;
+                    border-color: #3b82f6 !important;
+                    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+                    outline: none;
+                }
+                .section-header {
+                    font-size: 0.75rem;
+                    font-weight: 950;
+                    text-transform: uppercase;
+                    letter-spacing: 0.2rem;
+                    color: rgba(255, 255, 255, 0.6);
+                    margin-bottom: 1.5rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                }
+                .section-header::after {
+                    content: "";
+                    flex: 1;
+                    height: 1px;
+                    background: linear-gradient(to right, rgba(255, 255, 255, 0.2), transparent);
+                }
+                .section-header::before {
+                    content: "";
+                    width: 4px;
+                    height: 12px;
+                    background: #3b82f6;
+                    border-radius: 2px;
+                }
+                .requirement-card-premium {
+                    background: rgba(255, 255, 255, 0.03) !important;
+                    border-color: rgba(255, 255, 255, 0.1) !important;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                .requirement-card-premium:hover {
+                    background: rgba(255, 255, 255, 0.06) !important;
+                    transform: translateY(-5px);
+                    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+                }
+                .option-label-premium {
+                    background: rgba(255, 255, 255, 0.02) !important;
+                    transition: all 0.2s ease;
+                    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                }
+                .option-label-premium:hover {
+                    background: rgba(255, 255, 255, 0.07) !important;
+                    border-color: rgba(255, 255, 255, 0.3) !important;
+                }
+                .total-glow {
+                    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%) !important;
+                    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+                    box-shadow: 0 0 50px rgba(139, 92, 246, 0.2);
+                }
+                .stat-label-premium {
+                    font-size: 0.65rem;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    letter-spacing: 1.5px;
+                    color: rgba(255, 255, 255, 0.7);
+                }
+            `}</style>
+
             {
                 viewMode === 'form' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 md:gap-8">
-                        <div className="card p-4 md:p-8">
-                            <section style={{ marginBottom: '1.5rem', paddingBottom: '0.75rem', borderBottom: '1px solid hsl(var(--border))' }}>
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 animate-fade-in p-2 md:p-6 max-w-[1600px] mx-auto">
+                        <div className="premium-card premium-glass relative overflow-hidden">
+                            {/* Accent Glow */}
+                            <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full"></div>
+                            <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-600/10 blur-[100px] rounded-full"></div>
+
+                            <section className="mb-10 relative">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                                    <div className="flex flex-wrap gap-8 md:gap-12">
                                         <div>
-                                            <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Student Name</div>
-                                            <div className="text-[1.1rem] md:text-[1.5rem] font-bold">{studentInfo.name.toUpperCase()}</div>
+                                            <div className="stat-label-premium mb-1 text-white/40">Student Identity</div>
+                                            <div className="text-2xl md:text-3xl font-black tracking-tight text-white">{studentInfo.name.toUpperCase()}</div>
                                         </div>
                                         <div>
-                                            <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Pay Code</div>
-                                            <div className="text-[1rem] md:text-[1.2rem]">{studentInfo.payCode}</div>
+                                            <div className="stat-label-premium mb-1 text-white/40">Pay Code</div>
+                                            <div className="text-xl font-bold font-mono text-blue-400">{studentInfo.payCode}</div>
                                         </div>
                                         <div>
-                                            <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Marketing Agent</div>
-                                            <div className="text-[0.9rem] md:text-[1.1rem]" style={{ color: '#10b981' }}>{studentInfo.marketingAgent || 'N/A'}</div>
+                                            <div className="stat-label-premium mb-1 text-white/40">Marketing Entity</div>
+                                            {isEditing ? (
+                                                <div style={{ position: 'relative' }}>
+                                                    <datalist id="enrollment-marketing-list">
+                                                        {marketingAgentSuggestions.map(agent => (
+                                                            <option key={agent} value={agent} />
+                                                        ))}
+                                                    </datalist>
+                                                    <input
+                                                        list="enrollment-marketing-list"
+                                                        value={studentInfo.marketingAgent}
+                                                        onChange={(e) => setStudentInfo(prev => ({ ...prev, marketingAgent: e.target.value }))}
+                                                        className="text-lg font-bold text-emerald-400 bg-transparent border-b border-emerald-400/30 focus:border-emerald-400 outline-none w-full"
+                                                        placeholder="Type Agent Name..."
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="text-lg font-bold text-emerald-400">{studentInfo.marketingAgent || 'DIRECT ADMISSION'}</div>
+                                            )}
                                         </div>
                                     </div>
-                                    {!isEditing && (
-                                        <button onClick={() => setIsEditing(true)} className="btn btn-outline touch-target px-3 py-1.5 text-sm">
-                                            Edit Enrollment
+                                    {enrollmentData.id && (
+                                        <div className="px-6 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-3">
+                                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                            <span className="text-[0.65rem] font-black text-amber-500 uppercase tracking-widest">Locked Record</span>
+                                        </div>
+                                    )}
+                                    {!isEditing && !enrollmentData.id && (
+                                        <button onClick={() => setIsEditing(true)} className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+                                            Modify Record
                                         </button>
                                     )}
                                 </div>
                             </section>
 
-                            <div style={{ marginBottom: '1.5rem' }}>
-                                <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.75rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.4rem' }}>Academic Billing</h3>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', opacity: 0.7 }}>Programme</label>
-                                        <select
-                                            name="programme"
-                                            value={enrollmentData.programme}
-                                            onChange={handleChange}
-                                            disabled={!isEditing}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'white', opacity: isEditing ? 1 : 0.7, fontSize: '0.9rem' }}
-                                        >
-                                            <option value="">Select Programme</option>
-                                            {programmes.map(prog => (
-                                                <option key={prog.id} value={prog.name}>{prog.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', opacity: 0.7 }}>Semester / Level</label>
-                                        <select
-                                            name="entryLevel"
-                                            value={enrollmentData.entryLevel}
-                                            onChange={handleChange}
-                                            disabled={!enrollmentData.programme || !isEditing}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'white', opacity: isEditing ? 1 : 0.7, fontSize: '0.9rem' }}
-                                        >
-                                            <option value="">Select Semester / Level</option>
-                                            {getSelectedProgramme()?.levels?.map(lvl => (
-                                                <option key={lvl} value={lvl}>{lvl}</option>
-                                            )) || <option disabled>No levels found for programme</option>}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', opacity: 0.7 }}>Bursary</label>
-                                        <select
-                                            name="bursary"
-                                            value={selectedBursary}
-                                            onChange={(e) => setSelectedBursary(e.target.value)}
-                                            disabled={!isEditing}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius)', background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'white', opacity: isEditing ? 1 : 0.7, fontSize: '0.9rem' }}
-                                        >
-                                            <option value="none">None (Standard Payer)</option>
-                                            {bursaries.map(b => (
-                                                <option key={b.id} value={b.id}>{b.name} - {formatMoney(b.value)} Off</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.3rem', opacity: 0.7 }}>Previous Balance (Arrears)</label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            name="previousBalance"
-                                            value={enrollmentData.previousBalance}
-                                            onChange={handleChange}
-                                            readOnly={!isEditing}
-                                            className="input"
-                                            style={{ background: 'hsl(var(--background))', color: 'white', padding: '0.7rem', width: '100%', opacity: isEditing ? 1 : 0.7, fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <section style={{ marginBottom: '1.5rem' }}>
-                                <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Compulsory Fees</h3>
-                                <div style={{ background: 'hsl(var(--muted))', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
-                                    <ul style={{ listStyle: 'none', fontSize: '0.8rem', padding: 0, margin: 0 }}>
-                                        {getCompulsoryData().items.map((it: any) => <li key={it} style={{ marginBottom: '0.2rem' }}>• {it}</li>)}
-                                    </ul>
-                                    <div style={{ textAlign: 'right', fontWeight: 'bold', marginTop: '0.4rem', fontSize: '0.9rem' }}>{formatMoney(getCompulsoryFee())}</div>
-                                </div>
-                            </section>
-
-                            <div style={{ marginBottom: '1.5rem' }}>
-                                <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.75rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.4rem' }}>Optional Services</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {services.filter(s => {
-                                        const compulsory = getCompulsoryData().items || [];
-                                        return !compulsory.includes(s.name);
-                                    }).map(service => (
-                                        <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', cursor: isEditing ? 'pointer' : 'default', background: enrollmentData.selectedServices.includes(service.id) ? 'rgba(59, 130, 246, 0.1)' : 'transparent', opacity: isEditing ? 1 : 0.7, fontSize: '0.85rem' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={enrollmentData.selectedServices.includes(service.id)}
+                            <div className="space-y-10 relative">
+                                <div>
+                                    <h3 className="section-header">Academic Configuration</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="stat-label-premium ml-1">Enrolled Programme</label>
+                                            <select
+                                                name="programme"
+                                                value={enrollmentData.programme}
+                                                onChange={handleChange}
                                                 disabled={!isEditing}
-                                                onChange={() => {
-                                                    const exists = enrollmentData.selectedServices.includes(service.id);
-                                                    setEnrollmentData(prev => ({
-                                                        ...prev,
-                                                        selectedServices: exists ? prev.selectedServices.filter(id => id !== service.id) : [...prev.selectedServices, service.id]
-                                                    }));
-                                                }}
-                                            />
-                                            <span style={{ flex: 1 }}>{service.name}</span>
-                                            <span style={{ fontWeight: 'bold', color: '#10b981' }}>{formatMoney(service.cost)}</span>
-                                        </label>
-                                    ))}
-                                    {services.length === 0 && <div style={{ color: 'gray', fontStyle: 'italic', fontSize: '0.8rem' }}>No optional services available.</div>}
+                                                className="input-premium appearance-none"
+                                            >
+                                                <option value="">Select Programme</option>
+                                                {programmes.map(prog => (
+                                                    <option key={prog.id} value={prog.name}>{prog.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="stat-label-premium ml-1">Current Academic Level</label>
+                                            <select
+                                                name="entryLevel"
+                                                value={enrollmentData.entryLevel}
+                                                onChange={handleChange}
+                                                disabled={!enrollmentData.programme || !isEditing}
+                                                className="input-premium appearance-none"
+                                            >
+                                                <option value="">Select Academic Level</option>
+                                                {getSelectedProgramme()?.levels?.map(lvl => (
+                                                    <option key={lvl} value={lvl}>{lvl}</option>
+                                                )) || <option disabled>No levels found for programme</option>}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="stat-label-premium ml-1">Financial Classification</label>
+                                            <select
+                                                name="bursary"
+                                                value={selectedBursary}
+                                                onChange={(e) => setSelectedBursary(e.target.value)}
+                                                disabled={!isEditing}
+                                                className="input-premium appearance-none"
+                                            >
+                                                <option value="none">Standard Payer (N/A)</option>
+                                                {bursaries.map(b => (
+                                                    <option key={b.id} value={b.id}>{b.name} — {formatMoney(b.value)} Subsidy</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="stat-label-premium ml-1">Balance Brought Forward</label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold text-sm">UGX</span>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    name="previousBalance"
+                                                    value={enrollmentData.previousBalance}
+                                                    onChange={handleChange}
+                                                    readOnly={!isEditing}
+                                                    className="input-premium pl-14 font-mono font-bold text-amber-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <section>
+                                    <h3 className="section-header">Mandatory Fees Overview</h3>
+                                    <div className="p-6 rounded-3xl bg-white/[0.04] border border-white/10">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <ul className="space-y-3">
+                                                {getCompulsoryData().items.map((it: any) => (
+                                                    <li key={it} className="flex items-center gap-3 text-sm text-white/80">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                                        {it}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            <div className="flex flex-col justify-end items-end">
+                                                <div className="stat-label-premium text-white/40 mb-1">Subtotal Compulsory</div>
+                                                <div className="text-xl font-black text-white">{formatMoney(getCompulsoryFee())}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <div>
+                                    <h3 className="section-header">Ancillary & Resource Subscriptions</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {services.filter(s => {
+                                            const compulsory = getCompulsoryData().items || [];
+                                            return !compulsory.includes(s.name);
+                                        }).map(service => (
+                                            <label key={service.id} className={`group option-label-premium flex items-center gap-4 p-4 rounded-2xl cursor-pointer ${enrollmentData.selectedServices.includes(service.id) ? 'bg-blue-600/10 border-blue-500/30' : 'bg-transparent'} ${!isEditing ? 'opacity-50 cursor-default' : 'hover:bg-white/5'}`}>
+                                                <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${enrollmentData.selectedServices.includes(service.id) ? 'bg-blue-500 border-blue-500' : 'border-white/40'}`}>
+                                                    {enrollmentData.selectedServices.includes(service.id) && <span className="text-[0.6rem] text-white">✓</span>}
+                                                    <input
+                                                        type="checkbox"
+                                                        className="hidden"
+                                                        checked={enrollmentData.selectedServices.includes(service.id)}
+                                                        disabled={!isEditing}
+                                                        onChange={() => isEditing && handleServiceToggle(service.id)}
+                                                    />
+                                                </div>
+                                                <span className="flex-1 text-sm font-bold text-white/90">{service.name}</span>
+                                                <span className="text-sm font-black text-emerald-400">{formatMoney(service.cost).replace('UGX', '').trim()}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <section>
+                                    <h3 className="section-header">Consumable Requirements Tracker</h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                        {studentRequirements.map((req, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => isEditing && handleRequirementIncrement(idx)}
+                                                style={{
+                                                    background: `${req.color}08`,
+                                                    borderColor: `${req.color}20`,
+                                                }}
+                                                className="requirement-card-premium p-5 rounded-3xl border text-center relative flex flex-col items-center justify-center gap-2 group"
+                                            >
+                                                {isEditing && (
+                                                    <button
+                                                        onClick={(e) => handleRequirementReset(e, idx)}
+                                                        className="absolute top-3 right-3 w-6 h-6 rounded-full bg-black/40 text-[0.6rem] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        title="Reset"
+                                                    >
+                                                        ↺
+                                                    </button>
+                                                )}
+                                                <div className="text-[0.6rem] font-black uppercase tracking-widest mb-1" style={{ color: req.color }}>{req.name}</div>
+                                                <div className="text-2xl font-black text-white">
+                                                    {req.brought}<span className="text-white/20 mx-1">/</span>{req.required}
+                                                </div>
+                                                <div className="text-[0.55rem] font-bold text-white/20 uppercase tracking-[0.1rem]">Incremental Tap</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
                             </div>
 
-                            <section style={{ marginTop: '1.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                                    <h3 style={{ fontSize: '1rem', margin: 0 }}>Physical Requirements</h3>
-                                </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
-                                    {studentRequirements.map((req, idx) => (
-                                        <div
-                                            key={idx}
-                                            onClick={() => handleRequirementIncrement(idx)}
-                                            style={{
-                                                padding: '0.75rem',
-                                                borderRadius: '10px',
-                                                background: `${req.color}15`,
-                                                border: `1px solid ${req.color}40`,
-                                                cursor: isEditing ? 'pointer' : 'default',
-                                                transition: 'all 0.2s ease',
-                                                textAlign: 'center',
-                                                position: 'relative',
-                                                opacity: isEditing ? 1 : 0.7,
-                                                minHeight: '80px',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                justifyContent: 'center'
-                                            }}
-                                            className="requirement-card active:scale-95"
-                                        >
-                                            <button
-                                                onClick={(e) => handleRequirementReset(e, idx)}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: '3px',
-                                                    right: '3px',
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    opacity: 0.3,
-                                                    padding: '3px',
-                                                    borderRadius: '50%',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}
-                                                title="Reset count"
-                                            >
-                                                🔄
-                                            </button>
-                                            <div style={{ fontWeight: '600', marginBottom: '0.2rem', color: req.color, fontSize: '0.8rem' }}>{req.name}</div>
-                                            <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
-                                                {req.brought} / {req.required}
-                                            </div>
-                                            <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: '0.2rem' }}>Tap+1</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-
-                            <div className="flex flex-col sm:flex-row gap-3 mt-8">
+                            <div className="flex flex-col sm:flex-row gap-4 mt-12 pt-10 border-t border-white/5">
                                 {isEditing && (
-                                    <button onClick={handleEnrollSubmit} className="btn btn-primary touch-target py-3 flex-1">
-                                        {enrollmentData.id ? 'Save Changes' : 'Confirm Enrollment'}
+                                    <button
+                                        onClick={handleEnrollSubmit}
+                                        className="flex-1 px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-500/20 active:scale-[0.98]"
+                                    >
+                                        {enrollmentData.id ? '💾 Commit Changes' : '🚀 Finalize Enrollment'}
                                     </button>
                                 )}
                                 {enrollmentData.id && isEditing && (
-                                    <button onClick={() => handleDeleteAccount(enrollmentData.id!)} className="btn btn-outline touch-target py-3" style={{ color: '#ef4444', borderColor: '#ef4444' }}>
-                                        Delete Student
+                                    <button
+                                        onClick={() => handleDeleteAccount(enrollmentData.id!)}
+                                        className="px-8 py-4 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 rounded-2xl font-black uppercase tracking-widest transition-all"
+                                    >
+                                        Purge Record
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        <div style={{ position: 'sticky', top: '2rem' }} className="h-fit">
-                            <div className="card p-5 md:p-8 flex flex-col gap-4 md:gap-6">
-                                <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center', margin: 0 }}>Billing Breakdown</h2>
+                        {/* RIGHT SIDEBAR - BILLING SNAPSHOT */}
+                        <div className="h-fit lg:sticky lg:top-8">
+                            <div className="premium-card premium-glass total-glow p-8 space-y-8">
+                                <div className="text-center">
+                                    <h2 className="text-[0.7rem] font-black uppercase tracking-[0.2rem] text-white/40 mb-1">Financial Projection</h2>
+                                    <div className="text-xl font-bold text-white">Billing Breakdown</div>
+                                </div>
 
-                                <div className="space-y-2 md:space-y-3 text-sm">
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span className="opacity-70">Tuition</span>
-                                        <span>{formatMoney(getProgrammeFee())}</span>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="stat-label-premium">Base Tuition</span>
+                                        <span className="text-sm font-bold text-white">{formatMoney(getProgrammeFee())}</span>
                                     </div>
                                     {selectedBursary !== 'none' && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981' }}>
-                                            <span className="opacity-70">Bursary Discount</span>
-                                            <span>- {formatMoney(getBursaryDiscount())}</span>
+                                        <div className="flex justify-between items-center px-2 py-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                                            <span className="text-[0.65rem] font-black text-emerald-400 uppercase tracking-widest">Bursary Subsidy</span>
+                                            <span className="text-sm font-black text-emerald-400">-{formatMoney(getBursaryDiscount())}</span>
                                         </div>
                                     )}
 
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b' }}>
-                                        <span className="opacity-70">Compulsory</span>
-                                        <span>{formatMoney(getCompulsoryFee())}</span>
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="stat-label-premium">Statutory Fees</span>
+                                        <span className="text-sm font-bold text-amber-500">{formatMoney(getCompulsoryFee())}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span className="opacity-70">Optional</span>
-                                        <span>{formatMoney(getServicesTotal())}</span>
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="stat-label-premium">Selected Services</span>
+                                        <span className="text-sm font-bold text-blue-400">{formatMoney(getServicesTotal())}</span>
                                     </div>
 
-                                    <div style={{ borderTop: '1px solid hsl(var(--border))', margin: '0.5rem 0' }}></div>
+                                    <div className="h-px bg-white/10 mx-2"></div>
 
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 'bold' }}>Arrears</span>
-                                        <span>{formatMoney(enrollmentData.previousBalance)}</span>
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="stat-label-premium">Account Arrears</span>
+                                        <span className="text-sm font-mono font-bold text-red-500">{formatMoney(enrollmentData.previousBalance)}</span>
                                     </div>
                                 </div>
 
-                                <div style={{ background: 'rgba(139, 92, 246, 0.1)', padding: '1rem', borderRadius: 'var(--radius)', textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.6, marginBottom: '0.25rem' }}>GRAND TOTAL DUE</div>
-                                    <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#8b5cf6' }}>{formatMoney(grandTotal)}</div>
+                                <div className="p-8 rounded-[2rem] bg-black/60 border border-white/10 text-center relative group overflow-hidden">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-blue-600/20 opacity-70"></div>
+                                    <div className="relative">
+                                        <div className="stat-label-premium text-white/40 mb-2">Total Financial Liability</div>
+                                        <div className="text-4xl font-black text-white tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                                            {formatMoney(grandTotal).replace('UGX', '').trim()}<span className="text-xs ml-1 text-white/40">UGX</span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="flex flex-col gap-2">
-                                    <button onClick={() => setViewMode('list')} className="btn btn-outline touch-target py-2.5 text-sm">{isEditing ? 'Cancel Edit' : 'Back to List'}</button>
-                                    {isEditing && <button onClick={handleEnrollSubmit} className="btn btn-primary touch-target py-3 text-sm">{enrollmentData.id ? 'Save Changes' : 'Confirm Enrollment'}</button>}
+                                <div className="flex flex-col gap-3">
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className="w-full py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[0.65rem] font-black uppercase tracking-[0.15rem] transition-all border border-white/5"
+                                    >
+                                        {isEditing ? 'Abort Changes' : 'Return to Directory'}
+                                    </button>
+
+                                    {isEditing && (
+                                        <button
+                                            onClick={handleEnrollSubmit}
+                                            className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl text-[0.7rem] font-black uppercase tracking-[0.2rem] shadow-2xl shadow-blue-500/30 transition-all active:scale-95"
+                                        >
+                                            Confirm Submission
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1723,7 +1873,7 @@ function EnrollmentContent() {
 
 
 
-            {modalStudentId && <LearnerAccountModal studentId={modalStudentId} onClose={() => setModalStudentId(null)} />}
+            {modalStudentId && <LearnerAccountModal studentId={modalStudentId} onClose={() => setModalStudentId(null)} mode={isDirector ? 'director' : 'bursar'} />}
         </div>
     )
 }

@@ -13,7 +13,8 @@ interface BursariesTabProps {
 const AVAILABLE_LEVELS = ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Certificate', 'Diploma'];
 
 export default function BursariesTab({ bursaries, students, updateBursary, addBursary, updateStudent, deleteBursary }: BursariesTabProps) {
-    const { schoolProfile, batchUpdateStudents, logGlobalAction } = useSchoolData();
+    const { schoolProfile, batchUpdateStudents, logGlobalAction, activeRole } = useSchoolData();
+    const isDirector = activeRole === 'Director';
     // --- STATE ---
     // Schemes Management
     const [createModalParams, setCreateModalParams] = useState({ open: false, name: '', value: 0, isEdit: false, id: '' });
@@ -336,7 +337,7 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Active Bursary Schemes</h2>
-                <button onClick={() => setCreateModalParams({ open: true, name: '', value: 0, isEdit: false, id: '' })} className="btn btn-primary" style={{ background: '#10b981' }}>+ Create New Scheme</button>
+                {!isDirector && <button onClick={() => setCreateModalParams({ open: true, name: '', value: 0, isEdit: false, id: '' })} className="btn btn-primary" style={{ background: '#10b981' }}>+ Create New Scheme</button>}
             </div>
 
             {/* Cards */}
@@ -349,7 +350,7 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
                                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{scheme.name}</h3>
                                 <div style={{ flexShrink: 0 }}>
                                     <div style={{ color: '#10b981', fontWeight: 'bold', textAlign: 'right', fontSize: '0.9rem' }}>UGX {scheme.value.toLocaleString()}</div>
-                                    <button onClick={() => setCreateModalParams({ open: true, name: scheme.name, value: scheme.value, isEdit: true, id: scheme.id })} className="touch-target" style={{ float: 'right', background: 'none', border: 'none', color: '#9ca3af', fontSize: '0.7rem', textDecoration: 'underline', cursor: 'pointer' }}>Edit</button>
+                                    {!isDirector && <button onClick={() => setCreateModalParams({ open: true, name: scheme.name, value: scheme.value, isEdit: true, id: scheme.id })} className="touch-target" style={{ float: 'right', background: 'none', border: 'none', color: '#9ca3af', fontSize: '0.7rem', textDecoration: 'underline', cursor: 'pointer' }}>Edit</button>}
                                 </div>
                             </div>
                             <div style={{ margin: '1.5rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -358,9 +359,9 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
                                     <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Beneficiaries</div>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <button onClick={() => setAddOneModal({ open: true, schemeId: scheme.id, schemeName: scheme.name })} className="btn btn-primary touch-target" style={{ fontSize: '0.8rem', padding: '0.3rem 1rem' }}>+ Add</button>
+                                    {!isDirector && <button onClick={() => setAddOneModal({ open: true, schemeId: scheme.id, schemeName: scheme.name })} className="btn btn-primary touch-target" style={{ fontSize: '0.8rem', padding: '0.3rem 1rem' }}>+ Add</button>}
                                     <button onClick={() => setViewListModal({ open: true, schemeId: scheme.id, schemeName: scheme.name })} className="btn btn-outline touch-target" style={{ fontSize: '0.8rem' }}>View List</button>
-                                    <button onClick={() => setBatchModal({ open: true, schemeId: scheme.id, schemeName: scheme.name })} className="btn btn-outline touch-target" style={{ fontSize: '0.8rem', borderColor: '#8b5cf6', color: '#8b5cf6' }}>Batch Add</button>
+                                    {!isDirector && <button onClick={() => setBatchModal({ open: true, schemeId: scheme.id, schemeName: scheme.name })} className="btn btn-outline touch-target" style={{ fontSize: '0.8rem', borderColor: '#8b5cf6', color: '#8b5cf6' }}>Batch Add</button>}
                                 </div>
                             </div>
                             <div style={{ borderTop: '1px solid #333', paddingTop: '0.5rem', color: '#10b981', fontSize: '0.8rem' }}>
@@ -582,7 +583,7 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
                                 </span>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                {selectedStudentIds.length > 0 && (
+                                {!isDirector && selectedStudentIds.length > 0 && (
                                     <button
                                         onClick={() => setRemoveModal({ open: true, studentIds: selectedStudentIds })}
                                         className="premium-btn text-red-400 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 touch-target"
@@ -663,7 +664,7 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
                                             {visibleColumns.name && <th style={{ padding: '1rem' }}>Name</th>}
                                             {visibleColumns.class && <th style={{ padding: '1rem' }}>Class</th>}
                                             {visibleColumns.value && <th style={{ padding: '1rem' }}>Value</th>}
-                                            {visibleColumns.action && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
+                                            {visibleColumns.action && !isDirector && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -684,7 +685,7 @@ export default function BursariesTab({ bursaries, students, updateBursary, addBu
                                                     {visibleColumns.name && <td style={{ padding: '1rem', fontWeight: 500 }}>{s.name}</td>}
                                                     {visibleColumns.class && <td style={{ padding: '1rem', opacity: 0.8 }}>{s.programme} - {s.level}</td>}
                                                     {visibleColumns.value && <td style={{ padding: '1rem', color: '#10b981', fontWeight: 600 }}>UGX {bursaries.find(b => b.id === s.bursary)?.value.toLocaleString()}</td>}
-                                                    {visibleColumns.action && <td className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>
+                                                    {visibleColumns.action && !isDirector && <td className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>
                                                         <button
                                                             onClick={() => setRemoveModal({ open: true, studentIds: [s.id] })}
                                                             className="touch-target"

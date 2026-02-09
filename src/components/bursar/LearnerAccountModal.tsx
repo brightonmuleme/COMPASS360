@@ -4,51 +4,62 @@ import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequireme
 import { numberToWords } from '@/lib/numberToWords';
 import { Transaction, FEE_STRUCTURE, BURSARY_SCHEMES } from '@/app/bursar/sharedData';
 import { TransactionFormModal } from './TransactionFormModal';
+import { schoolPayService } from '@/services/schoolPayService';
+
 
 // --- CONSTANTS ---
 const DELETE_REASONS = ['Duplicate Entry', 'Wrong Amount', 'Entered in Error', 'Payment Refunded', 'Other'];
 const isArrearsKey = (str: string) => /brought\s*forward|bf|arrears|prev|balance\s*b\/f/i.test(str);
 
 // --- COMPONENT: StatusRing ---
-export const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
+// --- STYLING CONSTANTS ---
+const PREMIUM_GOLD = 'linear-gradient(135deg, #fbbf24, #d97706)';
+const PREMIUM_BLUE = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+const PREMIUM_GLASS = 'rgba(255, 255, 255, 0.03)';
+const PREMIUM_BORDER = '1px solid rgba(255, 255, 255, 0.08)';
+
+export const StatusRing = ({ student, size = 64, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
     const { financialSettings } = useSchoolData();
 
-    // If propPercentage is provided, use it. Otherwise calculate locally (legacy fallback).
     let percentage = 0;
-
     if (propPercentage !== undefined) {
         percentage = Math.max(0, Math.min(100, propPercentage));
     } else {
         const { totalFees, balance } = student;
         const billed = totalFees;
         const paid = totalFees - balance;
-        percentage = billed > 0 ? (paid / billed) * 100 : 100; // Default cleared if no fees
+        percentage = billed > 0 ? (paid / billed) * 100 : 100;
         percentage = Math.max(0, Math.min(100, percentage));
     }
 
-    const radius = (size / 2) - 5;
+    const radius = (size / 2) - 6;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (percentage / 100) * circumference;
 
     const status = student.accountStatus;
-    let color = '#ef4444'; // Default Red
+    let color = '#ef4444';
+    let glowColor = 'rgba(239, 68, 68, 0.5)';
 
-    // Task: Sync Ring Colors (Status Priority -> Fallback Percentage)
     const statusStr = status as string;
     if (statusStr === 'clearance' || statusStr === 'cleared') {
-        color = '#10b981'; // GREEN
+        color = '#10b981';
+        glowColor = 'rgba(16, 185, 129, 0.5)';
     } else if (statusStr === 'probation') {
-        color = '#8b5cf6'; // PURPLE
+        color = '#8b5cf6';
+        glowColor = 'rgba(139, 92, 246, 0.5)';
     } else if (statusStr === 'defaulter') {
-        color = '#ef4444'; // RED
+        color = '#ef4444';
+        glowColor = 'rgba(239, 68, 68, 0.5)';
     } else {
-        // FALLBACK Logic: If status is empty, use percentage
         if (percentage >= 100) {
-            color = '#10b981'; // GREEN
+            color = '#10b981';
+            glowColor = 'rgba(16, 185, 129, 0.5)';
         } else if (percentage >= (financialSettings?.probationPct ?? 80)) {
-            color = '#8b5cf6'; // PURPLE
+            color = '#8b5cf6';
+            glowColor = 'rgba(139, 92, 246, 0.5)';
         } else {
-            color = '#ef4444'; // RED
+            color = '#ef4444';
+            glowColor = 'rgba(239, 68, 68, 0.5)';
         }
     }
 
@@ -65,11 +76,14 @@ export const StatusRing = ({ student, size = 60, percentage: propPercentage }: {
                     strokeDashoffset={offset}
                     strokeLinecap="round"
                     transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                    style={{
+                        transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+                        filter: `drop-shadow(0 0 6px ${glowColor})`
+                    }}
                 />
             </svg>
-            <div style={{ position: 'absolute', fontSize: '10px', fontWeight: 'bold', color: color }}>
-                {percentage.toFixed(1)}%
+            <div style={{ position: 'absolute', fontSize: '11px', fontWeight: '900', color: '#fff', letterSpacing: '-0.02em' }}>
+                {percentage.toFixed(0)}<span style={{ fontSize: '7px', opacity: 0.7 }}>%</span>
             </div>
         </div>
     );
@@ -180,8 +194,10 @@ const BillingsTrashList = ({ studentId, deletedBillings }: { studentId: number, 
 };
 
 // --- MAIN COMPONENT ---
-export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { studentId: number, onClose: () => void, auditingContext?: string }) => {
-    const { filteredStudents: students, setStudents, services, filteredProgrammes: programmes, filteredPayments: payments, filteredBillings: billings, filteredDeletedBillings: deletedBillings, bursaries, addPayment, updatePayment, deletePayment, deleteBilling, financialSettings, accounts, manualPaymentMethods, generateAutomaticBillings, addBilling, documentTemplates, schoolProfile, logGlobalAction, isProcessingPromotion } = useSchoolData();
+export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode = 'bursar', isPage = false }: { studentId: number, onClose?: () => void, auditingContext?: string, mode?: 'bursar' | 'student' | 'director', isPage?: boolean }) => {
+    const isStudentView = mode === 'student';
+    const isDirectorView = mode === 'director';
+    const { filteredStudents: students, setStudents, services, filteredProgrammes: programmes, filteredPayments: payments, filteredBillings: billings, filteredDeletedBillings: deletedBillings, bursaries, addPayment, updatePayment, deletePayment, deleteBilling, updateBilling, financialSettings, accounts, manualPaymentMethods, generateAutomaticBillings, addBilling, documentTemplates, schoolProfile, logGlobalAction, isProcessingPromotion, paymentIntegrations, activeRole } = useSchoolData();
     const [selectedStudent, setSelectedStudent] = useState<EnrolledStudent | null>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
 
@@ -203,6 +219,9 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
     const [otherReason, setOtherReason] = useState('');
     const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
     const [showTrashModal, setShowTrashModal] = useState(false);
+    const [isPosting, setIsPosting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [reviewTx, setReviewTx] = useState<any>(null); // Transaction being reviewed for approval
 
     // --- INITIALIZATION ---
     useEffect(() => {
@@ -293,7 +312,11 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                 allocations: p.allocations,
                 description: p.description || '',
                 reference: p.reference,
-                status: p.status, // Pass through status
+                studentId: p.studentId, // PRESERVE ID TO PREVENT DISAPPEARANCE
+                history: p.history || [], // PRESERVE HISTORY
+                receiptNumber: p.receiptNumber,
+                status: p.status,
+                txType: 'payment',
                 isPseudo: false
             }));
 
@@ -312,6 +335,10 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                 allocations: null as any,
                 description: b.description,
                 reference: null as string | null,
+                studentId: b.studentId, // PRESERVE ID
+                history: b.history || [], // PRESERVE HISTORY
+                status: b.status,
+                txType: 'billing',
                 isPseudo: false
             }));
 
@@ -372,6 +399,8 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
 
         return totalBillings - bursaryValue + finalEffectivePrev - totalPayments;
     }, [selectedStudent, billings, payments, bursaries, viewContext]);
+
+    const arrears = outstandingBalance;
 
     // Calculate Total Billing
     const totalBilling = useMemo(() => {
@@ -496,6 +525,32 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
         setStudents(prev => prev.map(s => s.id === updatedStudent.id ? { ...updatedStudent, origin: s.origin } : s));
     };
 
+    const deleteReqEntry = (itemName: string, entryId: string) => {
+        if (!selectedStudent.physicalRequirements) return;
+        if (!confirm("Are you sure you want to delete this entry? The requirement count will be adjusted accordingly.")) return;
+
+        const updatedReqs = selectedStudent.physicalRequirements.map(r => {
+            if (r.name === itemName) {
+                const entryToDelete = r.entries?.find(e => e.id === entryId);
+                if (!entryToDelete) return r;
+
+                // Reverse the change
+                const changeAmount = entryToDelete.change || 0;
+                const newBrought = Math.max(0, r.brought - changeAmount);
+                return {
+                    ...r,
+                    brought: newBrought,
+                    entries: r.entries?.filter(e => e.id !== entryId) || []
+                };
+            }
+            return r;
+        });
+
+        const updatedStudent = { ...selectedStudent, physicalRequirements: updatedReqs };
+        setSelectedStudent(updatedStudent);
+        setStudents(prev => prev.map(s => s.id === updatedStudent.id ? { ...updatedStudent, origin: s.origin } : s));
+    };
+
     const handleTransactionSuccess = (newPayment: Payment) => {
         // Handled by store, we just close/reset
         setEditingPayment(null);
@@ -565,6 +620,166 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
             alert("Balance correction applied successfully.");
             setShowFixBalance(false);
             onClose(); // Close the main modal upon fix completion
+        }
+    };
+
+
+    const handlePostToPortal = async () => {
+        if (!selectedStudent) return;
+        setIsPosting(true);
+
+        // Simulate a small delay for premium feel
+        await new Promise(r => setTimeout(r, 800));
+
+        const now = new Date().toLocaleString();
+        const updatedStudent = {
+            ...selectedStudent,
+            postHistory: [now, ...(selectedStudent.postHistory || []).slice(0, 4)]
+        };
+
+        setSelectedStudent(updatedStudent);
+        setStudents(prev => prev.map(s => s.id === updatedStudent.id ? { ...updatedStudent, origin: s.origin } : s));
+        setIsPosting(false);
+        alert(`Account view for ${selectedStudent.name} has been posted to the student portal successfully.`);
+    };
+
+    const handleApproveTransaction = (tx: any) => {
+        // Instead of immediate approval, we open the Forensic Approval Form
+        setReviewTx({
+            ...tx,
+            studentName: selectedStudent?.name || 'Unknown Student',
+            txType: tx.receiptNumber ? 'payment' : 'billing'
+        });
+    };
+
+    const handleFinalApproval = (directorNote: string, files: string[]) => {
+        if (!reviewTx) return;
+
+        // Find the ORIGINAL object from the store to prevent property loss/corruption
+        const originalTx = payments.find(p => p.id === reviewTx.id);
+
+        if (!originalTx) {
+            console.error("Original transaction not found for approval:", reviewTx.id);
+            alert("Error: Original transaction record could not be found. Please refresh and try again.");
+            setReviewTx(null);
+            return;
+        }
+
+        const updates: any = {
+            ...originalTx, // Use the full original object
+            status: 'Approved',
+            directorNote: directorNote,
+            attachments: [...(originalTx.attachments || []), ...files],
+            approvedAt: new Date().toISOString(),
+            history: [...(originalTx.history || []), {
+                id: 'log_' + Date.now(),
+                action: 'Approved',
+                details: `Director approved payment. Note: ${directorNote}`,
+                user: 'Director',
+                timestamp: new Date().toISOString()
+            }]
+        };
+
+        console.log("Processing Approval for Payment:", { id: originalTx.id, updates });
+        updatePayment(updates);
+
+        logGlobalAction('Transaction Approved', `Director approved ${originalTx.particulars || originalTx.description} for ${selectedStudent?.name}. Note: ${directorNote}`);
+        setReviewTx(null);
+    };
+
+    const handleSyncSystems = async () => {
+        const schoolPayInteg = paymentIntegrations.find(p => p.name.toLowerCase().includes('schoolpay'));
+        if (!schoolPayInteg || schoolPayInteg.status !== 'active') {
+            alert("SchoolPay integration is not active or not found. Please configure it in Payment Modes settings.");
+            return;
+        }
+
+        if (!confirm("This will perform a global sync of all SchoolPay transactions from the last 7 days for ALL students. Current records will be automatically linked. Continue?")) return;
+
+        setIsSyncing(true);
+        try {
+            // Fetch last 7 days by default for quick sync
+            const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const toDate = new Date().toISOString().split('T')[0];
+
+            const results = await schoolPayService.syncRange(
+                schoolPayInteg.merchantId!,
+                schoolPayInteg.apiKey!,
+                fromDate,
+                toDate
+            );
+
+            if (results.returnCode !== 0) {
+                alert(`SchoolPay Error: ${results.returnMessage}`);
+                return;
+            }
+
+            const allTxs = [...(results.transactions || []), ...(results.supplementaryFeePayments || [])];
+            let newCount = 0;
+
+            allTxs.forEach(tx => {
+                // DEDUPLICATION: Check if this receipt number already exists in ANY payment record
+                const existing = payments.find(p => p.reference === tx.schoolpayReceiptNumber);
+                const student = students.find(s => s.payCode === tx.studentPaymentCode);
+
+                if (existing) {
+                    // AUTO-RELINK: If we found a match for a previously "Unlinked" (studentId 0) payment
+                    if ((!existing.studentId || existing.studentId === 0) && student) {
+                        updatePayment({
+                            ...existing,
+                            studentId: student.id,
+                            status: 'approved',
+                            history: [...(existing.history || []), {
+                                id: `sync_link_${Date.now()}`,
+                                action: 'Linked',
+                                details: 'Automatically linked student via Pay Code during global sync',
+                                user: 'System',
+                                timestamp: new Date().toISOString()
+                            }]
+                        });
+                        newCount++;
+                    }
+                    return; // Skip if already exists and linked
+                }
+
+                // If no existing record with this receipt number, CREATE IT
+                const newPayment: Payment = {
+                    id: `sp_sync_${tx.schoolpayReceiptNumber}`,
+                    studentId: student ? student.id : 0, // 0 means unlinked but recorded
+                    amount: parseFloat(tx.amount),
+                    date: tx.paymentDateAndTime,
+                    method: 'SchoolPay',
+                    reference: tx.schoolpayReceiptNumber,
+                    particulars: `Sync: ${tx.sourcePaymentChannel}`,
+                    description: tx.supplementaryFeeDescription || 'School Fees',
+                    term: student ? student.semester : 'Unknown',
+                    status: 'approved',
+                    recordedBy: 'SchoolPay System',
+                    metadata: {
+                        syncSource: 'Student Modal Quick Sync',
+                        payCode: tx.studentPaymentCode,
+                        bankName: tx.settlementBank
+                    },
+                    history: [{
+                        id: `sp_hist_${tx.schoolpayReceiptNumber}`,
+                        action: 'Created',
+                        details: 'Automatically synced from SchoolPay API via Quick Sync',
+                        user: activeRole || 'Bursar',
+                        timestamp: new Date().toISOString()
+                    }]
+                };
+
+                addPayment(newPayment);
+                newCount++;
+            });
+
+            alert(`Sync Successful!\n\nFound: ${allTxs.length} transactions.\nNew/Linked: ${newCount} records added to system.`);
+            logGlobalAction('Global Sync Triggered', `Bursar triggered a fresh SchoolPay sync. ${newCount} records processed.`);
+        } catch (error) {
+            console.error('Quick Sync Error:', error);
+            alert("Sync Failed: Check your internet connection. If the issue persists, verify API credentials in Payment Modes.");
+        } finally {
+            setIsSyncing(false);
         }
     };
 
@@ -700,7 +915,7 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
     };
 
     const printReceipt = (tx: any) => {
-        if (!selectedStudent) return;
+        if (!selectedStudent || isStudentView) return;
 
         const payment = payments.find(p => String(p.id) === String(tx.id));
         if (!payment) return alert("Original payment record not found.");
@@ -809,13 +1024,35 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
 
 
 
-    return (
-        <div className="fixed inset-0 flex items-center justify-center p-0 md:p-4 z-[2000]" style={{ background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)' }}>
-            <div
-                id="learner-modal-body"
-                className="card w-full h-full md:w-[95%] md:max-w-[1400px] md:h-[90vh] md:rounded-xl flex flex-col overflow-hidden"
-                style={{ padding: 0, border: '1px solid rgba(255,255,255,0.1)', background: '#0F0F0F' }}
-            >
+    const content = (
+        <div
+            id="learner-modal-body"
+            className={`${isPage ? 'w-full min-h-screen' : 'w-full h-full md:w-[95%] md:max-w-[1400px] md:h-[90vh] md:rounded-3xl shadow-2xl'} flex flex-col overflow-hidden relative transition-all duration-500`}
+            style={{
+                padding: 0,
+                border: isPage ? 'none' : PREMIUM_BORDER,
+                background: isPage ? 'transparent' : '#05070a',
+                boxShadow: isPage ? 'none' : '0 0 100px rgba(0,0,0,0.5), inset 0 0 40px rgba(59, 130, 246, 0.05)'
+            }}
+        >
+            {/* Background Glows */}
+            <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/${isPage ? '10' : '5'} blur-[120px] rounded-full pointer-events-none`}></div>
+            <div className={`absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/${isPage ? '10' : '5'} blur-[120px] rounded-full pointer-events-none`}></div>
+
+            <div className="relative z-10 flex flex-col h-full">
+                <style>{`
+                        .scrollbar-premium::-webkit-scrollbar { width: 4px; height: 4px; }
+                        .scrollbar-premium::-webkit-scrollbar-track { background: transparent; }
+                        .scrollbar-premium::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 20px; }
+                        .scrollbar-premium::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+                        
+                        @keyframes ripple {
+                            0% { transform: scale(0.8); opacity: 0.5; }
+                            50% { transform: scale(1.2); opacity: 0.3; }
+                            100% { transform: scale(0.8); opacity: 0.5; }
+                        }
+                    `}</style>
+
                 {/* Audit Context Header */}
                 {auditingContext && (
                     <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '0.8rem 2rem', borderBottom: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '2px', color: '#3b82f6' }}>
@@ -831,26 +1068,35 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                 )}
 
                 {/* --- HEADER --- */}
-                <div className="p-3 md:p-8 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 sticky top-0 bg-[#0F0F0F] z-20">
-                    <div className="flex items-center gap-3 md:gap-6">
-                        <div className="cursor-pointer transition-transform active:scale-95" onClick={() => setShowClearanceHistory(true)} title={`View Clearance History / Details (Tuition Clr: ${Math.round(clearancePercentage)}%)`}>
-                            <StatusRing student={selectedStudent} size={60} percentage={clearancePercentage} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <h2 className="text-xl md:text-2xl font-bold m-0 truncate">{selectedStudent.name}</h2>
-                            <div className="flex flex-wrap gap-2 md:gap-4 items-center mt-0.5 md:mt-1">
-                                <p className="opacity-40 m-0 text-xs md:text-sm">ID: {selectedStudent.payCode} | {selectedStudent.semester}</p>
-                                <div className="flex gap-1 md:gap-2">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-white/5">
+                    <div className="flex items-center gap-6">
+                        <StatusRing student={selectedStudent} size={72} percentage={clearancePercentage} />
+                        <div>
+                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight uppercase m-0 leading-none">
+                                {selectedStudent.name}
+                            </h2>
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className="text-[0.65rem] font-bold text-slate-500 uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded">
+                                    ID: {selectedStudent.payCode || selectedStudent.id}
+                                </span>
+                                <div className="flex gap-1">
                                     {['clearance', 'defaulter', 'probation'].map(s => (
                                         <button
                                             key={s}
-                                            onClick={() => handleStatusChangeWithReason(s as any)}
-                                            className="touch-target px-2 md:px-3 py-1 text-[10px] md:text-xs rounded-full uppercase transition-all active:scale-95"
+                                            onClick={() => !isStudentView && !isDirectorView && !isProcessingPromotion && handleUpdateStatus(s as any)}
+                                            className="px-2 py-0.5 rounded text-[0.6rem] font-black uppercase tracking-tighter transition-all"
                                             style={{
-                                                background: selectedStudent.accountStatus === s ? (s === 'clearance' ? '#10b981' : s === 'defaulter' ? '#ef4444' : '#8b5cf6') : 'rgba(255,255,255,0.05)',
-                                                color: selectedStudent.accountStatus === s ? 'white' : 'rgba(255,255,255,0.3)',
-                                                border: 'none',
-                                                cursor: 'pointer'
+                                                background: selectedStudent.accountStatus === s
+                                                    ? (s === 'clearance' ? 'rgba(16, 185, 129, 0.2)' : s === 'defaulter' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(139, 92, 246, 0.2)')
+                                                    : 'rgba(255,255,255,0.03)',
+                                                color: selectedStudent.accountStatus === s
+                                                    ? (s === 'clearance' ? '#10b981' : s === 'defaulter' ? '#ef4444' : '#a78bfa')
+                                                    : 'rgba(255,255,255,0.2)',
+                                                border: `1px solid ${selectedStudent.accountStatus === s
+                                                    ? (s === 'clearance' ? 'rgba(16, 185, 129, 0.3)' : s === 'defaulter' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.3)')
+                                                    : 'rgba(255,255,255,0.02)'}`,
+                                                cursor: (isStudentView || isDirectorView || isProcessingPromotion) ? 'default' : 'pointer',
+                                                boxShadow: selectedStudent.accountStatus === s ? `0 0 10px ${s === 'clearance' ? 'rgba(16, 185, 129, 0.1)' : s === 'defaulter' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(139, 92, 246, 0.1)'}` : 'none'
                                             }}
                                         >
                                             {s}
@@ -860,7 +1106,34 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                             </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="absolute top-3 right-3 md:relative md:top-0 md:right-0 touch-target w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 transition-colors" style={{ padding: 0 }}>✕</button>
+                    <div className="flex items-center gap-4">
+                        {!isStudentView && !isDirectorView && (
+                            <button
+                                onClick={handlePostToPortal}
+                                disabled={isPosting || isProcessingPromotion}
+                                className="px-6 py-2.5 rounded-full text-xs md:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 group relative overflow-hidden"
+                                style={{
+                                    background: isPosting ? 'rgba(59, 130, 246, 0.1)' : PREMIUM_BLUE,
+                                    color: 'white',
+                                    border: 'none',
+                                    boxShadow: isPosting ? 'none' : '0 8px 30px rgba(37, 99, 235, 0.4)'
+                                }}
+                            >
+                                <span className="relative z-10">{isPosting ? '📡 Syncing...' : '🚀 Post to Portal'}</span>
+                                {!isPosting && (
+                                    <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12"></div>
+                                )}
+                            </button>
+                        )}
+                        {!isStudentView && (
+                            <button
+                                onClick={onClose}
+                                className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-colors text-white/40 hover:text-white"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* --- CONTENT --- */}
@@ -887,193 +1160,248 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                                     </select>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                    {entryLevelFilter === 'Current' && (
+                                    {!isStudentView && !isDirectorView && entryLevelFilter === 'Current' && (
                                         <>
                                             <button
                                                 onClick={() => !isProcessingPromotion && setShowFixBalance(true)}
-                                                className="touch-target px-3 py-2 text-xs md:text-sm rounded transition-all active:scale-95"
+                                                className="px-3 py-1.5 text-[0.65rem] md:text-[0.7rem] font-black uppercase tracking-widest rounded-lg transition-all active:scale-95"
                                                 disabled={isProcessingPromotion}
-                                                style={{ background: isProcessingPromotion ? '#1a1a1a' : 'rgba(239, 68, 68, 0.1)', color: isProcessingPromotion ? '#444' : '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
+                                                style={{
+                                                    background: isProcessingPromotion ? '#1a1a1a' : 'rgba(239, 68, 68, 0.05)',
+                                                    color: isProcessingPromotion ? '#444' : '#ef4444',
+                                                    border: '1px solid rgba(239, 68, 68, 0.1)',
+                                                    cursor: isProcessingPromotion ? 'not-allowed' : 'pointer'
+                                                }}
                                             >
                                                 {isProcessingPromotion ? '🔒 Locked' : '🔧 Fix Balance'}
                                             </button>
                                             <button
                                                 onClick={() => { if (!isProcessingPromotion) { setEditingPayment(null); setShowTransModal(true); } }}
-                                                className="touch-target px-3 py-2 text-xs md:text-sm rounded transition-all active:scale-95"
+                                                className="px-3 py-1.5 text-[0.65rem] md:text-[0.7rem] font-black uppercase tracking-widest rounded-lg transition-all active:scale-95"
                                                 disabled={isProcessingPromotion}
-                                                style={{ background: isProcessingPromotion ? '#1a1a1a' : 'rgba(255,255,255,0.1)', color: isProcessingPromotion ? '#444' : '#fff', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
+                                                style={{
+                                                    background: isProcessingPromotion ? '#1a1a1a' : 'rgba(255,255,255,0.05)',
+                                                    color: isProcessingPromotion ? '#444' : '#fff',
+                                                    border: '1px solid rgba(255,255,255,0.1)',
+                                                    cursor: isProcessingPromotion ? 'not-allowed' : 'pointer'
+                                                }}
                                             >
                                                 {isProcessingPromotion ? '🔒 Locked' : '＋ Add Payment'}
+                                            </button>
+                                            <button
+                                                onClick={handleSyncSystems}
+                                                className="px-3 py-1.5 text-[0.65rem] md:text-[0.7rem] font-black uppercase tracking-widest rounded-lg transition-all active:scale-95 flex items-center gap-1"
+                                                disabled={isProcessingPromotion || isSyncing}
+                                                style={{
+                                                    background: (isProcessingPromotion || isSyncing) ? '#1a1a1a' : 'rgba(59, 130, 246, 0.05)',
+                                                    color: (isProcessingPromotion || isSyncing) ? '#444' : '#3b82f6',
+                                                    border: '1px solid rgba(59, 130, 246, 0.1)',
+                                                    cursor: (isProcessingPromotion || isSyncing) ? 'not-allowed' : 'pointer'
+                                                }}
+                                            >
+                                                {isSyncing ? '⌛ Syncing...' : '⚡ Sync Systems'}
                                             </button>
                                         </>
                                     )}
                                     {entryLevelFilter !== 'Current' && (
-                                        <span className="px-3 py-2 bg-slate-800/50 rounded text-xs opacity-60">
+                                        <span className="px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg text-[0.6rem] font-black uppercase tracking-widest opacity-40">
                                             🔒 Read Only View
                                         </span>
                                     )}
-                                    <button
-                                        onClick={() => setShowTrashModal(true)}
-                                        className="touch-target px-3 py-2 text-sm md:text-base rounded transition-all active:scale-95"
-                                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
-                                        title="View Trash / Deleted Billings"
-                                    >
-                                        🗑️
-                                    </button>
+                                    {!isStudentView && !isDirectorView && (
+                                        <button
+                                            onClick={() => setShowTrashModal(true)}
+                                            className="w-10 h-10 flex items-center justify-center rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
+                                        >
+                                            <svg className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             <div className="overflow-x-auto -mx-4 md:mx-0 custom-scrollbar">
-                                <div className="bg-slate-900/20 rounded-2xl overflow-hidden min-w-[700px]">
-                                    <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
-                                        <thead style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                            <tr style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'white' }}>
-                                                <th style={{ padding: '1rem' }}>Date</th>
-                                                <th style={{ padding: '1rem' }}>Particulars</th>
-                                                <th style={{ padding: '1rem' }}>Method / Ref</th>
-                                                <th style={{ padding: '1rem', textAlign: 'right' }}>Amount</th>
-                                                <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody style={{ fontSize: '0.85rem' }}>
-                                            {(() => {
-                                                // Handle filtering and sorting (transactions state is already filtered by term context)
-                                                const sorted = [...transactions].sort((a, b) => new Date(b.date || "").getTime() - new Date(a.date || "").getTime());
-                                                const visible = sorted.slice(0, txLimit);
-
-                                                if (visible.length === 0) {
-                                                    return (
-                                                        <tr>
-                                                            <td colSpan={5} style={{ padding: '3rem', textAlign: 'center', opacity: 0.4 }}>
-                                                                No transactions found for {viewContext.targetTerm}.
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                }
-
-                                                return visible.map((tx, idx) => {
-                                                    const isBilled = tx.type === 'Billed' || tx.type === 'billed';
-                                                    const isAdjustment = tx.type === 'adjustment' || tx.subMode === 'Balance Fix' || tx.mode === 'Balance Fix' || tx.method === 'Adjustment' || tx.type === 'Adjustment';
-
-                                                    return (
-                                                        <tr key={tx.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: isAdjustment ? 'rgba(245, 158, 11, 0.05)' : 'transparent' }}>
-                                                            <td style={{ padding: '1rem', opacity: 0.6 }}>{new Date(tx.date).toLocaleDateString()}</td>
-                                                            <td style={{ padding: '1rem' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: tx.allocations ? '4px' : '0' }}>
-                                                                    {isAdjustment && <span title="Audit Protected Adjustment" style={{ fontSize: '1rem' }}>🔧</span>}
-                                                                    <div style={{ fontWeight: 'bold' }}>{isAdjustment && !tx.allocations ? 'Adjustment' : tx.particulars}</div>
-                                                                </div>
-                                                                {tx.allocations && Object.keys(tx.allocations).length > 0 ? (
-                                                                    <div style={{ fontSize: '0.75rem', borderLeft: '2px solid rgba(255,255,255,0.1)', paddingLeft: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                        {Object.entries(tx.allocations).map(([key, val]) => (
-                                                                            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8, maxWidth: '240px' }}>
-                                                                                <span>{key}</span>
-                                                                                <span style={{ fontFamily: 'monospace' }}>{formatMoney(Number(val))}</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{tx.description}</div>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '1rem' }}>
-                                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                    <span style={{ padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', fontSize: '0.7rem', textTransform: 'uppercase', width: 'fit-content' }}>
-                                                                        {tx.mode || tx.type}
-                                                                    </span>
-                                                                    <span style={{ fontSize: '0.65rem', opacity: 0.4, marginTop: '2px', fontFamily: 'monospace' }}>{tx.reference || '-'}</span>
-                                                                </div>
-                                                            </td>
-                                                            <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 'bold', color: isBilled ? '#ef4444' : '#10b981' }}>
-                                                                {isBilled ? '+' : '-'}{formatMoney(tx.amount)}
-                                                            </td>
-                                                            <td style={{ padding: '1rem', textAlign: 'right' }}>
-                                                                {(!tx.isPseudo && (tx.type !== 'Billed' || isAdjustment)) && (
-                                                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                                        <button onClick={() => handleEditTransaction(tx)} className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: '#3b82f6', color: '#3b82f6' }} title="Edit">✎</button>
-                                                                        <button onClick={() => !isProcessingPromotion && printReceipt(tx)} className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: '#9ca3af', color: '#9ca3af' }} title="Print Receipt">🖨️</button>
-                                                                        {selectedStudent.status !== 'graduated' && (
-                                                                            <button
-                                                                                onClick={() => !isProcessingPromotion && initiateDelete('transaction', String(tx.id))}
-                                                                                disabled={isProcessingPromotion}
-                                                                                className="btn btn-outline"
-                                                                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: isProcessingPromotion ? '#444' : '#ef4444', color: isProcessingPromotion ? '#444' : '#ef4444', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
-                                                                                title={isProcessingPromotion ? "System Locked for Promotion" : "Delete"}
-                                                                            >
-                                                                                {isProcessingPromotion ? '🔒' : '🗑️'}
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                });
-                                            })()}
-
-                                            {transactions.length > txLimit && (
-                                                <tr>
-                                                    <td colSpan={5} style={{ padding: '1rem', textAlign: 'center' }}>
-                                                        <button onClick={() => setTxLimit(prev => prev + 20)} className="btn btn-outline" style={{ width: '100%', fontSize: '0.8rem' }}>
-                                                            Load More Transactions ({transactions.length - txLimit} remaining)
-                                                        </button>
-                                                    </td>
+                                <div style={{ background: 'rgba(255,255,255,0.01)', border: PREMIUM_BORDER, borderRadius: '24px', overflow: 'hidden' }}>
+                                    <div className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-premium">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-white/[0.02]">
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500">Date</th>
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500">Particulars</th>
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500">Method / Ref</th>
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500 text-right">Amount</th>
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500 text-center">Status</th>
+                                                    <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500 text-right">Actions</th>
                                                 </tr>
-                                            )}
+                                            </thead>
+                                            <tbody style={{ fontSize: '0.85rem' }}>
+                                                {(() => {
+                                                    // Handle filtering and sorting (transactions state is already filtered by term context)
+                                                    const sorted = [...transactions].sort((a, b) => new Date(b.date || "").getTime() - new Date(a.date || "").getTime());
+                                                    const visible = sorted.slice(0, txLimit);
 
-                                            {entryLevelFilter === 'Current' && (
-                                                <tr>
-                                                    <td colSpan={5} style={{ padding: '1rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                                        <button
-                                                            onClick={() => {
-                                                                const historyTerms = selectedStudent.promotionHistory?.map(h => h.fromSemester) || [];
-                                                                if (historyTerms.length > 0) {
-                                                                    setEntryLevelFilter(historyTerms[historyTerms.length - 1]); // Load the first history term
-                                                                } else {
-                                                                    alert("No previous academic history found. Student is currently in their starting semester.");
-                                                                }
-                                                            }}
-                                                            className="btn btn-outline"
-                                                            style={{ color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', width: '100%', fontSize: '0.8rem' }}
-                                                        >
-                                                            📅 Load Previous Semesters' Records
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                    if (visible.length === 0) {
+                                                        return (
+                                                            <tr>
+                                                                <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', opacity: 0.4 }}>
+                                                                    No transactions found for {viewContext.targetTerm}.
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    }
+
+                                                    return visible.map((tx, idx) => {
+                                                        const isBilled = tx.type === 'Billed' || tx.type === 'billed';
+                                                        const isAdjustment = tx.type === 'adjustment' || tx.subMode === 'Balance Fix' || tx.mode === 'Balance Fix' || tx.method === 'Adjustment' || tx.type === 'Adjustment';
+
+                                                        return (
+                                                            <tr key={tx.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: isAdjustment ? 'rgba(245, 158, 11, 0.05)' : 'transparent' }}>
+                                                                <td style={{ padding: '1rem', opacity: 0.6 }}>{new Date(tx.date).toLocaleDateString()}</td>
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: tx.allocations ? '4px' : '0' }}>
+                                                                        {isAdjustment && <span title="Audit Protected Adjustment" style={{ fontSize: '1rem' }}>🔧</span>}
+                                                                        <div style={{ fontWeight: 'bold' }}>{isAdjustment && !tx.allocations ? 'Adjustment' : tx.particulars}</div>
+                                                                    </div>
+                                                                    {tx.allocations && Object.keys(tx.allocations).length > 0 ? (
+                                                                        <div style={{ fontSize: '0.75rem', borderLeft: '2px solid rgba(255,255,255,0.1)', paddingLeft: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                            {Object.entries(tx.allocations).map(([key, val]) => (
+                                                                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8, maxWidth: '240px' }}>
+                                                                                    <span>{key}</span>
+                                                                                    <span style={{ fontFamily: 'monospace' }}>{formatMoney(Number(val))}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{tx.description}</div>
+                                                                    )}
+                                                                </td>
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                        <span style={{ padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', fontSize: '0.7rem', textTransform: 'uppercase', width: 'fit-content' }}>
+                                                                            {tx.mode || tx.type}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.65rem', opacity: 0.4, marginTop: '2px', fontFamily: 'monospace' }}>{tx.reference || '-'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 'bold', color: isBilled ? '#ef4444' : '#10b981' }}>
+                                                                    {isBilled ? '+' : '-'}{formatMoney(tx.amount)}
+                                                                </td>
+                                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                                    {tx.status && (!isBilled || isAdjustment) && (
+                                                                        // Rule: In history, only show Approved. Hide Pending.
+                                                                        // In current semester, show both.
+                                                                        (viewContext.isCurrent || tx.status.toLowerCase() === 'approved') && (
+                                                                            <span style={{
+                                                                                padding: '0.25rem 0.6rem',
+                                                                                borderRadius: '20px',
+                                                                                fontSize: '0.65rem',
+                                                                                fontWeight: '900',
+                                                                                textTransform: 'uppercase',
+                                                                                letterSpacing: '0.5px',
+                                                                                background: tx.status.toLowerCase() === 'approved' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                                                                color: tx.status.toLowerCase() === 'approved' ? '#10b981' : '#f59e0b',
+                                                                                border: `1px solid ${tx.status.toLowerCase() === 'approved' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`
+                                                                            }}>
+                                                                                {tx.status.toLowerCase() === 'approved' ? '✅ Approved' : '🕒 Pending'}
+                                                                            </span>
+                                                                        )
+                                                                    )}
+                                                                </td>
+                                                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                                    {(!tx.isPseudo && (tx.type !== 'Billed' || isAdjustment)) && (
+                                                                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                                            {isDirectorView && tx.txType === 'payment' && tx.status?.toLowerCase() === 'pending' && (
+                                                                                <button
+                                                                                    onClick={() => handleApproveTransaction(tx)}
+                                                                                    className="btn btn-outline"
+                                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: '#10b981', color: '#10b981' }}
+                                                                                    title="Approve Transaction"
+                                                                                >
+                                                                                    ✅ Approve
+                                                                                </button>
+                                                                            )}
+                                                                            {!isStudentView && !isDirectorView && viewContext.isCurrent && <button onClick={() => handleEditTransaction(tx)} className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: '#3b82f6', color: '#3b82f6' }} title="Edit">✎</button>}
+                                                                            {!isStudentView && <button onClick={() => !isProcessingPromotion && printReceipt(tx)} className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: '#9ca3af', color: '#9ca3af' }} title="Print Receipt">🖨️</button>}
+                                                                            {!isStudentView && !isDirectorView && viewContext.isCurrent && selectedStudent.status !== 'graduated' && tx.status?.toLowerCase() !== 'approved' && (
+                                                                                <button
+                                                                                    onClick={() => !isProcessingPromotion && initiateDelete('transaction', String(tx.id))}
+                                                                                    disabled={isProcessingPromotion}
+                                                                                    className="btn btn-outline"
+                                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', borderColor: isProcessingPromotion ? '#444' : '#ef4444', color: isProcessingPromotion ? '#444' : '#ef4444', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
+                                                                                    title={isProcessingPromotion ? "System Locked for Promotion" : "Delete"}
+                                                                                >
+                                                                                    {isProcessingPromotion ? '🔒' : '🗑️'}
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    });
+                                                })()}
+
+                                                {transactions.length > txLimit && (
+                                                    <tr>
+                                                        <td colSpan={6} style={{ padding: '1rem', textAlign: 'center' }}>
+                                                            <button onClick={() => setTxLimit(prev => prev + 20)} className="btn btn-outline" style={{ width: '100%', fontSize: '0.8rem' }}>
+                                                                Load More Transactions ({transactions.length - txLimit} remaining)
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )}
+
+                                                {entryLevelFilter === 'Current' && (
+                                                    <tr>
+                                                        <td colSpan={6} style={{ padding: '1rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const historyTerms = selectedStudent.promotionHistory?.map(h => h.fromSemester) || [];
+                                                                    if (historyTerms.length > 0) {
+                                                                        setEntryLevelFilter(historyTerms[historyTerms.length - 1]); // Load the first history term
+                                                                    } else {
+                                                                        alert("No previous academic history found. Student is currently in their starting semester.");
+                                                                    }
+                                                                }}
+                                                                className="btn btn-outline"
+                                                                style={{ color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', width: '100%', fontSize: '0.8rem' }}
+                                                            >
+                                                                📅 Load Previous Semesters' Records
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </section>
 
                         {/* FEES STRUCTURE SECTION */}
-                        <section>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.4rem' }}>Fees Structure</h3>
-                                {entryLevelFilter === 'Current' && (
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <section className="mb-12">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-black uppercase tracking-widest m-0 leading-none">Fees Structure</h3>
+                                {!isStudentView && !isDirectorView && entryLevelFilter === 'Current' && (
+                                    <div className="flex gap-2">
                                         <select
                                             disabled={isProcessingPromotion}
-                                            className="btn btn-outline"
+                                            className="px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg text-[0.65rem] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all cursor-pointer"
                                             onChange={(e) => { if (e.target.value && !isProcessingPromotion) handleApplyBursary(e.target.value); e.target.value = ""; }}
-                                            style={{ fontSize: '0.7rem', padding: '0.4rem', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
                                         >
-                                            <option value="">{isProcessingPromotion ? '🔒 Locked' : '＋ Apply Bursary'}</option>
-                                            {bursaries.map(b => <option key={b.id} value={b.id}>{b.name} ({formatMoney(b.value)} Off)</option>)}
+                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Apply Bursary'}</option>
+                                            {bursaries.map(b => <option key={b.id} value={b.id} className="bg-slate-900">{b.name} ({formatMoney(b.value)} Off)</option>)}
                                         </select>
                                         <select
                                             disabled={isProcessingPromotion}
-                                            className="btn btn-outline"
+                                            className="px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg text-[0.65rem] font-black uppercase tracking-widest text-red-500/60 hover:text-red-500 transition-all cursor-pointer"
                                             onChange={(e) => { if (e.target.value && !isProcessingPromotion) handleBillService(e.target.value); e.target.value = ""; }}
-                                            style={{ fontSize: '0.7rem', padding: '0.4rem', borderColor: isProcessingPromotion ? '#444' : '#ef4444', color: isProcessingPromotion ? '#444' : '#ef4444', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer' }}
                                         >
-                                            <option value="">{isProcessingPromotion ? '🔒 Locked' : '＋ Bill Service'}</option>
-                                            {services.map(s => <option key={s.id} value={s.id}>{s.name} ({s.cost.toLocaleString()})</option>)}
+                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Bill Service'}</option>
+                                            {services.map(s => <option key={s.id} value={s.id} className="bg-slate-900">{s.name} ({s.cost.toLocaleString()})</option>)}
                                         </select>
                                     </div>
                                 )}
                             </div>
-                            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '1.5rem' }}>
+                            <div style={{ background: PREMIUM_GLASS, border: PREMIUM_BORDER, borderRadius: '24px', padding: '1.5rem' }}>
                                 {/* Fee Structure Display with Actual Values */}
                                 {(() => {
                                     // Find the student's programme and fee structure
@@ -1118,7 +1446,7 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                                         <span>Bursary ({bursaries.find(b => b.id === viewContext.bursaryId)?.name})</span>
                                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                                             <span>- {formatMoney(bursaries.find(b => b.id === viewContext.bursaryId)?.value || 0)}</span>
-                                            {viewContext.isCurrent && selectedStudent.status !== 'graduated' && (
+                                            {viewContext.isCurrent && !isStudentView && selectedStudent.status !== 'graduated' && (
                                                 <button
                                                     onClick={() => !isProcessingPromotion && initiateDelete('bursary', selectedStudent.bursary)}
                                                     disabled={isProcessingPromotion}
@@ -1134,15 +1462,15 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                                     const s = services.find(srv => srv.id === sid);
                                     if (!s) return null;
                                     return (
-                                        <div key={sid} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
-                                            <span>{s.name}</span>
-                                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                                <span>{formatMoney(s.cost)}</span>
-                                                {viewContext.isCurrent && selectedStudent.status !== 'graduated' && (
+                                        <div key={sid} className="flex justify-between items-center py-2 border-b border-white/[0.02] last:border-0">
+                                            <span className="text-[0.65rem] font-bold text-slate-400 uppercase tracking-widest">{s.name}</span>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-black">{formatMoney(s.cost)}</span>
+                                                {viewContext.isCurrent && !isStudentView && selectedStudent.status !== 'graduated' && (
                                                     <button
                                                         onClick={() => !isProcessingPromotion && initiateDelete('service', sid)}
                                                         disabled={isProcessingPromotion}
-                                                        style={{ color: isProcessingPromotion ? '#444' : '#ef4444', background: 'none', border: 'none', cursor: isProcessingPromotion ? 'not-allowed' : 'pointer', fontSize: '0.7rem' }}
+                                                        className="text-red-500/30 hover:text-red-500 transition-colors"
                                                     >
                                                         {isProcessingPromotion ? '🔒' : 'x'}
                                                     </button>
@@ -1160,55 +1488,116 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                     </div>
 
                     {/* RIGHT COLUMN */}
-                    <div className="w-full md:w-auto">
-                        <div className="bg-slate-900/20 p-4 md:p-8 rounded-2xl border border-slate-800 text-center mb-4 md:mb-8">
-                            <div className="text-[10px] md:text-sm opacity-50 mb-1 md:mb-2">CURRENT ARREARS</div>
-                            <div className="text-2xl md:text-4xl font-black mb-1 md:mb-2" style={{ color: outstandingBalance > 0 ? '#ef4444' : '#10b981' }}>
-                                {formatMoney(outstandingBalance)}
+                    <div className="flex flex-col gap-8">
+                        {/* ARREARS CARD */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #0f172a, #1e1b4b)',
+                            borderRadius: '32px',
+                            padding: '2rem',
+                            border: PREMIUM_BORDER,
+                            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                        }}>
+                            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                                <svg className="w-32 h-32 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg>
                             </div>
-                            <div className="text-[10px] md:text-sm opacity-50">Due Immediately</div>
+                            <h4 className="text-[0.65rem] font-black text-blue-400 uppercase tracking-[0.3em] mb-4">Current Arrears (Statement)</h4>
+                            <div className="flex flex-col items-start">
+                                <span className={`text-4xl md:text-5xl font-black tracking-tighter ${arrears > 0 ? 'text-red-500' : 'text-emerald-400'}`}>
+                                    {formatMoney(Math.abs(arrears))}
+                                </span>
+                                <span className="text-[0.6rem] font-bold text-slate-500 mt-2 uppercase tracking-widest">
+                                    {arrears > 0 ? '⚠️ Due Immediately' : '✅ Credit Balance'}
+                                </span>
+                            </div>
+
+                            <div className="mt-8 pt-6 border-t border-white/5 flex justify-between items-center">
+                                <div className="text-[0.6rem] text-slate-400 font-bold uppercase tracking-widest">
+                                    Clearance: {clearancePercentage.toFixed(1)}%
+                                </div>
+                                <div className="h-1.5 flex-1 mx-4 bg-white/5 rounded-full overflow-hidden">
+                                    <div
+                                        style={{ width: `${clearancePercentage}%`, background: clearancePercentage >= 100 ? '#10b981' : '#3b82f6' }}
+                                        className="h-full transition-all duration-1000"
+                                    ></div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* REQUIREMENTS */}
                         <section>
-                            <div className="flex items-center justify-between mb-3 md:mb-4">
-                                <h3 className="text-base md:text-lg font-bold m-0">Requirements</h3>
-                                <button onClick={() => setShowReqHistory(true)} className="text-xs md:text-sm bg-transparent border-none text-white opacity-70 cursor-pointer hover:opacity-100 transition-opacity">
-                                    📜 History
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold m-0 leading-none">Requirements</h3>
+                                <button onClick={() => setShowReqHistory(true)} className="text-[0.6rem] font-black text-slate-500 hover:text-white transition-all uppercase tracking-widest flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    History
                                 </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3 md:gap-4">
-                                {viewContext.requirements?.map((req, i) => (
-                                    <div
-                                        key={i}
-                                        className="p-3 md:p-4 rounded-xl text-center relative cursor-pointer active:scale-95 transition-transform"
-                                        style={{
-                                            background: `rgba(${parseInt(req.color.slice(1, 3), 16)}, ${parseInt(req.color.slice(3, 5), 16)}, ${parseInt(req.color.slice(5, 7), 16)}, 0.1)`,
-                                            border: `1px solid ${req.color}`,
-                                            cursor: isProcessingPromotion ? 'not-allowed' : 'pointer'
-                                        }}
-                                        onClick={() => { if (viewContext.isCurrent && !isProcessingPromotion) updateReq(req.name, 1); }}
-                                    >
-                                        <div className="text-2xl md:text-3xl font-black" style={{ color: req.color }}>{req.brought}/{req.required}</div>
-                                        <div className="text-[10px] md:text-xs opacity-70 mt-1">{req.name}</div>
-                                    </div>
-                                ))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {(selectedStudent.physicalRequirements || []).map((req, i) => {
+                                    const pct = Math.min(100, (req.brought / req.required) * 100);
+                                    return (
+                                        <div key={i} className="group cursor-pointer" onClick={() => !isStudentView && !isDirectorView && setOpenReqMenu(req.name)}>
+                                            <div style={{
+                                                background: PREMIUM_GLASS,
+                                                border: PREMIUM_BORDER,
+                                                borderRadius: '24px',
+                                                padding: '1.25rem',
+                                                transition: 'all 0.3s ease'
+                                            }} className="group-hover:bg-white/5 group-hover:border-white/10">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <span className="text-[0.55rem] font-black uppercase tracking-widest text-slate-400">{req.name}</span>
+                                                        <div className="text-lg font-black mt-1">{req.brought}<span className="text-xs opacity-30 mx-1">/</span>{req.required}</div>
+                                                    </div>
+                                                    <div style={{ color: req.color }} className="opacity-80">
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" /></svg>
+                                                    </div>
+                                                </div>
+                                                <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                    <div
+                                                        style={{ width: `${pct}%`, background: req.color }}
+                                                        className="h-full transition-all duration-700"
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </section>
 
-                        {/* SYNC HISTORY */}
-                        <div className="p-4 md:p-6 mt-4 md:mt-8 border-t border-slate-800">
-                            <h4 className="m-0 mb-3 md:mb-4 opacity-80 text-sm md:text-base">Portal Sync History</h4>
-                            {selectedStudent.postHistory && (
-                                <div className="text-xs md:text-sm opacity-60">Latest: {selectedStudent.postHistory[0]}</div>
-                            )}
-                        </div>
+                        {/* PORTAL SYNC HISTORY */}
+                        {selectedStudent.paymentRequests && selectedStudent.paymentRequests.length > 0 && (
+                            <section>
+                                <h3 className="text-xl font-bold mb-6">Portal Sync History</h3>
+                                <div className="space-y-3">
+                                    {selectedStudent.paymentRequests.slice().reverse().map((req, i) => (
+                                        <div key={i} style={{ background: PREMIUM_GLASS, border: PREMIUM_BORDER, borderRadius: '16px', padding: '1rem' }} className="flex justify-between items-center text-xs">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-2 h-2 rounded-full ${req.status === 'Approved' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
+                                                <div className="font-bold">{req.narration}</div>
+                                            </div>
+                                            <div className="text-slate-500 font-mono">{new Date(req.date).toLocaleDateString()}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
                     </div>
-
                 </div>
 
                 {/* --- MODALS --- */}
                 <TransactionFormModal isOpen={showTransModal} onClose={() => setShowTransModal(false)} student={selectedStudent} existingPayment={editingPayment} />
+
+                {reviewTx && (
+                    <ReviewModal
+                        tx={reviewTx}
+                        onClose={() => setReviewTx(null)}
+                        onAction={handleFinalApproval}
+                    />
+                )}
 
                 {/* Deleted Billings Trash Modal */}
                 {
@@ -1348,7 +1737,204 @@ export const LearnerAccountModal = ({ studentId, onClose, auditingContext }: { s
                     )
                 }
 
-            </div >
-        </div >
+                {/* Requirements History Modal */}
+                {showReqHistory && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
+                        <div style={{ background: '#111', width: '100%', maxWidth: '600px', maxHeight: '80vh', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+                            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>📜 Requirements History</h3>
+                                <button onClick={() => setShowReqHistory(false)} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer' }}>✕</button>
+                            </div>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+                                {(() => {
+                                    // Collect all entries from all requirements
+                                    const allEntries = (selectedStudent.physicalRequirements || []).flatMap(req =>
+                                        (req.entries || []).map(entry => ({ ...entry, itemName: req.name, color: req.color }))
+                                    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                                    if (allEntries.length === 0) {
+                                        return (
+                                            <div style={{ textAlign: 'center', opacity: 0.4, padding: '3rem' }}>
+                                                No historical entries found for requirements.
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            {allEntries.map((entry, idx) => (
+                                                <div key={idx} style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: entry.color, textTransform: 'uppercase' }}>{entry.itemName}</span>
+                                                            <span style={{ fontSize: '0.65rem', opacity: 0.4 }}>•</span>
+                                                            <span style={{ fontSize: '0.7rem', opacity: 0.4 }}>{entry.date}</span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{entry.action}</div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                        <div style={{ fontSize: '1.2rem', fontWeight: 'black', color: (entry.change || 0) > 0 ? '#10b981' : '#ef4444' }}>
+                                                            {(entry.change || 0) > 0 ? '+' : ''}{entry.change || 0}
+                                                        </div>
+                                                        {viewContext.isCurrent && !isStudentView && !isDirectorView && !isProcessingPromotion && (
+                                                            <button
+                                                                onClick={() => deleteReqEntry(entry.itemName, entry.id)}
+                                                                style={{
+                                                                    background: 'rgba(239, 68, 68, 0.1)',
+                                                                    border: 'none',
+                                                                    color: '#ef4444',
+                                                                    padding: '0.4rem',
+                                                                    borderRadius: '8px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.8rem'
+                                                                }}
+                                                                title="Delete Entry & Reverse Count"
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    if (isPage) return content;
+
+    return (
+        <div className="fixed inset-0 flex items-center justify-center p-0 md:p-4 z-[2000]" style={{ background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)' }}>
+            {content}
+        </div>
+    );
+};
+
+export const LearnerAccountModal = ({ studentId, onClose, auditingContext, mode = 'bursar' }: { studentId: number, onClose: () => void, auditingContext?: string, mode?: 'bursar' | 'student' | 'director' }) => {
+    return (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <LearnerAccountCore studentId={studentId} onClose={onClose} auditingContext={auditingContext} mode={mode} />
+        </div>
+    );
+};
+
+// --- SUB-COMPONENT: Forensic Review Modal ---
+const ReviewModal = ({ tx, onClose, onAction }: { tx: any, onClose: () => void, onAction: (note: string, files: string[]) => void }) => {
+    const [directorNote, setDirectorNote] = useState('');
+    const [files, setFiles] = useState<string[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        setIsUploading(true);
+
+        selectedFiles.forEach(file => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFiles(prev => [...prev, reader.result as string]);
+                if (selectedFiles.indexOf(file) === selectedFiles.length - 1) {
+                    setIsUploading(false);
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-up border border-slate-200">
+                <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h3 className="font-black text-slate-800 uppercase tracking-tight">Approve Transaction</h3>
+                        <p className="text-[0.6rem] font-bold text-slate-400 uppercase tracking-widest mt-1">Forensic Verification Required</p>
+                    </div>
+                    <button onClick={onClose} className="text-slate-300 hover:text-slate-600 transition-colors">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                <div className="p-8 space-y-8">
+                    {/* Amount Hero Card */}
+                    <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-xl shadow-blue-500/20 flex justify-between items-center relative overflow-hidden">
+                        <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 blur-2xl rounded-full"></div>
+                        <div className="relative">
+                            <div className="text-[0.6rem] font-black uppercase tracking-widest opacity-60 mb-1">Impact Value</div>
+                            <div className="text-2xl font-black">{formatMoney(tx.amount)}</div>
+                        </div>
+                        <div className="text-right relative">
+                            <div className="text-[0.6rem] font-black uppercase tracking-widest opacity-60 mb-1">Student</div>
+                            <div className="text-sm font-bold truncate max-w-[150px]">{tx.studentName}</div>
+                        </div>
+                    </div>
+
+                    {/* Bursar's Original Reason */}
+                    <div>
+                        <label className="block text-[0.65rem] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Context (From Bursar)</label>
+                        <div className="p-4 bg-slate-50 rounded-2xl text-xs font-semibold text-slate-600 italic border border-slate-100">
+                            "{tx.particulars || tx.description || 'No description provided.'}"
+                        </div>
+                    </div>
+
+                    {/* Director's Note */}
+                    <div>
+                        <label className="block text-[0.65rem] font-black text-slate-700 uppercase tracking-widest mb-2 ml-1">Director's Review Note</label>
+                        <textarea
+                            className="w-full border-2 border-slate-100 bg-slate-50 rounded-2xl p-4 text-xs font-bold text-slate-800 focus:border-blue-500 focus:bg-white outline-none transition-all placeholder:opacity-30"
+                            rows={3}
+                            value={directorNote}
+                            onChange={(e) => setDirectorNote(e.target.value)}
+                            placeholder="Add your auditing comments here..."
+                        ></textarea>
+                    </div>
+
+                    {/* Attachments */}
+                    <div>
+                        <label className="block text-[0.65rem] font-black text-slate-700 uppercase tracking-widest mb-2 ml-1">Verification Proof (Attachments)</label>
+                        <input type="file" id="modal-file-upload" className="hidden" multiple onChange={handleFileChange} />
+                        <label htmlFor="modal-file-upload" className="block border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50 hover:border-blue-300 transition-all cursor-pointer group">
+                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                                <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                            </div>
+                            <span className="text-[0.65rem] font-black text-blue-600 uppercase tracking-widest">Click to Upload Proof</span>
+                            <p className="text-[0.5rem] font-bold text-slate-400 uppercase mt-1">Images or Documents Accepted</p>
+                        </label>
+
+                        {/* Preview */}
+                        {files.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {files.map((f, i) => (
+                                    <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-200 shadow-sm group">
+                                        <img src={f.startsWith('data:image') ? f : '/file-icon.png'} className="w-full h-full object-cover" />
+                                        <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} className="absolute inset-0 bg-red-500/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[0.65rem] font-black uppercase tracking-widest hover:bg-slate-100 transition-all"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => onAction(directorNote, files)}
+                        disabled={!directorNote.trim() || isUploading}
+                        className="flex-[1.5] py-4 bg-blue-600 text-white rounded-2xl text-[0.65rem] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-500 hover:-translate-y-1 active:translate-y-0 transition-all disabled:opacity-30 disabled:grayscale disabled:pointer-events-none"
+                    >
+                        Confirm & Approve
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };

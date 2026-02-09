@@ -4,17 +4,17 @@
 The login system is an intelligent "Traffic Controller". It doesn't just let people in; it decides *where* they go based on who they are.
 
 ### The Flow
-1.  **Input**: User enters `username` + `password`.
+1.  **Input**: User enters `Email` + `Password`.
 2.  **Verification (The Guard)**:
-    *   The app sends these credentials securely to **AWS Cognito** (Amazon Web Services).
-    *   AWS checks its secure vault.
-    *   **Success**: AWS returns a digital "Access Key" (Token).
-    *   **Failure**: AWS returns an error (WRONG_PASSWORD).
+    *   The app sends these credentials securely to **Supabase Auth**.
+    *   Supabase checks its encrypted vault.
+    *   **Success**: Supabase returns a digital "Access Token" and User Identity.
+    *   **Failure**: Supabase returns an error (Invalid Login Credentials).
 3.  **Inspection (The Role Check)**:
-    *   The app looks inside the digital "Access Key".
-    *   It finds a specific stamp called `nickname`.
-    *   We use this `nickname` field to store the Role: "Director", "Bursar", "Student", or "Tutor".
+    *   The app looks inside the User Metadata.
+    *   It finds a specific stamp called `role`: "Developer", "Director", "Bursar", "Student", or "Tutor".
 4.  **Routing (The Traffic Cop)**:
+    *   **If 'Developer'**: Redirect to `/developer`. (Dedicated Private Portal)
     *   **If 'Director'**: Redirect to `/portal` (Staff Selection).
     *   **If 'Student'**: Redirect to `/student` (Student Dashboard).
     *   **If 'Tutor'**: Redirect to `/tutor` (Tutor Dashboard).

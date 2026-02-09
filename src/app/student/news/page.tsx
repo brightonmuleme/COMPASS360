@@ -12,7 +12,8 @@ import {
     Clock,
     AlertCircle,
     Newspaper,
-    Lightbulb
+    Lightbulb,
+    ShieldCheck
 } from "lucide-react";
 import Link from 'next/link';
 
@@ -31,6 +32,7 @@ export default function NewsAndSuggestions() {
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [lastSubmitTime, setLastSubmitTime] = useState<number>(0);
     const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const closeButtonRef = useRef<HTMLButtonElement>(null);
 
     // --- LINKED STUDENT AUTH ---
@@ -100,12 +102,22 @@ export default function NewsAndSuggestions() {
         setTimeout(() => setIsSubmitted(false), 3000);
     };
 
+    const hasActivePass = studentProfile.subscriptionStatus === 'active';
+
+    const handleNewsClick = (item: any) => {
+        if (!hasActivePass) {
+            setShowUpgradeModal(true);
+            return;
+        }
+        setSelectedNews(item.id);
+    };
+
     const filteredNews = news
-        .filter((n: any) => n.isGlobal || n.schoolId === studentProfile.schoolId)
+        .filter((n: any) => n.schoolId === studentProfile.schoolId)
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const mySuggestions = suggestions
-        .filter((s: any) => s.studentId === studentProfile.id && (!s.schoolId || s.schoolId === studentProfile.schoolId))
+        .filter((s: any) => s.studentId === studentProfile.id)
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // --- CONDITIONAL VIEW ---
@@ -178,8 +190,8 @@ export default function NewsAndSuggestions() {
                                 return (
                                     <div
                                         key={item.id}
-                                        className={`bg-[#181818] border ${isVeryRecent ? 'border-blue-600/50' : 'border-gray-800'} rounded-xl shadow-sm hover:shadow-xl hover:shadow-blue-900/10 hover:-translate-y-1 transition-all cursor-pointer overflow-hidden group flex flex-col h-full hover:border-gray-700`}
-                                        onClick={() => setSelectedNews(item.id)}
+                                        className={`bg-[#181818] border ${isVeryRecent ? 'border-blue-600/50' : 'border-gray-800'} rounded-xl shadow-sm hover:shadow-xl hover:shadow-blue-900/10 hover:-translate-y-1 transition-all cursor-pointer overflow-hidden group flex flex-col h-full hover:border-gray-700 ${!hasActivePass ? 'relative' : ''}`}
+                                        onClick={() => handleNewsClick(item)}
                                     >
                                         {item.mediaUrl && item.mediaType === 'image' ? (
                                             <div className="h-64 md:h-48 overflow-hidden relative">
@@ -196,12 +208,7 @@ export default function NewsAndSuggestions() {
                                                 <span>{new Date(item.date).toLocaleDateString()}</span>
                                                 <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
                                                 <span>{item.category}</span>
-                                                {item.isGlobal && (
-                                                    <>
-                                                        <span className="w-1 h-1 bg-purple-500 rounded-full"></span>
-                                                        <span className="text-purple-400 text-[10px] font-bold">🌍 Platform-Wide</span>
-                                                    </>
-                                                )}
+
                                                 {isNew && (
                                                     <>
                                                         <span className="w-1 h-1 bg-red-500 rounded-full"></span>
@@ -212,9 +219,12 @@ export default function NewsAndSuggestions() {
                                                 )}
                                             </div>
                                             <h2 className="text-xl font-bold mb-3 text-gray-200 group-hover:text-blue-400 transition-colors line-clamp-2">{item.title}</h2>
-                                            <p className="text-gray-400 text-sm line-clamp-3 mb-4 flex-grow">{item.content}</p>
-                                            <div className="mt-auto pt-4 border-t border-dashed border-gray-800 flex items-center text-blue-500 text-sm font-bold group-hover:gap-2 transition-all">
-                                                Read More <ChevronRight size={16} />
+                                            <p className={`text-gray-400 text-sm line-clamp-3 mb-4 flex-grow ${!hasActivePass ? 'blur-[3px] select-none opacity-50' : ''}`}>{item.content}</p>
+                                            <div className="mt-auto pt-4 border-t border-dashed border-gray-800 flex items-center justify-between">
+                                                <div className="flex items-center text-blue-500 text-sm font-bold group-hover:gap-2 transition-all">
+                                                    {hasActivePass ? 'Read More' : 'Unlock Content'} <ChevronRight size={16} />
+                                                </div>
+                                                {!hasActivePass && <ShieldCheck size={14} className="text-gray-600" />}
                                             </div>
                                         </div>
                                     </div>
@@ -391,17 +401,19 @@ export default function NewsAndSuggestions() {
                                                 )}
                                                 <h3 className="font-bold text-gray-200 mb-2 group-hover:text-blue-400 transition-colors">{s.title}</h3>
                                                 <p className="text-gray-400 text-sm mb-4 line-clamp-3 leading-relaxed bg-[#121212]/50 p-2 rounded">{s.content}</p>
-                                                {s.adminResponse && (
-                                                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-3">
+                                                {s.feedback && (
+                                                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 mb-3">
                                                         <div className="flex items-center gap-2 mb-1">
-                                                            <MessageSquare size={12} className="text-blue-400" />
-                                                            <span className="text-[10px] font-bold text-blue-400 uppercase">Admin Response</span>
+                                                            <MessageSquare size={12} className="text-emerald-400" />
+                                                            <span className="text-[10px] font-bold text-emerald-400 uppercase">Administrator's Response</span>
                                                         </div>
-                                                        <p className="text-sm text-blue-300/90">{s.adminResponse}</p>
-                                                        {s.respondedAt && (
-                                                            <span className="text-[9px] text-blue-400/60 mt-1 block">
-                                                                {new Date(s.respondedAt).toLocaleDateString()}
-                                                            </span>
+                                                        <p className="text-sm text-emerald-300/90 italic font-medium">"{s.feedback}"</p>
+                                                        {s.feedbackDate && (
+                                                            <div className="mt-2 flex justify-end">
+                                                                <span className="text-[9px] text-emerald-400/60 uppercase font-black tracking-widest">
+                                                                    Replied {s.feedbackDate.split('T')[0]}
+                                                                </span>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}
@@ -412,6 +424,44 @@ export default function NewsAndSuggestions() {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* UPGRADE MODAL */}
+                {showUpgradeModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" onClick={() => setShowUpgradeModal(false)}>
+                        <div className="bg-[#0a0a0a] w-full max-w-md rounded-[2.5rem] border border-white/10 p-10 text-center shadow-2xl relative overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+
+                            <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20 shadow-inner">
+                                <Newspaper size={40} className="text-blue-500" />
+                            </div>
+
+                            <h2 className="text-3xl font-black mb-4 tracking-tight">Premium Content</h2>
+                            <p className="text-gray-400 mb-10 leading-relaxed">
+                                Full access to institutional news, official announcements, and campus updates is reserved for <span className="text-white font-bold italic">App Pass</span> subscribers.
+                            </p>
+
+                            <div className="space-y-3">
+                                <Link
+                                    href="/student/plans"
+                                    className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black hover:bg-blue-500 transition-all block uppercase tracking-[0.2em] text-[10px] shadow-xl shadow-blue-500/20 active:scale-95"
+                                >
+                                    Get App Pass Now
+                                </Link>
+                                <button
+                                    onClick={() => setShowUpgradeModal(false)}
+                                    className="w-full bg-white/5 text-gray-500 py-5 rounded-2xl font-black hover:bg-white/10 transition-all uppercase tracking-[0.2em] text-[10px]"
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+
+                            <div className="mt-10 flex items-center justify-center gap-2 opacity-20">
+                                <ShieldCheck size={12} />
+                                <span className="text-[10px] font-black uppercase tracking-widest leading-none">Institutional Security Protocol</span>
                             </div>
                         </div>
                     </div>

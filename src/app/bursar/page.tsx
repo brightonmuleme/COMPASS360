@@ -134,95 +134,108 @@ export default function BursarDashboard() {
 
     // --- SKELETON LOADER ---
     const SkeletonCard = () => (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 h-[400px] animate-pulse">
+        <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 h-[450px] animate-pulse">
             <div className="flex justify-between items-start mb-8">
-                <div className="space-y-3">
-                    <div className="h-2 w-24 bg-slate-800 rounded"></div>
-                    <div className="h-6 w-40 bg-slate-800 rounded"></div>
+                <div className="space-y-4">
+                    <div className="h-2 w-24 bg-white/5 rounded-full"></div>
+                    <div className="h-10 w-48 bg-white/5 rounded-2xl"></div>
                 </div>
-                <div className="w-10 h-10 bg-slate-800 rounded-xl"></div>
+                <div className="w-14 h-14 bg-white/5 rounded-[1.5rem]"></div>
             </div>
             <div className="space-y-6">
-                <div className="h-2 w-32 bg-slate-800 rounded"></div>
-                {[1, 2, 3, 4].map(i => (
+                <div className="h-2 w-32 bg-white/5 rounded-full mb-8"></div>
+                {[1, 2, 3].map(i => (
                     <div key={i} className="flex justify-between items-center">
                         <div className="flex gap-4 items-center">
-                            <div className="w-8 h-8 rounded-lg bg-slate-800"></div>
-                            <div className="space-y-2">
-                                <div className="h-2 w-20 bg-slate-800 rounded"></div>
-                                <div className="h-1.5 w-16 bg-slate-800 rounded"></div>
+                            <div className="w-10 h-10 rounded-2xl bg-white/5"></div>
+                            <div className="space-y-3">
+                                <div className="h-2 w-24 bg-white/5 rounded-full"></div>
+                                <div className="h-1.5 w-16 bg-white/5 rounded-full opacity-50"></div>
                             </div>
                         </div>
-                        <div className="h-2 w-12 bg-slate-800 rounded"></div>
+                        <div className="h-2 w-12 bg-white/5 rounded-full"></div>
                     </div>
                 ))}
             </div>
-            <div className="mt-auto pt-6 border-t border-slate-800 flex justify-between">
-                <div className="h-2 w-20 bg-slate-800 rounded"></div>
-                <div className="h-3 w-3 bg-slate-800 rounded"></div>
+            <div className="mt-auto pt-8 border-t border-white/5 flex justify-between">
+                <div className="h-2 w-24 bg-white/5 rounded-full"></div>
+                <div className="h-4 w-4 bg-white/5 rounded-lg"></div>
             </div>
         </div>
     );
 
     // --- RENDER HELPERS ---
 
-    const StatCard = ({ title, value, subtitle, colorClass, icon: Icon, onClick, feed, isMonetary = true }: any) => (
+    const StatCard = ({ title, value, subtitle, colorClass, icon: Icon, onClick, feed, isMonetary = true, trend = "+0.0%" }: any) => (
         <div
             onClick={onClick}
-            className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 md:p-6 shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col min-h-0 md:min-h-[400px] backdrop-blur-sm active:scale-[0.98]"
+            className="relative overflow-hidden bg-white/5 dark:bg-slate-950/40 border border-white/10 dark:border-white/[0.08] rounded-[2.5rem] p-8 shadow-2xl hover:shadow-blue-500/10 transition-all cursor-pointer group flex flex-col min-h-[450px] backdrop-blur-3xl active:scale-[0.98] hover:-translate-y-2"
         >
-            <div className="border-b border-slate-100 dark:border-slate-800/50 pb-3 md:pb-5 mb-3 md:mb-5 flex justify-between items-start">
+            {/* Ambient Glow behind card */}
+            <div className={`absolute -top-32 -right-32 w-64 h-64 rounded-full blur-[100px] opacity-10 group-hover:opacity-30 transition-opacity ${colorClass.replace('text-', 'bg-')}`} />
+
+            <div className="relative z-10 border-b border-white/5 pb-8 mb-8 flex justify-between items-start">
                 <div>
-                    <span className="text-[9px] md:text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-[0.2em]">{title}</span>
-                    <div className={`text-lg md:text-2xl font-black mt-1 md:mt-2 tracking-tight ${colorClass}`}>
-                        {isMonetary ? formatMoney(value) : (value > 0 ? value : "LIVE FEED")}
+                    <div className="flex items-center gap-3">
+                        <span className="text-[10px] uppercase font-black text-slate-500 tracking-[0.4em] font-heading">{title}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20`}>{trend}</span>
+                    </div>
+                    <div className={`text-4xl font-black mt-3 tracking-tighter bg-gradient-to-br from-white via-white to-white/40 bg-clip-text text-transparent group-hover:to-white transition-all duration-500 leading-tight`}>
+                        {isMonetary ? formatMoney(value) : (value > 0 ? value : "SYSTEM FEED")}
                     </div>
                 </div>
-                <div className={`p-1.5 md:p-2.5 rounded-lg md:rounded-xl ${colorClass.replace('text-', 'bg-').split(' ')[0]} bg-opacity-10 dark:bg-opacity-20 transition-all group-hover:scale-110 group-hover:rotate-3`}>
-                    <Icon size={18} className="md:w-[22px] md:h-[22px]" />
+                <div className={`p-4 rounded-[1.5rem] ${colorClass.replace('text-', 'bg-').split(' ')[0]} bg-opacity-10 backdrop-blur-md border border-white/10 shadow-lg shadow-black/20 transition-all duration-500 group-hover:scale-110 group-hover:rotate-12`}>
+                    <Icon size={28} className={colorClass} />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                <h4 className="text-[9px] md:text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 md:mb-4 flex items-center gap-1.5">
-                    <Activity size={10} className="text-slate-400 md:w-3 md:h-3" /> {subtitle}
+            <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase mb-6 flex items-center gap-3 tracking-[0.2em]">
+                    <Activity size={12} className={colorClass} /> {subtitle}
                 </h4>
-                <div className="space-y-2 md:space-y-4">
+                <div className="space-y-5">
                     {feed && feed.length > 0 ? feed.map((item: any) => (
-                        <div key={item.id} className="flex justify-between items-center group/item p-0.5">
-                            <div className="flex gap-2.5 md:gap-4 items-center min-w-0">
-                                <div className="w-7 h-7 md:w-8 md:h-8 flex-shrink-0 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-sm md:text-lg border border-slate-100 dark:border-slate-700/50">
+                        <div key={item.id} className="flex justify-between items-center group/item p-2 hover:bg-white/[0.04] rounded-2xl transition-all duration-300 transform-gpu hover:translate-x-1">
+                            <div className="flex gap-4 items-center min-w-0">
+                                <div className="w-10 h-10 flex-shrink-0 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center text-2xl shadow-inner relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover/item:opacity-100 transition-opacity" />
                                     {Icon === Package ? "📦" : Icon === Receipt ? "📄" : Icon === Wallet ? "💵" : "🔌"}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] md:text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{item.studentName || item.label}</div>
-                                    <div className="text-[9px] text-slate-500 dark:text-slate-500 truncate leading-tight mt-0.5">{item.description || item.studentName}</div>
+                                    <div className="text-xs font-bold text-white/90 truncate group-hover/item:text-white transition-colors">{item.studentName || item.label}</div>
+                                    <div className="text-[10px] text-slate-500 truncate leading-tight mt-1 font-semibold tracking-wide">{item.description || item.studentName}</div>
                                 </div>
                             </div>
-                            <div className={`text-[11px] md:text-xs font-black ${colorClass} flex-shrink-0 ml-2`}>
-                                {Icon === Package ? `${item.brought} pc(s)` : formatMoney(item.amount)}
+                            <div className={`text-xs font-black ${colorClass} flex-shrink-0 ml-3 drop-shadow-md`}>
+                                {Icon === Package ? `${item.brought} pc(s)` : formatMoney(item.amount).replace('UGX', '').trim()}
                             </div>
                         </div>
                     )) : (
-                        <div className="text-center py-8 md:py-16 text-slate-300 dark:text-slate-700 italic text-[10px]">
-                            No active records.
+                        <div className="flex flex-col items-center justify-center py-12 text-slate-700 italic border-2 border-dashed border-white/[0.03] rounded-3xl opacity-50">
+                            <span className="text-xl mb-2">📡</span>
+                            <span className="text-[10px] font-bold tracking-widest uppercase">Waiting for broadcast...</span>
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className="mt-3 md:mt-5 pt-2.5 md:pt-4 border-t border-slate-50 dark:border-slate-800/50 flex items-center justify-between text-[9px] md:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                <span className="group-hover:text-blue-500 transition-colors">Explorer Archive</span>
-                <ArrowUpRight size={12} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform md:w-[14px] md:h-[14px]" />
+            <div className="relative z-10 mt-8 pt-6 border-t border-white/5 flex items-center justify-between text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                <span className="group-hover:text-white transition-colors cursor-pointer">Deep Analytics</span>
+                <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-all border border-white/5 group-hover:border-white/10">
+                    <ArrowUpRight size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </div>
             </div>
+
+            {/* Animated Bottom Progress Bar Effect */}
+            <div className={`absolute bottom-0 left-0 h-[3px] w-0 group-hover:w-full transition-all duration-700 ease-in-out ${colorClass.replace('text-', 'bg-')}`} />
         </div>
     );
 
     if (!hydrated) {
         return (
-            <div className="pb-16 max-w-[1400px] mx-auto p-4 md:p-8">
-                <div className="h-10 w-64 bg-slate-900 animate-pulse rounded mb-10"></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="pb-16 max-w-[1400px] mx-auto p-12">
+                <div className="h-16 w-96 bg-slate-900/50 animate-pulse rounded-[2rem] mb-16"></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                     {[1, 2, 3, 4, 5, 6].map(i => <SkeletonCard key={i} />)}
                 </div>
             </div>
@@ -230,37 +243,53 @@ export default function BursarDashboard() {
     }
 
     if (activeRole !== 'Bursar') {
-        return <div className="p-8 flex items-center justify-center h-full text-gray-400">Loading module...</div>;
+        return <div className="p-12 flex items-center justify-center h-full text-gray-500 font-black uppercase tracking-widest text-[12px]">Decrypting Module Access...</div>;
     }
 
     const { totalInvoiced, totalArrears, digitalTotal, cashTotal, manualOverridesTotal } = financialMetrics!;
 
     return (
-        <div className="pb-16 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-2 duration-700">
-            <header className="mb-4 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-6">
+        <div className="min-h-screen pb-24 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            {/* Premium Decorative Mesh Background */}
+            <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
+                <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
+                <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-purple-600/10 blur-[150px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 contrast-150 brightness-100 mix-blend-overlay" />
+            </div>
+
+            <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-10 relative z-10 px-4 md:px-0">
                 <div>
-                    <h1 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                        COMMAND <span className="text-blue-600">CENTER</span>
+                    <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-6 shadow-2xl shadow-blue-500/5">
+                        <TrendingUp size={14} /> Intelligence Dashboard
+                    </div>
+                    <h1 className="text-5xl md:text-8xl font-black text-white tracking-tighter leading-none font-heading">
+                        COMMAND <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">CENTER</span>
                     </h1>
-                    <p className="text-xs md:text-base text-slate-500 dark:text-slate-400 font-medium mt-1 md:mt-2 flex items-center gap-2">
-                        <TrendingUp size={14} className="text-emerald-500 md:w-4 md:h-4" />
-                        Live financial performance & audit.
+                    <p className="text-base md:text-xl text-slate-400 font-medium mt-6 max-w-2xl leading-relaxed">
+                        Precision orchestration of fiscal cycles. Audit liquidity, mitigate exposure, and synchronize digital payment gateways in one unified high-fidelity view.
                     </p>
                 </div>
-                <div className="flex gap-2">
-                    <div className="bg-slate-100 dark:bg-slate-900 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center gap-2 md:gap-3 border border-slate-200 dark:border-slate-800">
-                        <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500">Live Sync Active</span>
+                <div className="flex gap-6">
+                    <div className="bg-white/5 backdrop-blur-2xl px-8 py-6 rounded-[2.5rem] flex items-center gap-6 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                        <div className="relative">
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 animate-ping absolute top-0 left-0 opacity-40"></div>
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 relative z-10 shadow-[0_0_20px_rgba(16,185,129,0.5)]"></div>
+                        </div>
+                        <div>
+                            <span className="block text-[10px] font-black uppercase tracking-[.2em] text-slate-500 mb-1">Global Connection</span>
+                            <span className="text-sm font-black text-white tracking-wide">Live Sync Active</span>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 relative z-10 p-4 md:p-0">
                 <StatCard
                     title="Total Invoiced"
                     value={totalInvoiced}
-                    subtitle="Recent Billings"
-                    colorClass="text-blue-500"
+                    subtitle="Performance Bench"
+                    colorClass="text-blue-400"
+                    trend="+4.2%"
                     icon={Receipt}
                     onClick={() => router.push('/bursar/transactions')}
                     feed={billingFeed}
@@ -268,8 +297,9 @@ export default function BursarDashboard() {
                 <StatCard
                     title="Total Arrears"
                     value={totalArrears}
-                    subtitle="Critical Defaulters"
-                    colorClass="text-red-500"
+                    subtitle="Exposure Risk"
+                    colorClass="text-rose-500"
+                    trend="-2.1%"
                     icon={AlertCircle}
                     onClick={() => router.push('/bursar/learners')}
                     feed={topDefaulters}
@@ -277,8 +307,9 @@ export default function BursarDashboard() {
                 <StatCard
                     title="Digital Collections"
                     value={digitalTotal}
-                    subtitle="Bank & SchoolPay Entries"
-                    colorClass="text-purple-500"
+                    subtitle="Financial Transit"
+                    colorClass="text-indigo-400"
+                    trend="+18.5%"
                     icon={BarChart3}
                     onClick={() => router.push('/bursar/transactions')}
                     feed={digitalFeed}
@@ -286,8 +317,9 @@ export default function BursarDashboard() {
                 <StatCard
                     title="Cash at Desk"
                     value={cashTotal}
-                    subtitle="Manual Cash Receipts"
-                    colorClass="text-emerald-500"
+                    subtitle="Liquidity Pulse"
+                    colorClass="text-emerald-400"
+                    trend="-0.8%"
                     icon={Wallet}
                     onClick={() => router.push('/bursar/transactions')}
                     feed={cashFeed}
@@ -295,8 +327,9 @@ export default function BursarDashboard() {
                 <StatCard
                     title="Manual Overrides"
                     value={manualOverridesTotal}
-                    subtitle="Administrative Adjustments"
-                    colorClass="text-orange-500"
+                    subtitle="Audit Adjustments"
+                    colorClass="text-amber-400"
+                    trend="+0.0%"
                     icon={TrendingUp}
                     onClick={() => router.push('/bursar/transactions')}
                     feed={[]} // Placeholder
@@ -304,8 +337,9 @@ export default function BursarDashboard() {
                 <StatCard
                     title="Inventory"
                     value={0}
-                    subtitle="Store Activity"
-                    colorClass="text-slate-600"
+                    subtitle="Resource Stockpile"
+                    colorClass="text-slate-400"
+                    trend="+12 pc"
                     icon={Package}
                     onClick={() => router.push('/bursar/inventory')}
                     feed={requirementsFeed}

@@ -15,6 +15,7 @@ export interface Transaction {
     allocations?: any;
     term?: string;
     reference?: string;
+    status?: 'pending' | 'approved' | 'rejected';
 }
 
 export const FEE_STRUCTURE: Record<string, { base: number }> = {

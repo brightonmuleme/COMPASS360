@@ -133,7 +133,8 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                                     padding: '0.75rem',
                                     borderRadius: '8px',
                                     border: '1px solid #e2e8f0',
-                                    fontSize: '1rem'
+                                    fontSize: '1rem',
+                                    color: '#1e293b'
                                 }}
                             />
                         </div>
@@ -152,7 +153,8 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                                     padding: '0.75rem',
                                     borderRadius: '8px',
                                     border: '1px solid #e2e8f0',
-                                    fontSize: '1rem'
+                                    fontSize: '1rem',
+                                    color: '#1e293b'
                                 }}
                             />
                         </div>
@@ -171,7 +173,8 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                                     padding: '0.75rem',
                                     borderRadius: '8px',
                                     border: '1px solid #e2e8f0',
-                                    fontSize: '1rem'
+                                    fontSize: '1rem',
+                                    color: '#1e293b'
                                 }}
                             />
                         </div>

@@ -5,7 +5,7 @@ import Link from 'next/link';
 export default function StaffPortalSelection() {
     const STAFF_ROLES = [
         {
-            id: 'director',
+            id: 'Director',
             title: 'School Director',
             description: 'Overview of school performance, finances, and administration.',
             icon: '👔',
@@ -13,7 +13,7 @@ export default function StaffPortalSelection() {
             href: '/admin'
         },
         {
-            id: 'bursar',
+            id: 'Bursar',
             title: 'Bursar',
             description: 'Manage school fees, payments, and financial records.',
             icon: '💰',
@@ -21,7 +21,7 @@ export default function StaffPortalSelection() {
             href: '/bursar'
         },
         {
-            id: 'registrar',
+            id: 'Registrar',
             title: 'Registrar',
             description: 'Handle student admissions, enrollments, and academic records.',
             icon: '📋',
@@ -29,7 +29,7 @@ export default function StaffPortalSelection() {
             href: '/admin/enrollment'
         },
         {
-            id: 'expense_manager',
+            id: 'Expense Manager',
             title: 'Expense Manager',
             description: 'Track school expenditures, requisitions, and budget usage.',
             icon: '📉',
@@ -37,7 +37,7 @@ export default function StaffPortalSelection() {
             href: '/bursar/expenses'
         },
         {
-            id: 'estate_manager',
+            id: 'Estate Manager',
             title: 'Estate Manager',
             description: 'Manage school inventory, assets, and estate settings.',
             icon: '🏗️',
@@ -45,7 +45,7 @@ export default function StaffPortalSelection() {
             href: '/bursar/estate-settings'
         },
         {
-            id: 'news_coordinator',
+            id: 'School News Coordinator',
             title: 'News Coordinator',
             description: 'Publish school updates, newsletters, and announcements.',
             icon: '📰',

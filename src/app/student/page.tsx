@@ -1,33 +1,49 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSchoolData } from '@/lib/store';
-import { Clock, Zap, ExternalLink } from "lucide-react";
+import { useSchoolData, NewsItem, Suggestion, formatMoney } from '@/lib/store';
+import { Clock, Zap, ExternalLink, Play, MessageSquare, Lightbulb, Wallet, ArrowRight, CheckCircle, ShieldCheck } from "lucide-react";
 
 export default function StudentDashboard() {
-    const { students, adverts, studentProfile, hydrated, appUpdates, appOffers, developerSettings, schoolProfile } = useSchoolData();
+    const {
+        students, adverts, studentProfile, hydrated,
+        appUpdates, appOffers, developerSettings,
+        schoolProfile, news, suggestions, tutors, developerProfile
+    } = useSchoolData();
     const router = useRouter();
 
-    // Derived State
+    // The Portal User Profile
     const STUDENT = students.find(s => s.id.toString() === studentProfile?.id);
-    const appName = schoolProfile?.name || "VINE Institute";
+    const appName = schoolProfile?.name || "COMPASS 360";
+
+    // Institutional Record Link
+    const isLinked = !!studentProfile.linkedStudentCode;
+    const linkedStudent = useMemo(() => {
+        if (!studentProfile.linkedStudentCode) return null;
+        return students.find(s => s.payCode === studentProfile.linkedStudentCode);
+    }, [students, studentProfile.linkedStudentCode]);
+
+    // Priority Data: Use linkedStudent (institutional record) if available
+    const displayStudent = linkedStudent || STUDENT;
 
     useEffect(() => {
-        if (hydrated && !STUDENT) {
-            router.replace('/');
+        if (hydrated) {
+            if (!STUDENT) {
+                router.replace('/');
+            }
         }
     }, [STUDENT, hydrated, router]);
 
-    // Timer Logic
+    // Timer Logic - Tied to institutional record primarily
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
     useEffect(() => {
-        if (!STUDENT?.subscriptionExpiry) return;
+        if (!displayStudent?.subscriptionExpiry) return;
 
         const updateTimer = () => {
             const now = new Date();
-            const expiry = new Date(STUDENT.subscriptionExpiry!);
+            const expiry = new Date(displayStudent.subscriptionExpiry!);
             const totalSeconds = Math.floor((expiry.getTime() - now.getTime()) / 1000);
 
             if (totalSeconds > 0) {
@@ -42,24 +58,36 @@ export default function StudentDashboard() {
             }
         };
 
-        const timerId = setInterval(updateTimer, 1000); // Standard 1s interval
-        updateTimer(); // Initial call
+        const timerId = setInterval(updateTimer, 1000);
+        updateTimer();
 
         return () => clearInterval(timerId);
-    }, [STUDENT]);
+    }, [displayStudent]);
+
+    const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
+
+    const checkTutorAccess = (tutorId: string) => {
+        if (SYSTEM_TUTOR_IDS.includes(tutorId)) return true;
+
+        // Priority check for institutional record subs
+        const hasFinancialSub = linkedStudent?.tutorSubscriptions?.some(sub =>
+            sub.tutorId === tutorId &&
+            sub.status === 'Active' &&
+            new Date(sub.expiryDate) > new Date()
+        );
+
+        const isSelectedSub = studentProfile.subscribedTutorIds.includes(tutorId);
+        return hasFinancialSub || isSelectedSub;
+    };
+
+    const activeTutors = useMemo(() => tutors.filter(t => checkTutorAccess(t.id) && !SYSTEM_TUTOR_IDS.includes(t.id)), [tutors, linkedStudent, studentProfile]);
 
     if (!STUDENT) return null;
 
-    // Helpers
-    const isLinked = !!studentProfile.linkedStudentCode;
-    const linkedStudent = isLinked
-        ? (students.find(s => s.payCode === studentProfile.linkedStudentCode && s.origin === 'registrar') ||
-            students.find(s => s.payCode === studentProfile.linkedStudentCode))
-        : null;
-    const isRegistrarEnrolled = isLinked && linkedStudent?.origin === 'registrar';
-
-    const isActive = studentProfile.subscriptionStatus === 'active';
-    const isTrial = studentProfile.subscriptionStatus === 'trial';
+    // Status logic: Platinum if institutional sub is active, Trial if portal sub is trial
+    const isInstitutionalActive = linkedStudent && new Date(linkedStudent.subscriptionExpiry || 0) > new Date();
+    const isActive = isInstitutionalActive || studentProfile.subscriptionStatus === 'active';
+    const isTrial = !isInstitutionalActive && studentProfile.subscriptionStatus === 'trial';
 
     // Theme Colors
     const tierGradient = isActive
@@ -71,156 +99,178 @@ export default function StudentDashboard() {
     const tierTitle = isActive ? "PLATINUM MEMBER" : isTrial ? "TRIAL ACCESS" : "MEMBERSHIP EXPIRED";
 
     return (
-        <div className="max-w-7xl mx-auto pb-16 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto pb-16 p-6 md:p-12 space-y-12 animate-fade-in">
 
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+            {/* Header + Quick Wallet */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-8 border-b border-white/5">
                 <div>
-                    <h1 className="text-3xl font-bold text-white">Welcome Back, {STUDENT.name.split(' ')[0]}</h1>
-                    <p className="text-gray-400 mt-1">Your personal learning hub at <span className="text-blue-400">{appName}</span>.</p>
+                    <h1 className="text-5xl font-black text-white tracking-tighter">Welcome, {STUDENT.name.split(' ')[0]}</h1>
+                    <p className="text-gray-500 font-medium mt-2 flex items-center gap-2">
+                        {isLinked ? <ShieldCheck size={16} className="text-blue-500" /> : <Clock size={16} className="text-gray-600" />}
+                        {isLinked ? 'Verified Academic Account' : 'Independent Learner Account'} • {schoolProfile?.name || 'COMPASS 360'}
+                    </p>
                 </div>
-                <div className={`px-4 py-2 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg ${isLinked ? (isRegistrarEnrolled ? 'bg-green-600 text-white' : 'bg-blue-600 text-white') : 'bg-gray-700 text-gray-300'
-                    }`}>
-                    {isLinked ? (isRegistrarEnrolled ? 'Verified Student' : 'School Member') : 'Independent Learner'}
-                </div>
+
+                {linkedStudent && (
+                    <div className="bg-[#111] p-6 rounded-[2.5rem] border border-white/5 flex items-center gap-8 shadow-2xl">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500">
+                                <Wallet size={24} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Compass Wallet</p>
+                                <p className="text-2xl font-black text-white">{formatMoney(linkedStudent.walletBalance || 0)}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => router.push('/student/fees')}
+                            className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-2xl transition-all hover:scale-105 active:scale-95"
+                        >
+                            <ArrowRight size={20} />
+                        </button>
+                    </div>
+                )}
             </div>
 
-            {/* Premium Card */}
-            <div className={`rounded-3xl p-8 mb-12 border border-white/10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden ${tierGradient}`}>
-                {/* Background decorative elements could go here */}
+            {/* Membership & Active Passes */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Premium Card */}
+                <div className={`lg:col-span-2 rounded-[3rem] p-10 border border-white/10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-10 relative overflow-hidden transition-all hover:shadow-blue-500/10 group ${tierGradient}`}>
+                    <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/5 blur-[100px] rounded-full" />
 
-                <div className="flex-1 min-w-[300px] z-10">
-                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/50 mb-2">Membership Status</div>
-                    <h2 className="text-4xl xs:text-5xl font-black text-white mb-4 transparent-text-gradient bg-clip-text">
-                        {tierTitle}
-                    </h2>
-                    <p className="text-blue-100/70 max-w-md mb-8 leading-relaxed">
-                        Access unlimited resources, 24/7 AI tutor support, and premium medical library content.
-                    </p>
+                    <div className="flex-1 z-10">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-3 flex items-center gap-2">
+                            <CheckCircle size={14} /> Subscription Status
+                        </div>
+                        <h2 className="text-5xl font-black text-white mb-6">
+                            {tierTitle}
+                        </h2>
 
-                    <div className="flex items-center gap-6">
-                        <div className="text-center">
-                            <div className="text-3xl font-bold text-white">{timeLeft.days}</div>
-                            <div className="text-[10px] uppercase text-white/40 font-bold">Days Left</div>
+                        <div className="flex items-center gap-10">
+                            <div>
+                                <div className="text-4xl font-black text-white">{timeLeft.days}</div>
+                                <div className="text-[10px] uppercase text-white/40 font-black tracking-widest mt-1">Days Left</div>
+                            </div>
+                            <div className="h-12 w-px bg-white/10"></div>
+                            <div>
+                                <div className="text-4xl font-black text-white">{timeLeft.hours}</div>
+                                <div className="text-[10px] uppercase text-white/40 font-black tracking-widest mt-1">Hours</div>
+                            </div>
                         </div>
-                        <div className="h-8 w-px bg-white/10"></div>
-                        <div className="text-center">
-                            <div className="text-3xl font-bold text-white">{timeLeft.hours}</div>
-                            <div className="text-[10px] uppercase text-white/40 font-bold">Hours</div>
-                        </div>
-                        {timeLeft.days === 0 && (
-                            <>
-                                <div className="h-8 w-px bg-white/10"></div>
-                                <div className="text-center">
-                                    <div className="text-3xl font-bold text-red-400">{timeLeft.minutes}</div>
-                                    <div className="text-[10px] uppercase text-white/40 font-bold">Mins</div>
-                                </div>
-                            </>
-                        )}
+                    </div>
+
+                    <div className="z-10 w-full md:w-auto space-y-4">
+                        <button
+                            onClick={() => router.push('/student/fees')}
+                            className="w-full md:w-auto bg-white text-blue-900 px-10 py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-gray-100 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3"
+                        >
+                            Top Up & Renew <Zap size={16} className="fill-blue-900" />
+                        </button>
+                        <p className="text-center text-[10px] text-white/40 font-bold uppercase tracking-widest">
+                            Secure Mobile Money Link
+                        </p>
                     </div>
                 </div>
 
-                <div className="z-10 w-full md:w-auto">
-                    <button
-                        onClick={() => router.push('/student/fees')}
-                        className="w-full md:w-auto bg-white text-blue-900 px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
-                    >
-                        Renew Now <Zap size={18} className="text-yellow-500 fill-yellow-500" />
-                    </button>
-                    <p className="text-center text-xs text-white/40 mt-3 font-medium">
-                        Secure payment via Mobile Money
-                    </p>
-                </div>
-            </div>
-
-            {/* Link CTA */}
-            {!isLinked && (
-                <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/50 p-8 mb-12 flex flex-col sm:flex-row items-center justify-between gap-6">
-                    <div>
-                        <h3 className="text-xl font-bold text-white mb-1">Unlock Your Full School Experience</h3>
-                        <p className="text-gray-400 text-sm">Link your official school code to sync results and billing.</p>
-                    </div>
-                    <button
-                        onClick={() => router.push('/student/profile')}
-                        className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all"
-                    >
-                        Link Account
-                    </button>
-                </div>
-            )}
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-
-                {/* News Column */}
-                <div className="space-y-6">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Clock size={20} className="text-blue-500" /> Latest Updates
+                {/* Subscribed Tutors Quick Access */}
+                <div className="bg-[#0f0f0f] border border-white/5 rounded-[3rem] p-8 flex flex-col justify-center">
+                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <Play size={14} className="text-blue-500" /> Active Creator Passes
                     </h3>
 
-                    {appUpdates.length === 0 ? (
-                        <div className="p-6 rounded-2xl bg-[#181818] border border-gray-800 text-center text-gray-500 text-sm">
-                            No updates available.
+                    {activeTutors.length > 0 ? (
+                        <div className="space-y-4">
+                            {activeTutors.slice(0, 3).map(tutor => (
+                                <Link href="/student/resources" key={tutor.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all group">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-xs font-black">
+                                            {tutor.name[0]}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-white text-sm group-hover:text-blue-400 transition-colors">{tutor.name}</p>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase">{tutor.department}</p>
+                                        </div>
+                                    </div>
+                                    <ArrowRight size={16} className="text-gray-700 group-hover:text-white transition-all transform group-hover:translate-x-1" />
+                                </Link>
+                            ))}
+                            {activeTutors.length > 3 && (
+                                <Link href="/student/tutors" className="text-center block py-2 text-[10px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-400">
+                                    View {activeTutors.length - 3} more passes
+                                </Link>
+                            )}
                         </div>
                     ) : (
-                        appUpdates.map(news => (
-                            <div key={news.id} className="p-6 rounded-2xl bg-[#181818] border-l-4 border-gray-800 hover:border-gray-700 transition-colors" style={{ borderLeftColor: news.color }}>
-                                <div className="flex justify-between items-center mb-3">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white/5" style={{ color: news.color }}>
-                                        {news.type}
-                                    </span>
-                                    <span className="text-xs text-gray-500">{news.date}</span>
-                                </div>
-                                <h4 className="font-bold text-white mb-2">{news.title}</h4>
-                                <p className="text-sm text-gray-400 leading-relaxed">{news.content}</p>
-                            </div>
-                        ))
+                        <div className="text-center py-8">
+                            <p className="text-gray-600 text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                                No active tutor passes.<br />Visit Tutor Pulse to explore.
+                            </p>
+                        </div>
                     )}
                 </div>
+            </div>
 
-                {/* Offers Column */}
-                <div className="space-y-6">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Zap size={20} className="text-pink-500" /> Special Offers
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 pt-12 border-t border-white/5">
+
+                {/* News & Announcements Column */}
+                <div className="space-y-10">
+                    <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                        <Clock size={16} className="text-blue-500" /> Latest Feed
                     </h3>
 
-                    <div className="space-y-4">
-                        {appOffers.map(offer => (
-                            <div key={offer.id} className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-pink-600 to-rose-700 text-white shadow-lg">
-                                <div className="relative z-10">
-                                    <div className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Limited Time</div>
-                                    <h4 className="text-2xl font-black mb-2">{offer.title}</h4>
-                                    <p className="text-sm opacity-90 mb-4">{offer.description}</p>
-                                    <div className="inline-block bg-white/20 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-mono">
-                                        Code: {offer.code}
-                                    </div>
+                    <div className="space-y-6">
+                        {news.filter((n: NewsItem) => n.schoolId === schoolProfile?.id).map((item: NewsItem) => (
+                            <div key={item.id} className="p-8 rounded-[2rem] bg-[#0f0f0f] border border-white/5 hover:border-white/10 transition-all group relative overflow-hidden">
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-white/5 ${item.category === 'Academic' ? 'text-blue-400' : 'text-purple-400'}`}>
+                                        {item.category}
+                                    </span>
+                                    <span className="text-[10px] text-gray-600 font-bold">{item.date}</span>
                                 </div>
-                                <div className="absolute -right-4 -bottom-4 text-9xl font-black opacity-10 rotate-12">%</div>
+                                <h4 className="font-black text-lg text-white mb-2 leading-tight group-hover:text-blue-400 transition-colors">{item.title}</h4>
+                                <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">{item.content}</p>
                             </div>
                         ))}
                     </div>
+                </div>
 
-                    {/* Sponsored Ad */}
-                    {adverts.length > 0 && (
-                        <div className="mt-8 pt-8 border-t border-gray-800">
-                            <div className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-4">Sponsored</div>
-                            <div className="grid gap-4">
-                                {adverts.map(ad => (
-                                    <div key={ad.id} className="flex gap-4 items-start p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
-                                        {ad.imageUrl && (
-                                            <div className="w-16 h-12 rounded-lg bg-gray-800 overflow-hidden">
-                                                <img src={ad.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
-                                            </div>
-                                        )}
-                                        <div>
-                                            <h4 className="font-bold text-blue-400 text-sm">{ad.schoolName}</h4>
-                                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{ad.title}</p>
-                                        </div>
+                {/* Offers Column */}
+                <div className="space-y-10">
+                    <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                        <Zap size={16} className="text-rose-500" /> Special Offers
+                    </h3>
+
+                    <div className="space-y-6">
+                        {appOffers.map(offer => (
+                            <div key={offer.id} className="relative overflow-hidden rounded-[2rem] p-8 bg-gradient-to-br from-rose-600 to-rose-800 text-white shadow-xl shadow-rose-900/10 transition-transform hover:scale-[1.02]">
+                                <div className="relative z-10">
+                                    <h4 className="text-2xl font-black mb-2 tracking-tighter">{offer.title}</h4>
+                                    <p className="text-xs font-bold opacity-80 mb-6">{offer.description}</p>
+                                    <div className="inline-flex items-center gap-2 bg-black/20 backdrop-blur-md px-4 py-2 rounded-xl text-[10px] font-black tracking-widest border border-white/10 uppercase">
+                                        Code: {offer.code}
                                     </div>
-                                ))}
+                                </div>
+                                <div className="absolute -right-6 -bottom-6 text-9xl font-black opacity-10 rotate-12">%</div>
                             </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Community & Suggestions Column */}
+                <div className="space-y-10">
+                    <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                        <MessageSquare size={16} className="text-amber-500" /> Experience Box
+                    </h3>
+
+                    <Link href="/student/news?tab=suggestions" className="block p-8 rounded-[2rem] bg-[#111] border border-amber-500/10 hover:border-amber-500/30 transition-all group">
+                        <Lightbulb size={32} className="text-amber-500 mb-6" />
+                        <h4 className="font-black text-xl text-white mb-2 decoration-amber-500 group-hover:underline">Have an Idea?</h4>
+                        <p className="text-xs font-bold text-gray-600 leading-relaxed mb-6 uppercase tracking-widest">Share feedback with faculty</p>
+                        <div className="text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                            Launch Box <ArrowRight size={14} />
                         </div>
-                    )}
+                    </Link>
                 </div>
             </div>
         </div>

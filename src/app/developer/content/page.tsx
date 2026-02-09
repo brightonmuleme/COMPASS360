@@ -3,7 +3,11 @@ import React, { useState } from 'react';
 import { useSchoolData, LandingPageRoleContent, FeaturedSchool } from '@/lib/store';
 
 export default function ContentManager() {
-    const { landingPageContent, updateLandingPageContent, featuredSchools, updateFeaturedSchools } = useSchoolData();
+    const {
+        landingPageContent, updateLandingPageContent,
+        featuredSchools, updateFeaturedSchools,
+        developerSettings, updateDeveloperSettings
+    } = useSchoolData();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<LandingPageRoleContent | null>(null);
 
@@ -31,9 +35,34 @@ export default function ContentManager() {
         reader.readAsDataURL(file);
     };
 
+    const handleWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            const currentWallpapers = developerSettings?.wallpapers || [];
+            updateDeveloperSettings({
+                ...developerSettings,
+                wallpapers: [...currentWallpapers, base64String]
+            });
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const removeWallpaper = (index: number) => {
+        const currentWallpapers = [...(developerSettings?.wallpapers || [])];
+        currentWallpapers.splice(index, 1);
+        updateDeveloperSettings({
+            ...developerSettings,
+            wallpapers: currentWallpapers
+        });
+    };
+
     const handleEdit = (role: LandingPageRoleContent) => {
         setEditingId(role.id);
-        setFormData({ ...role }); // Clone Deeply if needed, but shallow is fine for strings
+        setFormData({ ...role });
     };
 
     const handleSave = () => {
@@ -63,29 +92,103 @@ export default function ContentManager() {
 
     return (
         <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-            <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem' }}>Landing Page Content</h1>
+            <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem', color: '#0f172a' }}>Landing Page Content</h1>
 
-            {/* Portal Sections (Existing) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Backdrop Wallpapers Section */}
+            <div style={{
+                background: 'white',
+                padding: '2.5rem',
+                borderRadius: '2rem',
+                boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)',
+                border: '1px solid #f1f5f9',
+                marginBottom: '3rem'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
+                    <div>
+                        <h2 style={{ fontSize: '1.2rem', margin: 0, fontWeight: '900', color: '#0f172a' }}>Hero Background Wallpapers</h2>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>These images will cycle in a cinematic slideshow on the landing page.</p>
+                    </div>
+                    <label style={{
+                        padding: '0.75rem 1.5rem',
+                        borderRadius: '1rem',
+                        background: '#3b82f6',
+                        color: 'white',
+                        fontWeight: '800',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase'
+                    }}>
+                        Add Wallpaper
+                        <input type="file" accept="image/*" onChange={handleWallpaperUpload} style={{ display: 'none' }} />
+                    </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1.5rem' }}>
+                    {(developerSettings?.wallpapers || []).map((url, idx) => (
+                        <div key={idx} style={{ position: 'relative', borderRadius: '1.5rem', overflow: 'hidden', height: '120px', border: '1px solid #f1f5f9' }}>
+                            <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button
+                                onClick={() => removeWallpaper(idx)}
+                                style={{
+                                    position: 'absolute', top: '0.5rem', right: '0.5rem',
+                                    width: '24px', height: '24px', borderRadius: '50%',
+                                    background: 'rgba(255,0,0,0.8)', color: 'white',
+                                    border: 'none', cursor: 'pointer', fontSize: '10px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontWeight: 'bold'
+                                }}
+                            >✕</button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Portal Sections */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', marginBottom: '4rem' }}>
                 {landingPageContent.map((role) => {
                     const isEditing = editingId === role.id;
 
                     return (
-                        <div key={role.id} style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div key={role.id} style={{
+                            background: 'white',
+                            padding: '2.5rem',
+                            borderRadius: '2rem',
+                            boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)',
+                            border: '1px solid #f1f5f9'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                                     <div style={{
-                                        width: '40px', height: '40px', borderRadius: '50%', background: role.theme,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold'
+                                        width: '48px', height: '48px', borderRadius: '1rem', background: role.theme,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
+                                        fontWeight: '900', fontSize: '1.2rem'
                                     }}>
                                         {role.id[0].toUpperCase()}
                                     </div>
-                                    <h2 style={{ fontSize: '1.2rem', margin: 0, textTransform: 'capitalize' }}>{role.id} Portal Section</h2>
+                                    <div>
+                                        <h2 style={{ fontSize: '1.1rem', margin: 0, textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', color: '#1e293b' }}>
+                                            {role.id} Identity
+                                        </h2>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' }}>
+                                            Portal Landing Section
+                                        </p>
+                                    </div>
                                 </div>
                                 {!isEditing && (
                                     <button
                                         onClick={() => handleEdit(role)}
-                                        style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #e2e8f0', cursor: 'pointer', background: 'white' }}
+                                        style={{
+                                            padding: '0.6rem 1.25rem',
+                                            borderRadius: '0.75rem',
+                                            border: '1px solid #e2e8f0',
+                                            cursor: 'pointer',
+                                            background: 'white',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '800',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            color: '#64748b'
+                                        }}
                                     >
                                         Edit Content
                                     </button>
@@ -93,318 +196,159 @@ export default function ContentManager() {
                             </div>
 
                             {isEditing && formData ? (
-                                <div style={{ display: 'grid', gap: '1.5rem' }}>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '500', marginBottom: '0.5rem' }}>Heading Title</label>
-                                        <input
-                                            type="text"
-                                            value={formData.title}
-                                            onChange={(e) => handleChange('title', e.target.value)}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                                        />
+                                <div style={{ display: 'grid', gap: '2rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Hero Title</label>
+                                            <input
+                                                type="text"
+                                                value={formData.title}
+                                                onChange={(e) => handleChange('title', e.target.value)}
+                                                style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Accent Tagline</label>
+                                            <input
+                                                type="text"
+                                                value={formData.tagline}
+                                                onChange={(e) => handleChange('tagline', e.target.value)}
+                                                style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', fontSize: '0.9rem', fontWeight: '600', color: role.theme }}
+                                            />
+                                        </div>
                                     </div>
 
                                     <div>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '500', marginBottom: '0.5rem' }}>Tagline</label>
-                                        <input
-                                            type="text"
-                                            value={formData.tagline}
-                                            onChange={(e) => handleChange('tagline', e.target.value)}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '500', marginBottom: '0.5rem' }}>Description</label>
+                                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Marketing Description</label>
                                         <textarea
                                             value={formData.description}
                                             onChange={(e) => handleChange('description', e.target.value)}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', minHeight: '80px' }}
+                                            style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', minHeight: '100px', fontSize: '0.9rem', lineHeight: '1.6', color: '#475569' }}
                                         />
                                     </div>
 
                                     <div>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '500', marginBottom: '0.5rem' }}>Hero Image</label>
-                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Visual Asset</label>
+                                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                                             <div style={{ flex: 1 }}>
                                                 <input
                                                     type="file"
                                                     accept="image/*"
                                                     onChange={(e) => handleImageUpload(e, false)}
-                                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Or enter URL"
-                                                    value={formData.image}
-                                                    onChange={(e) => handleChange('image', e.target.value)}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}
+                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
                                                 />
                                             </div>
-                                            {/* Preview */}
-                                            <div style={{
-                                                width: '100px', height: '100px', borderRadius: '8px', overflow: 'hidden',
-                                                border: '1px solid #eee', background: '#f8fafc', flexShrink: 0
-                                            }}>
-                                                <img src={formData.image} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => (e.target as HTMLImageElement).src = 'https://via.placeholder.com/100?text=No+Image'} />
+                                            <div style={{ width: '140px', height: '100px', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                                                <img src={formData.image} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                             </div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '500', marginBottom: '0.5rem' }}>Key Features (Display 4)</label>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                            {formData.features.map((feat, idx) => (
-                                                <input
-                                                    key={idx}
-                                                    type="text"
-                                                    value={feat}
-                                                    onChange={(e) => handleFeatureChange(idx, e.target.value)}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                                                />
-                                            ))}
                                         </div>
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                                         <button
                                             onClick={handleSave}
-                                            style={{ padding: '0.75rem 2rem', borderRadius: '8px', background: '#10b981', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                            style={{ padding: '1rem 2.5rem', borderRadius: '1rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '900', fontSize: '0.8rem', textTransform: 'uppercase' }}
                                         >
                                             Save Changes
                                         </button>
                                         <button
                                             onClick={() => { setEditingId(null); setFormData(null); }}
-                                            style={{ padding: '0.75rem 2rem', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                            style={{ padding: '1rem 2.5rem', borderRadius: '1rem', background: '#f1f5f9', color: '#64748b', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase' }}
                                         >
                                             Cancel
                                         </button>
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', gap: '2rem' }}>
+                                <div style={{ display: 'flex', gap: '3rem', alignItems: 'center' }}>
                                     <div style={{ flex: 1 }}>
-                                        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>{role.title}</h3>
-                                        <p style={{ margin: '0 0 1rem 0', color: role.theme, fontWeight: 'bold' }}>{role.tagline}</p>
-                                        <p style={{ opacity: 0.7 }}>{role.description}</p>
+                                        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.02em' }}>{role.title}</h3>
+                                        <p style={{ margin: '0 0 1.25rem 0', color: role.theme, fontWeight: '800', fontSize: '0.9rem', textTransform: 'uppercase' }}>{role.tagline}</p>
+                                        <p style={{ margin: 0, color: '#64748b', lineHeight: '1.6', fontSize: '0.95rem', fontWeight: '500' }}>{role.description}</p>
                                     </div>
-                                    <div style={{ width: '200px' }}>
-                                        <img src={role.image} alt={role.title} style={{ width: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                    <div style={{ width: '240px', flexShrink: 0 }}>
+                                        <img src={role.image} alt={role.title} style={{ width: '100%', borderRadius: '1.5rem', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.15)', border: '4px solid white' }} />
                                     </div>
                                 </div>
                             )}
                         </div>
                     );
                 })}
+            </div>
 
-                {/* Discover Top Schools Section */}
-                <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', marginBottom: '4rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                            <div style={{
-                                width: '40px', height: '40px', borderRadius: '12px', background: '#000',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
-                            }}>
-                                🏫
-                            </div>
-                            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Discover Top Schools Section</h2>
+            {/* Discover Top Schools Section */}
+            <div style={{ background: 'white', padding: '2.5rem', borderRadius: '2rem', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9', marginBottom: '4rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{
+                            width: '40px', height: '40px', borderRadius: '12px', background: '#0f172a',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
+                        }}>
+                            🏫
                         </div>
-                        <button
-                            onClick={() => {
-                                const newSchool: FeaturedSchool = {
-                                    id: String(Date.now()),
-                                    name: 'New School',
-                                    category: 'General',
-                                    image: '/schools/1.png',
-                                    logo: '/schools/1_logo.png',
-                                    tagline: 'Excellence in education',
-                                    description: '',
-                                    contact: '',
-                                    email: '',
-                                    location: ''
-                                };
-                                updateFeaturedSchools([...featuredSchools, newSchool]);
-                            }}
-                            style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: '#000', color: 'white', border: 'none', cursor: 'pointer' }}
-                        >
-                            + Add School
-                        </button>
+                        <h2 style={{ fontSize: '1.2rem', margin: 0, fontWeight: '900', color: '#0f172a' }}>Featured Schools Directory</h2>
                     </div>
+                </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        {featuredSchools.map((school: FeaturedSchool, index: number) => {
-                            const isEditingSchool = editingSchoolId === school.id;
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {featuredSchools.map((school: FeaturedSchool) => {
+                        const isEditingSchool = editingSchoolId === school.id;
 
-                            return (
-                                <div key={school.id} style={{ border: '1px solid #f1f5f9', borderRadius: '12px', padding: '1.5rem' }}>
-                                    {isEditingSchool ? (
-                                        <div style={{ display: 'grid', gap: '1rem' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>School Name</label>
-                                                    <input
-                                                        type="text"
-                                                        value={schoolFormData?.name || ''}
-                                                        onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, name: e.target.value } : null)}
-                                                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Category</label>
-                                                    <input
-                                                        type="text"
-                                                        value={schoolFormData?.category || ''}
-                                                        onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, category: e.target.value } : null)}
-                                                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Tagline</label>
-                                                <input
-                                                    type="text"
-                                                    value={schoolFormData?.tagline || ''}
-                                                    onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, tagline: e.target.value } : null)}
-                                                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                />
-                                            </div>
-
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>School Image</label>
-                                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                                        <div style={{ flex: 1 }}>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                onChange={(e) => handleImageUpload(e, true, false)}
-                                                                style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                            />
-                                                            <input
-                                                                type="text"
-                                                                placeholder="Or enter URL"
-                                                                value={schoolFormData?.image || ''}
-                                                                onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, image: e.target.value } : null)}
-                                                                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}
-                                                            />
-                                                        </div>
-                                                        <div style={{ width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', flexShrink: 0 }}>
-                                                            <img src={schoolFormData?.image || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => (e.target as HTMLImageElement).src = 'https://via.placeholder.com/60?text=No+Img'} />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>School Logo</label>
-                                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                                        <div style={{ flex: 1 }}>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                onChange={(e) => handleImageUpload(e, true, true)}
-                                                                style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                            />
-                                                            <input
-                                                                type="text"
-                                                                placeholder="Or enter URL"
-                                                                value={schoolFormData?.logo || ''}
-                                                                onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, logo: e.target.value } : null)}
-                                                                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}
-                                                            />
-                                                        </div>
-                                                        <div style={{ width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', flexShrink: 0 }}>
-                                                            <img src={schoolFormData?.logo || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => (e.target as HTMLImageElement).src = 'https://via.placeholder.com/60?text=No+Logo'} />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Email</label>
-                                                    <input
-                                                        type="email"
-                                                        value={schoolFormData?.email || ''}
-                                                        onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, email: e.target.value } : null)}
-                                                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Contact</label>
-                                                    <input
-                                                        type="text"
-                                                        value={schoolFormData?.contact || ''}
-                                                        onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, contact: e.target.value } : null)}
-                                                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Location</label>
-                                                    <input
-                                                        type="text"
-                                                        value={schoolFormData?.location || ''}
-                                                        onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, location: e.target.value } : null)}
-                                                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                                <button
-                                                    onClick={() => {
-                                                        if (!schoolFormData) return;
-                                                        const updated = featuredSchools.map((s: FeaturedSchool) => s.id === school.id ? schoolFormData : s);
-                                                        updateFeaturedSchools(updated);
-                                                        setEditingSchoolId(null);
-                                                        setSchoolFormData(null);
-                                                    }}
-                                                    style={{ padding: '0.5rem 1rem', borderRadius: '6px', background: '#10b981', color: 'white', border: 'none', cursor: 'pointer' }}
-                                                >
-                                                    Save
-                                                </button>
-                                                <button
-                                                    onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }}
-                                                    style={{ padding: '0.5rem 1rem', borderRadius: '6px', background: '#f1f5f9', border: 'none', cursor: 'pointer' }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
+                        return (
+                            <div key={school.id} style={{ border: '1px solid #f1f5f9', borderRadius: '1.5rem', padding: '1.5rem' }}>
+                                {isEditingSchool ? (
+                                    <div style={{ display: 'grid', gap: '1rem' }}>
+                                        <input
+                                            type="text"
+                                            value={schoolFormData?.name || ''}
+                                            onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, name: e.target.value } : null)}
+                                            style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
+                                        />
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                onClick={() => {
+                                                    if (!schoolFormData) return;
+                                                    const updated = featuredSchools.map((s: FeaturedSchool) => s.id === school.id ? schoolFormData : s);
+                                                    updateFeaturedSchools(updated);
+                                                    setEditingSchoolId(null);
+                                                    setSchoolFormData(null);
+                                                }}
+                                                style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }}
+                                                style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: '#f1f5f9', border: 'none', cursor: 'pointer' }}
+                                            >
+                                                Cancel
+                                            </button>
                                         </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                                            <div style={{ width: '80px', height: '60px', borderRadius: '8px', overflow: 'hidden', background: '#f8fafc' }}>
-                                                <img src={school.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <h4 style={{ margin: 0, fontSize: '1rem' }}>{school.name}</h4>
-                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>{school.category} • {school.tagline}</p>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingSchoolId(school.id);
-                                                        setSchoolFormData({ ...school });
-                                                    }}
-                                                    style={{ padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}
-                                                >
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        const updated = featuredSchools.filter((s: FeaturedSchool) => s.id !== school.id);
-                                                        updateFeaturedSchools(updated);
-                                                    }}
-                                                    style={{ padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #fee2e2', color: '#ef4444', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                                        <div style={{ width: '80px', height: '60px', borderRadius: '1rem', overflow: 'hidden', background: '#f8fafc' }}>
+                                            <img src={school.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
+                                        <div style={{ flex: 1 }}>
+                                            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>{school.name}</h4>
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>{school.category} • {school.tagline}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setEditingSchoolId(school.id);
+                                                setSchoolFormData({ ...school });
+                                            }}
+                                            style={{ padding: '0.4rem 1rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '800', color: '#64748b' }}
+                                        >
+                                            Edit
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

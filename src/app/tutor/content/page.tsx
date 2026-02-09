@@ -273,6 +273,9 @@ const ContentViewer = ({ content, onClose, onMinimize }: { content: TutorContent
     );
 };
 
+import { storageService } from "@/services/storageService";
+import { databaseService } from "@/services/databaseService";
+
 export default function TutorContentLibrary() {
     const {
         programmes,
@@ -306,6 +309,7 @@ export default function TutorContentLibrary() {
     const [selectedCU, setSelectedCU] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     // MEMORY LEAK FIX: Track preview URLs
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -585,53 +589,101 @@ export default function TutorContentLibrary() {
         setIsCUModalOpen(false);
     };
 
-    const handleUpload = () => {
+    const handleUpload = async () => {
         if ((!uploadForm.file && !uploadForm.url) || !uploadForm.title) return;
 
-        // Flatten Programme & Level Selection
-        const programmeIds = Object.keys(uploadForm.selectedProgrammes);
-        const levels = Object.values(uploadForm.selectedProgrammes).flat();
+        setIsUploading(true);
+        try {
+            let finalUrl = uploadForm.url;
+            let finalThumbnailUrl = uploadForm.thumbnailUrl;
 
-        if (editingId) {
-            const existing = tutorContents.find(c => c.id === editingId);
-            if (!existing) return;
+            // 1. Upload Main File if exists
+            if (uploadForm.file) {
+                const folder = uploadForm.fileType === 'Video' ? 'videos' : 'notes';
+                const path = `tutors/${currentTutorId}/${folder}/${Date.now()}_${uploadForm.file.name}`;
+                const uploadRes = await storageService.uploadFile('school_assets', path, uploadForm.file);
+                if (uploadRes.success) {
+                    finalUrl = uploadRes.url!;
+                } else {
+                    throw new Error(`File upload failed: ${uploadRes.error}`);
+                }
+            }
 
-            const updatedContent: TutorContent = {
-                ...existing, // Preserve likes, views, isFeatured, original upload Date
-                title: uploadForm.title,
-                description: uploadForm.description,
-                type: uploadForm.fileType,
-                url: uploadForm.previewUrl || uploadForm.url || existing.url, // Prefer new URL, fallback to existing
-                programmeIds: programmeIds,
-                levels: levels,
-                courseUnitIds: uploadForm.selectedCUIds,
-                status: uploadForm.status,
-                // Only update thumbnail if a new one is generated/uploaded, otherwise keep existing
-                thumbnailUrl: uploadForm.thumbnailPreview || uploadForm.thumbnailUrl || existing.thumbnailUrl,
-            };
-            updateTutorContent(updatedContent);
-        } else {
-            const newContent: TutorContent = {
-                id: `tc_${Date.now()}`,
-                tutorId: currentTutorId,
-                title: uploadForm.title,
-                description: uploadForm.description,
-                type: uploadForm.fileType,
-                url: uploadForm.previewUrl || uploadForm.url,
-                programmeIds: programmeIds,
-                levels: levels,
-                courseUnitIds: uploadForm.selectedCUIds,
-                uploadDate: new Date().toISOString(),
-                status: uploadForm.status,
-                thumbnailUrl: uploadForm.thumbnailPreview || uploadForm.thumbnailUrl,
-                likes: 0,
-                views: 0,
-                isFeatured: false
-            };
-            addTutorContent(newContent);
+            // 2. Upload Thumbnail if exists
+            if (uploadForm.thumbnailFile) {
+                const path = `tutors/${currentTutorId}/thumbnails/${Date.now()}_thumb.png`;
+                const thumbRes = await storageService.uploadFile('school_assets', path, uploadForm.thumbnailFile);
+                if (thumbRes.success) {
+                    finalThumbnailUrl = thumbRes.url!;
+                }
+            }
+
+            // Flatten Programme & Level Selection
+            const programmeIds = Object.keys(uploadForm.selectedProgrammes);
+            const levels = Object.values(uploadForm.selectedProgrammes).flat();
+
+            if (editingId) {
+                const existing = tutorContents.find(c => c.id === editingId);
+                if (!existing) return;
+
+                const updatedContent: TutorContent = {
+                    ...existing,
+                    title: uploadForm.title,
+                    description: uploadForm.description,
+                    type: uploadForm.fileType,
+                    url: finalUrl || existing.url,
+                    programmeIds: programmeIds,
+                    levels: levels,
+                    courseUnitIds: uploadForm.selectedCUIds,
+                    status: uploadForm.status,
+                    thumbnailUrl: finalThumbnailUrl || existing.thumbnailUrl,
+                };
+                updateTutorContent(updatedContent);
+                // TODO: Update in DB
+            } else {
+                const dbContent = {
+                    tutor_id: currentTutorId,
+                    type: uploadForm.fileType,
+                    title: uploadForm.title,
+                    description: uploadForm.description,
+                    file_url: finalUrl,
+                    thumbnail_url: finalThumbnailUrl,
+                    status: uploadForm.status,
+                    metadata: {
+                        programmeIds,
+                        levels,
+                        courseUnitIds: uploadForm.selectedCUIds
+                    }
+                };
+
+                const saved = await databaseService.saveTutorContent(dbContent);
+
+                const newContent: TutorContent = {
+                    id: saved.id,
+                    tutorId: currentTutorId,
+                    title: uploadForm.title,
+                    description: uploadForm.description,
+                    type: uploadForm.fileType,
+                    url: finalUrl,
+                    programmeIds: programmeIds,
+                    levels: levels,
+                    courseUnitIds: uploadForm.selectedCUIds,
+                    uploadDate: new Date().toISOString(),
+                    status: uploadForm.status,
+                    thumbnailUrl: finalThumbnailUrl,
+                    likes: 0,
+                    views: 0,
+                    isFeatured: false
+                };
+                addTutorContent(newContent);
+            }
+            setIsUploadModalOpen(false);
+            resetUploadForm();
+        } catch (error: any) {
+            alert(error.message);
+        } finally {
+            setIsUploading(false);
         }
-        setIsUploadModalOpen(false);
-        resetUploadForm();
     };
 
     const openUploadModal = () => {
@@ -1656,11 +1708,11 @@ export default function TutorContentLibrary() {
                                 )}
                                 <button
                                     onClick={uploadStep === 'file' ? (() => uploadForm.url && setUploadStep('details')) : handleUpload}
-                                    className="px-8 py-3 bg-white text-black hover:bg-gray-200 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"
-                                    disabled={uploadStep === 'file' && !uploadForm.file && !uploadForm.url}
+                                    className="px-8 py-3 bg-white text-black hover:bg-gray-200 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                                    disabled={(uploadStep === 'file' && !uploadForm.file && !uploadForm.url) || isUploading}
                                 >
-                                    <span>{uploadStep === 'file' ? 'Next' : 'Publish Content'}</span>
-                                    <ArrowRight size={18} />
+                                    <span>{isUploading ? 'Uploading...' : (uploadStep === 'file' ? 'Next' : 'Publish Content')}</span>
+                                    {isUploading ? <div className="animate-spin h-5 w-5 border-2 border-black border-t-transparent rounded-full" /> : <ArrowRight size={18} />}
                                 </button>
                             </div>
                         </div>

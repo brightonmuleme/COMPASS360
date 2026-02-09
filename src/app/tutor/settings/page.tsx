@@ -1,232 +1,252 @@
 "use client";
+import React, { useState } from 'react';
+import { useSchoolData, formatMoney } from "@/lib/store";
+import {
+    Settings,
+    Zap,
+    CheckCircle2,
+    AlertCircle,
+    Info,
+    Loader2,
+    Plus,
+    X,
+    ShieldCheck,
+    Users,
+    Video,
+    FileText
+} from "lucide-react";
 
-import { useSchoolData, TutorSettings } from "@/lib/store";
-import { useState, useEffect } from "react";
-import { AlertTriangle, CheckCircle } from "lucide-react";
-
-export default function SubscriptionSettings() {
-    const { tutorSettings, updateTutorSettings, tutorProfile, courseUnits } = useSchoolData();
-    const currentTutorId = tutorProfile?.id;
-
-    const [form, setForm] = useState<TutorSettings>({
-        tutorId: currentTutorId || '',
-        subscriptionPrice: 50000,
-        durationMonths: 1,
-        isEnabled: false,
-        taughtCourseUnitIds: []
-    });
-
+export default function TutorSettingsPage() {
+    const { tutors, tutorProfile, updateTutor } = useSchoolData();
+    const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (currentTutorId) {
-            const existing = tutorSettings.find(s => s.tutorId === currentTutorId);
-            if (existing) setForm(existing);
-            else setForm(prev => ({ ...prev, tutorId: currentTutorId }));
+    const tutor = tutors.find(t => t.id === tutorProfile?.id);
+
+    const [price, setPrice] = useState(tutor?.subscriptionPrice || 3500);
+    const [duration, setDuration] = useState(tutor?.subscriptionDuration || '6 Months');
+    const [coveredServices, setCoveredServices] = useState<string[]>(tutor?.coveredServices || []);
+    const [newService, setNewService] = useState('');
+
+    if (!tutor) return <div className="p-8 text-gray-400">Loading settings...</div>;
+
+    const handleAddService = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newService.trim()) return;
+        if (coveredServices.includes(newService.trim())) {
+            setNewService('');
+            return;
         }
-    }, [tutorSettings, currentTutorId]);
+        setCoveredServices([...coveredServices, newService.trim()]);
+        setNewService('');
+    };
 
-    const handleSave = () => {
-        if (!currentTutorId) return;
+    const removeService = (tag: string) => {
+        setCoveredServices(coveredServices.filter(s => s !== tag));
+    };
 
-        // Validation Logic
-        if (form.subscriptionPrice < 10000 || form.subscriptionPrice > 500000) {
-            setError("Price must be between 10k and 500k UGX");
-            setTimeout(() => setError(""), 3000);
+    const handleSave = async () => {
+        if (price < 3000) {
+            alert("Minimum price is 3,000 UGX");
             return;
         }
 
-        updateTutorSettings(form);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+        setIsSaving(true);
+        try {
+            updateTutor({
+                ...tutor,
+                subscriptionPrice: price,
+                subscriptionDuration: duration as any,
+                coveredServices: coveredServices
+            });
+            setSaved(true);
+            setTimeout(() => setSaved(false), 3000);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    if (!currentTutorId) return <div className="p-8 text-gray-500">Loading profile...</div>;
-
     return (
-        <div className="max-w-2xl mx-auto space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold text-white mb-2">Subscription Settings</h1>
-                <p className="text-gray-400">Configure how students access your premium content.</p>
-            </div>
+        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-20">
+            <header>
+                <h1 className="text-4xl font-black text-white tracking-tight">Tutor Pass Identity</h1>
+                <p className="text-gray-500 font-medium">Define your value and preview your digital pass card.</p>
+            </header>
 
-            <div className="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-sm space-y-8">
-                <div>
-                    <label className="flex items-center gap-4 cursor-pointer group">
-                        <button
-                            type="button"
-                            role="switch"
-                            aria-checked={form.isEnabled}
-                            onClick={() => setForm({ ...form, isEnabled: !form.isEnabled })}
-                            className={`w-14 h-7 rounded-full p-1 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 ${form.isEnabled ? 'bg-blue-600' : 'bg-gray-700'}`}
-                        >
-                            <div className={`w-5 h-5 rounded-full bg-white shadow-lg transition-transform duration-300 ${form.isEnabled ? 'translate-x-7' : 'translate-x-0'}`} />
-                        </button>
-                        <span className="font-bold text-gray-200 group-hover:text-white transition-colors">Enable Subscriptions</span>
-                    </label>
-                    <p className="text-sm text-gray-500 mt-3 pl-18 leading-relaxed">
-                        When enabled, students must subscribe to access your content.
-                        Your mock earnings will increase as students subscribe.
-                    </p>
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                {/* LEFT: SETTINGS */}
+                <div className="space-y-8">
+                    <div className="bg-[#0f0f0f] p-8 rounded-[2.5rem] border border-gray-800 space-y-8">
+                        {/* Pricing Section */}
+                        <div className="space-y-4">
+                            <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                                <Zap size={16} className="text-red-500" /> Tiered Pricing
+                            </h3>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                Choose the price students pay to unlock your premium content library.
+                            </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-800">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-2">Price (UGX)</label>
-                        <input
-                            type="number"
-                            className={`w-full p-3 bg-gray-950 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white font-mono placeholder-gray-700 transition-all ${error ? 'border-red-500 focus:border-red-500' : 'border-gray-800 focus:border-blue-500'}`}
-                            value={form.subscriptionPrice}
-                            onChange={e => setForm({ ...form, subscriptionPrice: Number(e.target.value) })}
-                        />
-                        <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                            <span className={`w-1 h-1 rounded-full ${error ? 'bg-red-500' : 'bg-blue-500'}`}></span>
-                            {error ? <span className="text-red-400 font-bold">{error}</span> : 'Platform Range: 10k - 500k UGX'}
-                        </p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-2">Duration (Months)</label>
-                        <div className="relative">
-                            <select
-                                className="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white appearance-none cursor-pointer transition-all focus:border-blue-500"
-                                value={form.durationMonths}
-                                onChange={e => setForm({ ...form, durationMonths: Number(e.target.value) })}
-                            >
-                                <option value={1}>1 Month</option>
-                                <option value={3}>3 Months</option>
-                                <option value={6}>6 Months (Semester)</option>
-                            </select>
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                                ▼
+                            <div className="pt-4">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">Monthly/Fixed Price (UGX)</label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        value={price}
+                                        onChange={(e) => setPrice(Number(e.target.value))}
+                                        className="w-full bg-black border border-gray-800 rounded-2xl px-6 py-4 outline-none focus:border-red-500 transition-all font-black text-2xl text-white"
+                                    />
+                                    <div className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-700 font-black">UGX</div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">Access Duration</label>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {['1 Month', '3 Months', '6 Months'].map(d => (
+                                        <button
+                                            key={d}
+                                            onClick={() => setDuration(d as any)}
+                                            className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${duration === d ? 'bg-red-600 border-red-600 text-white' : 'bg-black border-gray-800 text-gray-500 hover:border-gray-600'}`}
+                                        >
+                                            {d}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <div className="pt-6 border-t border-gray-800">
-                    <label className="block text-sm font-medium text-gray-400 mb-4">Included Course Units</label>
-                    <p className="text-xs text-gray-500 mb-4">Select the subjects student will get access to when they subscribe.</p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                        {courseUnits.map(cu => {
-                            const isSelected = (form.taughtCourseUnitIds || []).includes(cu.id);
-                            return (
-                                <div
-                                    key={cu.id}
-                                    onClick={() => {
-                                        const current = form.taughtCourseUnitIds || [];
-                                        const newSelection = isSelected
-                                            ? current.filter(id => id !== cu.id)
-                                            : [...current, cu.id];
-                                        setForm({ ...form, taughtCourseUnitIds: newSelection });
-                                    }}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-all text-xs font-medium flex items-center gap-2 ${isSelected
-                                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
-                                        : 'bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700'
-                                        }`}
-                                >
-                                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
-                                        {isSelected && <CheckCircle size={10} className="text-white" />}
-                                    </div>
-                                    <span className="truncate">{cu.name}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    {/* Custom Subject Input */}
-                    <div className="mt-4 flex gap-2">
-                        <input
-                            type="text"
-                            placeholder="Type custom subject name..."
-                            className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none"
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const val = e.currentTarget.value.trim();
-                                    if (val) {
-                                        const newId = `cu_${Date.now()}`;
-                                        // @ts-ignore
-                                        setCourseUnits(prev => [...prev, { id: newId, name: val, code: val.substring(0, 3).toUpperCase(), type: 'Custom', duration: 'N/A' }]);
-                                        setForm(prev => ({ ...prev, taughtCourseUnitIds: [...(prev.taughtCourseUnitIds || []), newId] }));
-                                        e.currentTarget.value = '';
-                                    }
-                                }
-                            }}
-                        />
-                        <button
-                            type="button"
-                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-gray-700"
-                            onClick={(e) => {
-                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                const val = input.value.trim();
-                                if (val) {
-                                    const newId = `cu_${Date.now()}`;
-                                    // @ts-ignore
-                                    setCourseUnits(prev => [...prev, { id: newId, name: val, code: val.substring(0, 3).toUpperCase(), type: 'Custom', duration: 'N/A' }]);
-                                    setForm(prev => ({ ...prev, taughtCourseUnitIds: [...(prev.taughtCourseUnitIds || []), newId] }));
-                                    input.value = '';
-                                }
-                            }}
-                        >
-                            Add
-                        </button>
-                    </div>
-                </div>
+                        {/* Coverage Section */}
+                        <div className="space-y-6 pt-6 border-t border-gray-900">
+                            <div className="space-y-2">
+                                <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                                    <ShieldCheck size={16} className="text-blue-500" /> Included Services
+                                </h3>
+                                <p className="text-xs text-gray-500">Add the Programmes or Course Units that this pass covers.</p>
+                            </div>
 
-                {/* Preview Card */}
-                <div className="pt-6 border-t border-gray-800">
-                    <label className="block text-sm font-medium text-gray-400 mb-4">Student View Preview</label>
-                    <div className="bg-black/40 p-6 rounded-2xl border border-gray-800 flex flex-col md:flex-row items-center gap-6">
-                        <div className="w-full md:w-64 bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-lg relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] uppercase font-bold px-2 py-1 rounded-bl-lg">
-                                {form.durationMonths} Month{form.durationMonths > 1 ? 's' : ''} Pay
+                            <form onSubmit={handleAddService} className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Type a Course Unit and press Enter..."
+                                    value={newService}
+                                    onChange={(e) => setNewService(e.target.value)}
+                                    className="w-full bg-black border border-gray-800 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition-all text-sm text-gray-300"
+                                />
+                                <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-white">
+                                    <Plus size={18} />
+                                </button>
+                            </form>
+
+                            <div className="flex flex-wrap gap-2">
+                                {coveredServices.map(tag => (
+                                    <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-2">
+                                        {tag}
+                                        <button onClick={() => removeService(tag)} className="hover:text-white">
+                                            <X size={12} />
+                                        </button>
+                                    </span>
+                                ))}
+                                {coveredServices.length === 0 && (
+                                    <p className="text-[10px] text-gray-600 italic">No services listed. Add some to show value to students.</p>
+                                )}
                             </div>
-                            <div className="mb-4">
-                                <div className="text-gray-400 text-xs uppercase tracking-wider font-bold mb-1">Access Pass</div>
-                                <div className="text-2xl font-bold text-white">{form.subscriptionPrice.toLocaleString()} UGX</div>
-                            </div>
-                            <div className="space-y-2 mb-4">
-                                <div className="text-xs text-gray-500 flex items-center gap-2">
-                                    <CheckCircle size={12} className="text-green-500" />
-                                    <div className="flex flex-wrap gap-1">
-                                        {(form.taughtCourseUnitIds && form.taughtCourseUnitIds.length > 0) ? (
-                                            courseUnits
-                                                .filter(cu => form.taughtCourseUnitIds?.includes(cu.id))
-                                                .slice(0, 3)
-                                                .map(cu => (
-                                                    <span key={cu.id} className="text-[10px] bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded">{cu.name}</span>
-                                                ))
-                                        ) : (
-                                            <span className="text-gray-600 text-[10px]">No subjects selected</span>
-                                        )}
-                                        {(form.taughtCourseUnitIds?.length || 0) > 3 && (
-                                            <span className="text-[10px] text-gray-400 self-center">+{(form.taughtCourseUnitIds?.length || 0) - 3} more</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="text-xs text-gray-500 flex items-center gap-2">
-                                    <CheckCircle size={12} className="text-green-500" />
-                                    <span>Unlimited Content Access</span>
-                                </div>
-                            </div>
-                            <button className="w-full py-2 bg-blue-600 text-white text-xs font-bold rounded-lg opacity-50 cursor-not-allowed">
-                                Subscribe Now
+                        </div>
+
+                        <div className="pt-6 border-t border-gray-900 flex justify-end">
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="bg-white text-black px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                            >
+                                {isSaving ? <Loader2 className="animate-spin" size={16} /> : (saved ? <CheckCircle2 size={16} /> : <Settings size={16} />)}
+                                {saved ? 'Pass ID Validated' : 'Save Pass Identity'}
                             </button>
                         </div>
-                        <div className="flex-1 text-sm text-gray-500 italic">
-                            "This is how your subscription card will appear to students on their dashboard."
-                        </div>
                     </div>
                 </div>
 
-                <div className="pt-6 border-t border-gray-800 flex justify-end">
-                    <button
-                        onClick={handleSave}
-                        className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={!currentTutorId}
-                    >
-                        {saved && <CheckCircle size={18} />}
-                        {saved ? 'Saved Successfully!' : 'Save Settings'}
-                    </button>
+                {/* RIGHT: LIVE PREVIEW */}
+                <div className="sticky top-8 h-fit">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6 block text-center">Student-Facing Pass Preview</label>
+                    <div className="relative group">
+                        {/* THE CARD */}
+                        <div className="aspect-[1.58/1] w-full max-w-lg mx-auto bg-[#050505] rounded-[2.5rem] border border-white/10 p-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden transition-all group-hover:shadow-blue-500/10 group-hover:border-white/20">
+                            {/* Improved Decorative Blobs */}
+                            <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full animate-pulse" />
+                            <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-purple-600/15 blur-[100px] rounded-full" />
+
+                            {/* Subtle Glassmorphism Inner Border */}
+                            <div className="absolute inset-2 rounded-[2rem] border border-white/5 pointer-events-none" />
+
+                            <div className="relative h-full flex flex-col justify-between z-10">
+                                <div className="flex justify-between items-start">
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-sm font-black text-white shadow-lg shadow-blue-500/20">
+                                                {tutor.name[0]}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-white font-black text-base tracking-tight">{tutor.name}</span>
+                                                    <ShieldCheck size={16} className="text-blue-500" />
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{tutor.department || 'Independent Creator'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-black text-white">{formatMoney(price)}</div>
+                                        <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest">{duration} ACCESS</div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-2">
+                                        <div className="h-[1px] flex-1 bg-gray-800" />
+                                        <span>Pass Coverage</span>
+                                        <div className="h-[1px] flex-1 bg-gray-800" />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {coveredServices.slice(0, 4).map(s => (
+                                            <span key={s} className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-[10px] font-bold text-gray-300 backdrop-blur-md">
+                                                {s}
+                                            </span>
+                                        ))}
+                                        {coveredServices.length > 4 && (
+                                            <span className="text-[10px] font-bold text-blue-500 bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20">+{coveredServices.length - 4} more</span>
+                                        )}
+                                        {coveredServices.length === 0 && (
+                                            <span className="text-[10px] text-gray-600 font-medium italic">Full Content Library Access</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-end pt-6 border-t border-white/5 mt-4">
+                                    <div className="flex gap-6">
+                                        <div className="flex items-center gap-2 text-gray-400 group-hover:text-blue-400 transition-colors">
+                                            <Video size={14} />
+                                            <span className="text-[11px] font-black uppercase tracking-tighter">{tutor.stats?.uploads || 0} Lessons</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-gray-400">
+                                            <FileText size={14} />
+                                            <span className="text-[11px] font-black uppercase tracking-tighter">Resources</span>
+                                        </div>
+                                    </div>
+                                    <button className="bg-blue-600 hover:bg-blue-500 hover:scale-105 active:scale-95 text-white text-[10px] font-black uppercase tracking-[0.15em] px-8 py-3.5 rounded-2xl transition-all shadow-[0_10px_25px_rgba(37,99,235,0.3)]">
+                                        Buy Pass
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Floating Tooltip */}
+                        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-black border border-gray-800 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md">
+                            <Users size={14} className="text-green-500" />
+                            <span className="text-[9px] font-black text-white uppercase tracking-widest">2.4k Students Active</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

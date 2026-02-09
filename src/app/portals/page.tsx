@@ -4,7 +4,16 @@ import Link from 'next/link';
 import { useSchoolData } from '@/lib/store';
 
 export default function RoleSelectionPage() {
-    const { landingPageContent } = useSchoolData();
+    const {
+        landingPageContent,
+        setTutorProfile,
+        setStudentProfile,
+        setDeveloperProfile,
+        tutors,
+        students,
+        setActiveRole
+    } = useSchoolData();
+
     const roles = landingPageContent || [];
 
     // Map role IDs to their actual routes
@@ -15,9 +24,44 @@ export default function RoleSelectionPage() {
             case 'student': return '/student';
             case 'tutor': return '/tutor';
             case 'developer': return '/developer';
-            case 'registrar': return '/admin/enrollment'; // Registrar usually shares admin or has specific path
+            case 'registrar': return '/admin/enrollment';
             default: return '/#';
         }
+    };
+
+    const handleRoleClick = (e: React.MouseEvent, roleId: string) => {
+        if (roleId === 'registrar') {
+            e.preventDefault();
+            alert("🚧 Registrar Portal is currently Under Development.\n\nPlease check back soon for updates to Admissions, Enrollments, and Academic Records.");
+            return;
+        }
+
+        // Assume Identity for Demo/Navigation
+        if (roleId === 'tutor') {
+            const defaultTutor = tutors[0];
+            setTutorProfile({
+                id: defaultTutor?.id || 'tut_1',
+                name: defaultTutor?.name || 'Demo Tutor',
+                email: defaultTutor?.email || 'tutor@compass360.com',
+                subscriptionDaysLeft: 30
+            });
+        } else if (roleId === 'student') {
+            setStudentProfile({
+                id: 'std_user_1',
+                name: 'Student User',
+                email: 'student@vine.ac.ug',
+                likedContentIds: [],
+                subscribedTutorIds: []
+            });
+        } else if (roleId === 'developer') {
+            setDeveloperProfile({
+                id: 'dev_1',
+                name: 'Lead Developer',
+                email: 'dev@compass360.com'
+            });
+        }
+
+        setActiveRole(roleId);
     };
 
     return (
@@ -27,13 +71,7 @@ export default function RoleSelectionPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl w-full">
                 {roles.map((role) => (
-                    <div key={role.id} onClick={(e) => {
-                        if (role.id === 'registrar') {
-                            e.preventDefault();
-                            alert("🚧 Registrar Portal is currently Under Development.\n\nPlease check back soon for updates to Admissions, Enrollments, and Academic Records.");
-                            return;
-                        }
-                    }}>
+                    <div key={role.id} onClick={(e) => handleRoleClick(e, role.id)}>
                         <Link
                             href={role.id === 'registrar' ? '#' : getRoute(role.id)}
                             className="group relative bg-white rounded-2xl p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-100 flex flex-col items-center text-center cursor-pointer"
@@ -43,7 +81,6 @@ export default function RoleSelectionPage() {
                                 className="w-20 h-20 rounded-full mb-6 flex items-center justify-center text-4xl shadow-inner"
                                 style={{ backgroundColor: `${role.theme}20`, color: role.theme }}
                             >
-                                {/* Simple Logic to pick an emoji based on role if no image, or just use colored box */}
                                 <span className="group-hover:scale-110 transition-transform duration-300">
                                     {role.id === 'admin' && '👔'}
                                     {role.id === 'bursar' && '💰'}
@@ -51,11 +88,8 @@ export default function RoleSelectionPage() {
                                     {role.id === 'tutor' && '👨‍🏫'}
                                     {role.id === 'developer' && '🛠️'}
                                     {role.id === 'registrar' && '📋'}
-                                    {/* News Coordinator */}
                                     {role.title.includes('News') && '📰'}
-                                    {/* Expense Manager */}
                                     {role.title.includes('Expense') && '📉'}
-                                    {/* Estate Manager */}
                                     {role.title.includes('Estate') && '🏗️'}
                                 </span>
                             </div>
@@ -67,7 +101,6 @@ export default function RoleSelectionPage() {
                                 {role.id === 'registrar' ? '🚧 Under Dev' : 'Enter Portal →'}
                             </div>
 
-                            {/* Hover Border Effect */}
                             <div
                                 className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-current opacity-10 pointer-events-none transition-colors"
                                 style={{ color: role.theme }}

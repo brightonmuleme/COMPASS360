@@ -1,16 +1,28 @@
 import { supabase } from '@/lib/supabase';
 
-export interface LoginResponse {
+interface AuthResponse {
     success: boolean;
-    user?: any;
     error?: string;
+    userId?: string;
+    user?: any;
+    nextStep?: any;
+    isSignUpComplete?: boolean;
+    isSignedIn?: boolean;
+    name?: string;
+    role?: string;
+    email?: string;
+    'custom:role'?: string;
 }
 
 export const authService = {
     // 1. LOGIN
-    login: async (credentials: { username: string; password: string }): Promise<LoginResponse> => {
+    login: async (credentials: { username: string; password: string }): Promise<AuthResponse> => {
         try {
-            // Supabase uses 'email' for login by default. We'll assume the username input is an email.
+            // Force Sign Out first to clear any "ghost" or "zombie" sessions
+            // This prevents the "There is already a signed in user" error
+            await supabase.auth.signOut();
+
+            // Supabase uses 'email' for login by default.
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: credentials.username,
                 password: credentials.password,
@@ -27,7 +39,16 @@ export const authService = {
     },
 
     // 2. SIGN UP (And Create Profile)
-    signUp: async (params: { username: string; password: string; email: string; phoneNumber?: string; name: string; role: string }) => {
+    signUp: async (params: {
+        username: string;
+        password: string;
+        email: string;
+        phoneNumber?: string;
+        name: string;
+        role: string;
+        payCode?: string;
+        schoolId?: string;
+    }): Promise<AuthResponse> => {
         try {
             // A. Create Auth User
             const { data, error } = await supabase.auth.signUp({
@@ -37,7 +58,9 @@ export const authService = {
                     data: {
                         full_name: params.name,
                         phone_number: params.phoneNumber,
-                        role: params.role, // Metadata for easy access
+                        role: params.role,
+                        pay_code: params.payCode,
+                        school_id: params.schoolId
                     }
                 }
             });
@@ -53,13 +76,12 @@ export const authService = {
                             id: data.user.id,
                             full_name: params.name,
                             role: params.role,
-                            // school_id will be null initially, can be updated later
+                            school_id: params.schoolId,
+                            pay_code: params.payCode
                         }
                     ]);
 
                 if (profileError) {
-                    // Critical: If profile creation fails, we should probably warn or try again.
-                    // For now, let's just log it.
                     console.error("Profile creation failed!", profileError);
                 }
             }
@@ -73,37 +95,39 @@ export const authService = {
     },
 
     // 3. LOGOUT
-    logout: async () => {
+    logout: async (): Promise<AuthResponse> => {
         try {
             await supabase.auth.signOut();
             window.location.href = '/'; // Redirect to landing
-        } catch (error) {
+            return { success: true };
+        } catch (error: any) {
             console.error("Logout failed", error);
+            return { success: false, error: error.message || 'Unknown error' };
         }
     },
 
     // 4. GET CURRENT USER
-    getCurrentUser: async () => {
+    getCurrentUser: async (): Promise<AuthResponse> => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            return user;
-        } catch (err) {
-            return null;
+            return { success: true, user: user };
+        } catch (err: any) {
+            return { success: false, error: err.message || 'Unknown error' };
         }
     },
 
     // 5. GET SESSION
-    getSession: async () => {
+    getSession: async (): Promise<AuthResponse> => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            return session;
-        } catch (err) {
-            return null;
+            return { success: true, nextStep: session }; // Using nextStep to hold session data
+        } catch (err: any) {
+            return { success: false, error: err.message || 'Unknown error' };
         }
     },
 
     // 6. GET USER ATTRIBUTES (Profile Data)
-    getUserAttributes: async () => {
+    getUserAttributes: async (): Promise<Record<string, any>> => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return {};
@@ -120,7 +144,6 @@ export const authService = {
                     name: profile.full_name,
                     role: profile.role,
                     email: user.email,
-                    // Map other fields as needed
                     'custom:role': profile.role
                 };
             }
@@ -131,17 +154,42 @@ export const authService = {
                 role: user.user_metadata?.role,
                 'custom:role': user.user_metadata?.role
             };
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error fetching attributes", error);
             return {};
         }
     },
 
     // --- PASSWORD RESET (Supabase) ---
-    resetPassword: async (email: string) => {
+    resetPassword: async (email: string): Promise<AuthResponse> => {
         try {
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${window.location.origin}/auth/update-password`, // You'll need an update password page
+            const { error } = await supabase.auth.resetPasswordForEmail(email);
+            if (error) throw error;
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    confirmResetPassword: async (token: string, newPassword: string): Promise<AuthResponse> => {
+        try {
+            const { error } = await supabase.auth.updateUser({
+                password: newPassword
+            });
+            if (error) throw error;
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Optional: If you want to confirm reset via OTP instead of link
+    verifyResetOtp: async (email: string, token: string): Promise<AuthResponse> => {
+        try {
+            const { error } = await supabase.auth.verifyOtp({
+                email,
+                token,
+                type: 'recovery'
             });
             if (error) throw error;
             return { success: true };
@@ -151,7 +199,7 @@ export const authService = {
     },
 
     // Unused in Supabase flow usually (handled by link), but keeping signature
-    confirmSignUp: async (username: string, code: string) => {
+    confirmSignUp: async (username: string, code: string): Promise<AuthResponse> => {
         // Supabase handles verification via link click usually, but if you turned on OTP:
         try {
             const { error } = await supabase.auth.verifyOtp({
@@ -167,6 +215,9 @@ export const authService = {
     },
 
     // Placeholder
-    confirmSignIn: async (challengeResponse: string) => { return { success: true } }
+    confirmSignIn: async (challengeResponse: string): Promise<AuthResponse> => {
+        // In some flows we might use this
+        return { success: true, error: undefined }
+    }
 
 };

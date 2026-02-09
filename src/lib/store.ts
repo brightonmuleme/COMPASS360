@@ -1,8 +1,15 @@
 "use client";
 import React, { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { developerService } from '@/services/developerService';
 
-// ... (existing code)
+// --- HELPERS ---
+export const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 const SchoolContext = createContext<ReturnType<typeof useSchoolDataInternal> | null>(null);
 const SchoolContextProvider = SchoolContext.Provider;
@@ -91,6 +98,11 @@ export interface Tutor {
     };
     subscriptionDaysLeft?: number;
     password?: string;
+    walletBalance?: number; // For earnings
+    subscriptionPrice?: number; // Tutor's choice (min 3000)
+    subscriptionDuration?: '1 Month' | '3 Months' | '6 Months';
+    payoutRequests?: PayoutRequest[];
+    coveredServices?: string[]; // Academic programmes or course units covered by their pass
 }
 
 export interface StaffAccount {
@@ -100,6 +112,7 @@ export interface StaffAccount {
     role: AccountantRole;
     name: string;
     transactionPin?: string;
+    schoolId?: string; // Optional for backward compatibility, but required for new school isolation
 }
 
 export interface ProgrammeDocuments {
@@ -139,6 +152,45 @@ export interface DocumentRecord {
     fileUrl?: string; // Optional photo
 }
 
+export type SubscriptionRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface SubscriptionRequest {
+    id: string;
+    studentId: string;
+    studentName: string;
+    transactionId: string;
+    reference: string;
+    phoneNumber: string;
+    amount?: number; // Filled by developer during verification
+    status: SubscriptionRequestStatus;
+    submittedAt: string;
+    verifiedAt?: string;
+    rejectionReason?: string;
+}
+
+export interface TutorSubscription {
+    id: string;
+    tutorId: string;
+    studentId: string;
+    amount: number;
+    status: 'Active' | 'Expired';
+    startDate: string;
+    expiryDate: string;
+    subscribedAt: string;
+}
+
+export interface PayoutRequest {
+    id: string;
+    tutorId: string;
+    tutorName?: string;
+    tutorEmail?: string;
+    amount: number;
+    status: 'Pending' | 'Paid' | 'Rejected';
+    requestedAt: string;
+    paidAt?: string;
+    paymentReference?: string;
+}
+
 export interface EnrolledStudent {
     id: number;
     name: string;
@@ -162,6 +214,9 @@ export interface EnrolledStudent {
     notifications?: number;
     subscriptionExpiry?: string;
     subscriptionDaysLeft?: number;
+    walletBalance: number;
+    paymentRequests: SubscriptionRequest[];
+    tutorSubscriptions: TutorSubscription[];
     lastPosted?: string;
     postHistory?: string[];
     lastBilledTerm?: string;
@@ -215,7 +270,7 @@ export interface Bursary {
     value: number; // Fixed amount covered
 }
 
-export type TransactionStatus = 'Pending' | 'Partially Paid' | 'Paid' | 'Void';
+export type TransactionStatus = 'Pending' | 'Partially Paid' | 'Paid' | 'Void' | 'Approved' | 'Rejected' | 'pending' | 'approved' | 'rejected';
 export type TransactionType = 'Income' | 'Expense' | 'Transfer';
 export type TransactionCategory = string; // Changed to string to allow dynamic categories
 export type PaymentMode = string; // Was: 'Cash' | 'Bank Transfer' | 'Card' | 'Mobile Money' | 'Cheque' | 'Manual' | 'manual' | 'Other';
@@ -266,6 +321,7 @@ export interface AuditLog {
     details: string;
     user: string;
     timestamp: string;
+    scope?: 'school' | 'platform';
 }
 
 export interface InventoryList {
@@ -346,6 +402,7 @@ export interface NewsItem {
     mediaUrl?: string;
     mediaType?: 'image' | 'video';
     schoolId?: string; // Filter by school
+    isGlobal?: boolean;
 }
 
 export interface Advert {
@@ -387,15 +444,7 @@ export interface TutorSettings {
     taughtCourseUnitIds?: string[]; // IDs of Course Units the tutor teaches
 }
 
-export interface TutorSubscription {
-    id: string;
-    studentId: string;
-    tutorId: string;
-    startDate: string;
-    expiryDate: string;
-    status: 'Active' | 'Expired';
-    amount: number;
-}
+// Consolidated with interface at line 169
 
 export interface Suggestion {
     id: string;
@@ -407,6 +456,8 @@ export interface Suggestion {
     status: 'Pending' | 'Reviewing' | 'Resolved';
     likes?: number;
     schoolId?: string; // Filter by school
+    feedback?: string;
+    feedbackDate?: string;
 }
 
 export interface StudentProfile {
@@ -421,6 +472,7 @@ export interface StudentProfile {
     subscribedTutorIds: string[];
     subscriptionStatus: 'active' | 'expired' | 'trial';
     subscriptionEndDate: string;
+    password?: string;
 }
 
 export interface TutorProfile {
@@ -559,6 +611,7 @@ export interface ResultArchive {
 }
 
 export interface SchoolProfile {
+    id: string;
     name: string;
     motto: string;
     type: string;
@@ -572,6 +625,14 @@ export interface SchoolProfile {
     accountantPassword?: string;
     tin?: string;
     website?: string;
+    status: 'Pending' | 'Active' | 'Rejected' | 'Deactivated';
+}
+
+export interface PortalBranding {
+    schoolName: string;
+    logo?: string;
+    tagline?: string;
+    primaryColor?: string;
 }
 
 // --- BUDGET SETTINGS MODELS ---
@@ -661,6 +722,8 @@ export interface DeveloperSettings {
     maintenanceMode: boolean;
     allowNewRegistrations: boolean;
     globalAnnouncement?: string;
+    showMockData: boolean; // Added for experimental/demo controls
+    wallpapers?: string[]; // Background slideshow images
     subscriptionFees: {
         portal: 'student' | 'tutor' | 'school';
         amount: number;
@@ -680,6 +743,7 @@ export interface FeaturedSchool {
     contact?: string;
     email?: string;
     location?: string;
+    status: 'Pending' | 'Active' | 'Rejected';
 }
 
 export interface SchoolApplication {
@@ -765,6 +829,13 @@ export const INITIAL_LANDING_CONTENT: LandingPageRoleContent[] = [
 export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
     maintenanceMode: false,
     allowNewRegistrations: true,
+    showMockData: false,
+    wallpapers: [
+        'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&q=80&w=1920',
+        'https://images.unsplash.com/photo-1523050335102-c32241c80f6a?auto=format&fit=crop&q=80&w=1920',
+        'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=1920',
+        'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80&w=1920'
+    ],
     subscriptionFees: [
         { portal: 'student', amount: 50000, currency: 'UGX', interval: 'monthly' },
         { portal: 'tutor', amount: 30000, currency: 'UGX', interval: 'monthly' },
@@ -777,49 +848,79 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         id: '1',
         name: 'Aurora Scitech Academy',
         category: 'Science & Technology',
-        image: '/schools/1.png',
+        image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/1_logo.png',
         tagline: 'Innovating the future, today.',
         description: 'A world-class facility dedicated to STEM education with state-of-the-art labs.',
         contact: '+256 700 000001',
         email: 'info@aurora.sc.ug',
-        location: 'Kira Road, Kampala'
+        location: 'Kira Road, Kampala',
+        status: 'Active'
     },
     {
         id: '2',
         name: 'The Summit International',
         category: 'International Boarding',
-        image: '/schools/2.png',
+        image: 'https://images.unsplash.com/photo-1523050335102-c32241c80f6a?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/2_logo.png',
         tagline: 'Global Leaders in the making.',
         description: 'Experience a diverse culture and competitive sports on our expansive campus.',
         contact: '+256 700 000002',
         email: 'admissions@summit.intl',
-        location: 'Entebbe'
+        location: 'Entebbe',
+        status: 'Active'
     },
     {
         id: '3',
         name: 'St. Kingsbury College',
         category: 'Traditional Heritage',
-        image: '/schools/3.png',
+        image: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/3_logo.png',
         tagline: 'Excellence since 1895.',
         description: 'A prestigious institution with a rich history of academic discipline and character building.',
         contact: '+256 700 000003',
         email: 'hello@kingsbury.edu',
-        location: 'Mukono'
+        location: 'Mukono',
+        status: 'Active'
     },
     {
         id: '4',
         name: 'Future Foundry',
         category: 'Vocational Engineering',
-        image: '/schools/4.png',
+        image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/4_logo.png',
         tagline: 'Hands-on Engineering.',
         description: 'Advanced robotics and engineering programs for practical skill development.',
         contact: '+256 700 000004',
         email: 'desk@futurefoundry.ug',
-        location: 'Nakawa'
+        location: 'Nakawa',
+        status: 'Active'
+    },
+    {
+        id: '5',
+        name: 'Little Explorers Nursery',
+        category: 'Early Childhood',
+        image: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80&w=800',
+        logo: '/schools/5_logo.png',
+        tagline: 'Where imagination begins.',
+        description: 'A nurturing environment focused on creative play and early literacy.',
+        contact: '+256 700 000005',
+        email: 'play@littleexplorers.ac.ug',
+        location: 'Nakasero, Kampala',
+        status: 'Active'
+    },
+    {
+        id: '6',
+        name: 'Victoria Lake Academy',
+        category: 'Elite Secondary',
+        image: 'https://images.unsplash.com/photo-1509062522246-373b1eef731e?auto=format&fit=crop&q=80&w=800',
+        logo: '/schools/6_logo.png',
+        tagline: 'Knowledge by the Lakeside.',
+        description: 'A serene learning environment with a focus on holistic development and aquatic sports.',
+        contact: '+256 700 000006',
+        email: 'admin@vla.edu',
+        location: 'Munyonyo',
+        status: 'Active'
     }
 ];
 
@@ -878,6 +979,9 @@ export interface Billing {
         serviceId?: string;
         [key: string]: any;
     };
+    attachments?: string[];
+    directorNote?: string;
+    approvedAt?: string;
 }
 
 export interface Payment {
@@ -894,9 +998,17 @@ export interface Payment {
     description?: string;
     term?: string; // "Semester 1" - Context of payment
     attachments?: string[]; // URLs or Base64 strings of proof
-    status?: 'pending' | 'approved' | 'rejected'; // Approval Workflow
+    status?: TransactionStatus; // Approval Workflow
+    directorNote?: string;
+    approvedAt?: string;
     history: AuditLog[];
     type?: 'payment' | 'adjustment'; // New Flag for auditing
+    metadata?: {
+        payCode?: string;
+        syncSource?: string;
+        bankName?: string;
+        [key: string]: any;
+    };
 }
 
 // --- CALENDAR MANAGEMENT ---
@@ -1013,9 +1125,72 @@ export const INITIAL_NEWS: NewsItem[] = [
     { id: '2', title: 'Sports Day Postponed', content: 'Due to heavy rains, sports day is moved to next Friday.', date: '2024-03-10', author: 'Sports Dept', category: 'Sports' }
 ];
 
+export const INITIAL_SUGGESTIONS: Suggestion[] = [
+    {
+        id: 'sug_1',
+        studentName: 'Alex Johnson',
+        title: 'Better Library Wi-Fi',
+        content: 'The Wi-Fi in the library is very slow in the evenings. Can we upgrade the routers?',
+        date: '2024-04-15',
+        status: 'Pending',
+        likes: 12
+    },
+    {
+        id: 'sug_2',
+        studentName: 'Sarah Smith',
+        title: 'More Sports Equipment',
+        content: 'We need more basketballs for the court. The current ones are worn out.',
+        date: '2024-04-12',
+        status: 'Reviewing',
+        likes: 8
+    },
+    {
+        id: 'sug_3',
+        studentName: 'David K.',
+        title: 'Weekend Cafeteria Hours',
+        content: 'Could the cafeteria stay open until 8 PM on weekends?',
+        date: '2024-04-10',
+        status: 'Resolved',
+        likes: 25,
+        feedback: 'Great idea! We have extended the hours to 8:30 PM starting next week.',
+        feedbackDate: '2024-04-11T10:00:00Z'
+    }
+];
+
 export const INITIAL_ADVERTS: Advert[] = [
     { id: 'ad1', title: 'Admissions Open 2026', content: 'Join the leading medical institute in the region.', schoolName: 'VINE Medical Institute', linkUrl: '#' },
     { id: 'ad2', title: 'Nursing Scholarship', content: 'Apply for the new merit-based nursing scholarship.', schoolName: 'Global Health Academy', linkUrl: '#' }
+];
+
+export const INITIAL_REQUISITIONS: Requisition[] = [
+    {
+        id: 'req_1',
+        readableId: 'REQ-0128',
+        title: 'Weekly Office Supplies - February Week 1',
+        date: '2026-02-01',
+        account: 'Cash',
+        status: 'Pending Approval',
+        items: [
+            { id: 'i1', category: 'Stationery', name: 'Paper Reams (A4)', quantity: 10, unitPrice: 18000, amount: 180000 },
+            { id: 'i2', category: 'Stationery', name: 'Staple Pins (Boxes)', quantity: 5, unitPrice: 2000, amount: 10000 },
+            { id: 'i3', category: 'Utilities', name: 'Electricity Tokens', quantity: 1, unitPrice: 200000, amount: 200000, isPriority: true }
+        ],
+        notes: 'Priority needed for electricity tokens to avoid blackout.'
+    },
+    {
+        id: 'req_2',
+        readableId: 'REQ-0129',
+        title: 'Kitchen Ingredients & Spices',
+        date: '2026-02-03',
+        account: 'Bank Transfer',
+        status: 'Approved',
+        items: [
+            { id: 'i4', category: 'Food', name: 'Rice (50kg Bag)', quantity: 2, unitPrice: 180000, amount: 360000 },
+            { id: 'i5', category: 'Food', name: 'Cooking Oil (20L)', quantity: 1, unitPrice: 120000, amount: 120000 },
+            { id: 'i6', category: 'Food', name: 'Salt & Curry Powder', quantity: 10, unitPrice: 5000, amount: 50000 }
+        ],
+        notes: 'Monthly kitchen refill.'
+    }
 ];
 
 export const INITIAL_REGISTRAR_STUDENTS: RegistrarStudent[] = [
@@ -1191,15 +1366,24 @@ export const INITIAL_STUDENTS: EnrolledStudent[] = [
             { name: "Ream of Paper", required: 2, brought: 2, color: "#3b82f6", entries: [{ id: '1', date: '2024-01-15', quantity: 2 }] },
             { name: "Scrub Suits", required: 2, brought: 1, color: "#8b5cf6", entries: [{ id: '2', date: '2024-01-20', quantity: 1 }] }
         ],
-        subscriptionExpiry: "2026-02-28T23:59:59"
+        subscriptionExpiry: "2026-02-28T23:59:59",
+        walletBalance: 0,
+        paymentRequests: [],
+        tutorSubscriptions: []
     },
     {
         id: 102, name: "ALICE MUTESI", payCode: "PAY-001", programme: "Bachelor of Medicine & Surgery", level: "Year 1", semester: "Year 1, Semester 1",
-        balance: 0, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'cleared', origin: 'bursar'
+        balance: 0, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'cleared', origin: 'bursar',
+        walletBalance: 15000,
+        paymentRequests: [],
+        tutorSubscriptions: []
     },
     {
         id: 103, name: "DAVID OPIO", payCode: "PAY-002", programme: "Bachelor of Medicine & Surgery", level: "Year 1", semester: "Year 1, Semester 1",
-        balance: 500000, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'probation', origin: 'bursar'
+        balance: 500000, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'probation', origin: 'bursar',
+        walletBalance: 0,
+        paymentRequests: [],
+        tutorSubscriptions: []
     }
 ];
 
@@ -1241,12 +1425,12 @@ export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
 ];
 
 export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [
-    { id: 'staff_1', username: 'director', password: 'password123', role: 'Director', name: 'Dr. John Doe' },
-    { id: 'staff_2', username: 'registrar', password: 'password123', role: 'Registrar', name: 'Ms. Alice' },
-    { id: 'staff_3', username: 'news', password: 'password123', role: 'School News Coordinator', name: 'Mr. News' },
-    { id: 'staff_4', username: 'expense', password: 'password123', role: 'Expense Manager', name: 'Mr. Expense' },
-    { id: 'staff_5', username: 'estate', password: 'password123', role: 'Estate Manager', name: 'Mr. Estate' },
-    { id: 'staff_6', username: 'bursar', password: 'password123', role: 'Bursar', name: 'Ms. Jane Smith' },
+    { id: 'staff_1', username: 'director', password: 'password123', role: 'Director', name: 'Dr. John Doe', schoolId: 'vine_intl' },
+    { id: 'staff_2', username: 'registrar', password: 'password123', role: 'Registrar', name: 'Ms. Alice', schoolId: 'vine_intl' },
+    { id: 'staff_3', username: 'news', password: 'password123', role: 'School News Coordinator', name: 'Mr. News', schoolId: 'vine_intl' },
+    { id: 'staff_4', username: 'expense', password: 'password123', role: 'Expense Manager', name: 'Muleme Bright', schoolId: 'vine_intl' },
+    { id: 'staff_5', username: 'estate', password: 'password123', role: 'Estate Manager', name: 'Mr. Estate', schoolId: 'vine_intl' },
+    { id: 'staff_6', username: 'bursar', password: 'password123', role: 'Bursar', name: 'Sarah Namuli', schoolId: 'vine_intl' },
 ];
 
 export const INITIAL_TUTORS: Tutor[] = [
@@ -1264,7 +1448,7 @@ export const INITIAL_TUTORS: Tutor[] = [
     {
         id: 'tutor_1',
         name: 'Dr. Sarah N',
-        email: 'sarah.n@vine.ac.ug',
+        email: 'sarah.n@compass360.ac.ug',
         phone: '+256 700 000001',
         type: 'Full-time',
         status: 'Active',
@@ -1273,7 +1457,10 @@ export const INITIAL_TUTORS: Tutor[] = [
         specialization: 'Human Anatomy & Physiology',
         bio: 'Senior lecturer with over 10 years of experience in teaching gross anatomy.',
         stats: { subscribers: 142, views: 5600, uploads: 24 },
-        password: 'password123'
+        password: 'password123',
+        walletBalance: 0,
+        subscriptionPrice: 3500,
+        subscriptionDuration: '6 Months'
     },
     {
         id: 'tutor_2',
@@ -1489,6 +1676,12 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
 export const INITIAL_TUTOR_SETTINGS: TutorSettings[] = [];
 export const INITIAL_TUTOR_SUBSCRIPTIONS: TutorSubscription[] = [];
 
+export const INITIAL_PORTAL_BRANDING: PortalBranding = {
+    schoolName: "COMPASS 360",
+    tagline: "Total Learning Convergence",
+    primaryColor: "#ef4444"
+};
+
 export const INITIAL_TRANSACTIONS: GeneralTransaction[] = [];
 export const INITIAL_GENERAL_TRANSACTIONS: GeneralTransaction[] = []; // Alias if needed
 
@@ -1689,15 +1882,22 @@ function useSchoolDataInternal() {
         syncTime();
     }, []);
 
+    const router = useRouter();
+    // --- HYDRATION: Mark as ready for Client-Side logic ---
+    useEffect(() => {
+        setHydrated(true);
+    }, []);
+
     const getSyncedDate = () => new Date(Date.now() + serverTimeOffset);
 
-    const logGlobalAction = (action: string, details: string) => {
+    const logGlobalAction = (action: string, details: string, scope: 'school' | 'platform' = 'school') => {
         const newLog: AuditLog = {
-            id: crypto.randomUUID(),
+            id: generateId(),
             action,
             details,
             user: activeRole || 'System',
-            timestamp: getSyncedDate().toISOString()
+            timestamp: getSyncedDate().toISOString(),
+            scope
         };
         setGlobalAuditLogs(prev => [newLog, ...prev].slice(0, 200)); // Pruned: Keep last 200 logs
     };
@@ -1744,9 +1944,9 @@ function useSchoolDataInternal() {
     const [requisitions, setRequisitions] = useState<Requisition[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_requisitions_v1');
-            return saved ? JSON.parse(saved) : [];
+            return saved ? JSON.parse(saved) : INITIAL_REQUISITIONS;
         }
-        return [];
+        return INITIAL_REQUISITIONS;
     });
 
     const [requisitionQueue, setRequisitionQueue] = useState<InQueueItem[]>(() => {
@@ -1908,12 +2108,32 @@ function useSchoolDataInternal() {
         return INITIAL_STAFF_ACCOUNTS;
     });
 
+    const [portalBranding, setPortalBranding] = useState<PortalBranding>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('school_portal_branding_v1');
+            return saved ? JSON.parse(saved) : INITIAL_PORTAL_BRANDING;
+        }
+        return INITIAL_PORTAL_BRANDING;
+    });
+
+    const updatePortalBranding = (updates: Partial<PortalBranding>) => {
+        setPortalBranding(prev => ({ ...prev, ...updates }));
+    };
+
     useEffect(() => {
-        if (hydrated) safeSetItem('school_staff_accounts_v1', staffAccounts);
-    }, [staffAccounts, hydrated]);
+        if (hydrated) safeSetItem('school_portal_branding_v1', portalBranding);
+    }, [portalBranding, hydrated]);
 
     const updateStaffPassword = (accountId: string, newPassword: string) => {
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, password: newPassword } : acc));
+    };
+
+    const resetStaffPassword = (accountId: string) => {
+        setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, password: 'password123' } : acc));
+    };
+
+    const updateStaffProfile = (accountId: string, updates: Partial<StaffAccount>) => {
+        setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, ...updates } : acc));
     };
 
     // PERSISTENCE EFFECT FOR ARCHIVES
@@ -2170,8 +2390,12 @@ function useSchoolDataInternal() {
     const deleteCalendarEvent = (id: string) => setCalendarEvents(prev => prev.filter(e => e.id !== id));
 
     const verifySensitiveAction = (pin: string): boolean => {
-        // Find current staff account
-        const currentStaff = staffAccounts.find(s => s.username === activeRole || s.name === activeRole);
+        // Find current staff account by role or username (case-insensitive)
+        const currentStaff = staffAccounts.find(s =>
+            s.role === activeRole ||
+            s.username.toLowerCase() === activeRole?.toLowerCase() ||
+            s.name === activeRole
+        );
         if (!currentStaff) return false;
 
         // If they haven't set a pin, check password as fallback
@@ -2182,6 +2406,7 @@ function useSchoolDataInternal() {
     };
 
     const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>({
+        id: 'vine_intl',
         name: 'VINE INTERNATIONAL SCHOOL',
         motto: 'Excellence in All Things',
         type: 'Secondary',
@@ -2190,11 +2415,19 @@ function useSchoolDataInternal() {
         phone: '+256 700 000000',
         email: 'info@vine.ac.ug',
         principal: 'Dr. John Doe',
-        administrator: 'Ms. Jane Smith'
+        administrator: 'Ms. Jane Smith',
+        status: 'Active'
     });
     const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_active_role');
+            // Priority 1: Check sessionStorage (tab-specific)
+            let saved = sessionStorage.getItem('school_active_role');
+
+            // Priority 2: Fallback to localStorage (existing legacy sessions)
+            if (!saved) {
+                saved = localStorage.getItem('school_active_role');
+            }
+
             if (saved) {
                 try {
                     // Simple obfuscation decode
@@ -2210,11 +2443,16 @@ function useSchoolDataInternal() {
 
     const [activeAccountId, setActiveAccountId] = useState<string | null>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_active_account_id');
+            // Priority 1: Check sessionStorage
+            const saved = sessionStorage.getItem('school_active_account_id') || localStorage.getItem('school_active_account_id');
             return saved || null;
         }
         return null;
     });
+
+    // --- IDENTITY GUARD: REMOVED (Option 1: Manual Override) ---
+    // The automated guard has been deleted to resolve redirection loops.
+    // Navigation is now handled explicitly by login flows and manual role selection.
 
     // Logout Helper
     const logout = () => {
@@ -2223,12 +2461,212 @@ function useSchoolDataInternal() {
         setTutorProfile(null);
         setDeveloperProfile(null);
         if (typeof window !== 'undefined') {
+            // Clear current session (tab-specific)
+            sessionStorage.removeItem('school_active_role');
+            sessionStorage.removeItem('school_active_account_id');
+
+            // Clear legacy persistent sessions
             localStorage.removeItem('school_active_role');
             localStorage.removeItem('school_active_account_id');
+
             localStorage.removeItem('school_tutor_profile_v1');
             localStorage.removeItem('school_developer_profile_v1');
             localStorage.removeItem('school_active_student_id');
+            localStorage.removeItem('school_student_profile_v1');
         }
+        // Reset student profile to initial state in memory to prevent layout loops
+        setStudentProfile({
+            id: 'std_user_1',
+            name: 'Student User',
+            email: 'student@vine.ac.ug',
+            likedContentIds: [],
+            subscribedTutorIds: [],
+            subscriptionStatus: 'expired'
+        });
+    };
+
+    const submitSubscriptionRequest = (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
+        const newRequest: SubscriptionRequest = {
+            ...request,
+            id: generateId(),
+            status: 'Pending',
+            submittedAt: new Date().toISOString()
+        };
+        // Check for duplicate transaction ID
+        const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
+        if (duplicate) {
+            throw new Error("This Transaction ID has already been submitted.");
+        }
+
+        setStudents(prev => prev.map(s => {
+            if (s.payCode === request.studentId || s.id.toString() === request.studentId) {
+                return {
+                    ...s,
+                    paymentRequests: [newRequest, ...(s.paymentRequests || [])]
+                };
+            }
+            return s;
+        }));
+        logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.reference}`, 'platform');
+    };
+
+    const verifySubscriptionRequest = (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
+        setStudents(prev => prev.map(s => {
+            if (s.id === studentId || s.payCode === studentId) {
+                const updatedRequests = (s.paymentRequests || []).map(r => {
+                    if (r.id === requestId) {
+                        return {
+                            ...r,
+                            status,
+                            amount,
+                            rejectionReason: reason,
+                            verifiedAt: new Date().toISOString()
+                        };
+                    }
+                    return r;
+                });
+
+                let newWalletBalance = s.walletBalance || 0;
+                if (status === 'Approved') {
+                    newWalletBalance += amount;
+                }
+
+                return { ...s, paymentRequests: updatedRequests, walletBalance: newWalletBalance };
+            }
+            return s;
+        }));
+        logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
+    };
+
+    const purchasePlatformPass = (studentId: string | number, type: '6 Months' | '1 Year') => {
+        const cost = type === '6 Months' ? 5000 : 9000;
+
+        // 1. Initial Validation (Pre-Check)
+        const student = students.find(s => s.id === studentId || s.payCode === studentId);
+        if (!student) throw new Error("Critical: Student record not found.");
+        if ((student.walletBalance || 0) < cost) throw new Error("Insufficient wallet balance for this plan.");
+
+        setStudents(prev => prev.map(s => {
+            if (s.id === studentId || s.payCode === studentId) {
+                // Secondary Check for absolute transaction safety
+                if ((s.walletBalance || 0) < cost) return s;
+
+                const months = type === '6 Months' ? 6 : 12;
+                const startDate = new Date();
+                const currentExpiryStr = s.subscriptionExpiry;
+                const currentExpiry = currentExpiryStr ? new Date(currentExpiryStr) : new Date(0);
+
+                const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
+
+                const newExpiry = new Date(baseDate);
+                newExpiry.setMonth(newExpiry.getMonth() + months);
+
+                return {
+                    ...s,
+                    walletBalance: (s.walletBalance || 0) - cost,
+                    subscriptionExpiry: newExpiry.toISOString(),
+                    subscriptionStatus: 'active'
+                };
+            }
+            return s;
+        }));
+        logGlobalAction('Plan Purchase', `Student ${studentId} purchased ${type} pass.`, 'platform');
+    };
+
+    const subscribeToTutor = (studentId: string | number, tutorId: string) => {
+        const tutor = tutors.find(t => t.id === tutorId);
+        if (!tutor) throw new Error("Tutor not found.");
+        const price = tutor.subscriptionPrice || 3000;
+        const duration = tutor.subscriptionDuration || '6 Months';
+        const months = duration === '1 Month' ? 1 : duration === '3 Months' ? 3 : 6;
+
+        // 1. Initial Validation & Data Prep
+        const student = students.find(s => s.id === studentId || s.payCode === studentId);
+        if (!student) throw new Error("Critical: Student record not found.");
+        if ((student.walletBalance || 0) < price) throw new Error("Insufficient wallet balance for this subscription.");
+
+        // PRE-CALCULATE Everything
+        const existingSub = student.tutorSubscriptions?.find(ts => ts.tutorId === tutorId);
+        const startDate = new Date();
+        const currentExpiryStr = existingSub?.expiryDate;
+        const currentExpiry = currentExpiryStr ? new Date(currentExpiryStr) : new Date(0);
+        const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
+
+        const newExpiry = new Date(baseDate);
+        newExpiry.setMonth(newExpiry.getMonth() + months);
+
+        const newSub: TutorSubscription = {
+            id: generateId(),
+            tutorId,
+            studentId: student.id.toString(),
+            amount: price,
+            status: 'Active',
+            startDate: startDate.toISOString(),
+            expiryDate: newExpiry.toISOString(),
+            subscribedAt: startDate.toISOString()
+        };
+
+        // 2. Execute SEQUENTIAL State Updates (Flat)
+        setStudents(prev => prev.map(s => {
+            if (s.id === studentId || s.payCode === studentId) {
+                if ((s.walletBalance || 0) < price) return s;
+                const otherSubs = s.tutorSubscriptions?.filter(ts => ts.tutorId !== tutorId) || [];
+                return {
+                    ...s,
+                    walletBalance: (s.walletBalance || 0) - price,
+                    tutorSubscriptions: [newSub, ...otherSubs]
+                };
+            }
+            return s;
+        }));
+
+        setTutorSubscriptions(prev => [newSub, ...prev.filter(ts => !(ts.tutorId === tutorId && ts.studentId === student.id.toString()))]);
+
+        // Credit Tutor with 80% (Commission is 20%)
+        const tutorEarnings = price * 0.8;
+        setTutors(prev => prev.map(t => t.id === tutorId ? {
+            ...t,
+            walletBalance: (t.walletBalance || 0) + tutorEarnings
+        } : t));
+
+        logGlobalAction('Tutor Subscription', `Student ${studentId} subscribed to Tutor ${tutorId}`, 'platform');
+    };
+
+    const claimTutorEarnings = (tutorId: string, amount: number) => {
+        setTutors(prev => prev.map(t => {
+            if (t.id === tutorId) {
+                if ((t.walletBalance || 0) < amount) throw new Error("Insufficient earnings balance.");
+
+                const request: PayoutRequest = {
+                    id: generateId(),
+                    tutorId,
+                    amount,
+                    status: 'Pending',
+                    requestedAt: new Date().toISOString()
+                };
+
+                return {
+                    ...t,
+                    walletBalance: (t.walletBalance || 0) - amount,
+                    payoutRequests: [request, ...(t.payoutRequests || [])]
+                };
+            }
+            return t;
+        }));
+        logGlobalAction('Payout Claim', `Tutor ${tutorId} claimed ${amount} UGX`);
+    };
+
+    const processPayout = (tutorId: string, requestId: string, reference: string) => {
+        setTutors(prev => prev.map(t => {
+            if (t.id === tutorId) {
+                const requests: PayoutRequest[] = (t.payoutRequests || []).map(r =>
+                    r.id === requestId ? { ...r, status: 'Paid' as const, paidAt: new Date().toISOString(), paymentReference: reference } : r
+                );
+                return { ...t, payoutRequests: requests };
+            }
+            return t;
+        }));
+        logGlobalAction('Payout Processed', `Tutor ${tutorId} payout ${requestId} marked as Paid. Ref: ${reference}`);
     };
 
     // Load once on mount
@@ -2247,20 +2685,12 @@ function useSchoolDataInternal() {
             return s;
         });
 
-        // SEEDING NEW MOCKS (MBChB)
-        // Ensure our new demo students exist even if local storage has old data
-        // FORCE UPDATE: We now overwrite these specific IDs to ensure schema updates (like subscriptionExpiry) are applied.
-        const demoIds = [101, 102, 103, 201, 202, 203, 204];
+        // SEEDING / MIGRATION:
+        // We only add INITIAL_STUDENTS if the storage is completely empty.
+        // This prevents the "disappearing student" issue (like Nakanwagi) 
+        // where mock data was overwriting real updates on every refresh.
+        const finalStudents = migratedStudents.length > 0 ? migratedStudents : INITIAL_STUDENTS;
 
-        // Remove old versions of these students from storage
-        const nonDemoStudents = migratedStudents.filter((s: EnrolledStudent) => !demoIds.includes(s.id));
-
-        // Get fresh versions from INITIAL_STUDENTS
-        const freshDemos = INITIAL_STUDENTS.filter(s => demoIds.includes(s.id));
-
-        const finalStudents = [...nonDemoStudents, ...freshDemos];
-
-        // If we made changes, save them back effectively immediately via state update
         setStudents(finalStudents);
 
         // TEMPLATE REPAIR & MIGRATION
@@ -2330,9 +2760,11 @@ function useSchoolDataInternal() {
         setNews(loadFromStorage('school_news_v1', INITIAL_NEWS));
         setGeneralTransactions(loadFromStorage('school_general_transactions_v1', INITIAL_TRANSACTIONS));
         setPromotionBatches(loadFromStorage('school_promotion_batches_v1', INITIAL_PROMOTION_BATCHES));
+        setSuggestions(loadFromStorage('school_suggestions_v1', INITIAL_SUGGESTIONS));
 
         // Load Profile (Logo persistence)
         setSchoolProfile(loadFromStorage('school_profile_v1', {
+            id: 'vine_intl',
             name: 'VINE INTERNATIONAL SCHOOL',
             motto: 'Excellence in All Things',
             type: 'Secondary',
@@ -2346,6 +2778,14 @@ function useSchoolDataInternal() {
 
         setHydrated(true);
     }, []);
+
+    // PERSISTENCE FOR STUDENTS & TUTORS
+    useEffect(() => {
+        if (hydrated) {
+            safeSetItem('school_students', students);
+            safeSetItem('school_tutors_v2', tutors);
+        }
+    }, [students, tutors, hydrated]);
 
     // DATA INTEGRITY & REPAIR EFFECT
     // This runs once after hydration to ensure 'Overall Scores' survived the deduplication
@@ -2436,80 +2876,200 @@ function useSchoolDataInternal() {
 
         let valueToSave = value;
 
-        // PROACTIVE PRUNING: Before any quota error, strip heavy snapshots older than 2 years
-        if (key === 'school_active_role' && value) {
-            // Simple obfuscation encode
-            localStorage.setItem(key, window.btoa(value as string));
-            return;
-        }
-
-        if (key === 'school_students') {
-            const oneYearAgo = getSyncedDate();
-            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-            valueToSave = (value as EnrolledStudent[]).map(s => ({
-                ...s,
-                promotionHistory: s.promotionHistory?.map(h => {
-                    const hDate = new Date(h.date);
-                    // Strip heavy snapshots from older history items to save space
-                    if (!isNaN(hDate.getTime()) && hDate < oneYearAgo) {
-                        return { ...h, requirementsSnapshot: undefined, servicesSnapshot: undefined };
-                    }
-                    return h;
-                }).slice(-5) // Only keep last 5 promotions in active state
-            }));
-        }
-
         try {
+            // Specialized handling for active role (with obfuscation - now in sessionStorage)
+            if (key === 'school_active_role') {
+                if (value) {
+                    const stringValue = String(value);
+                    sessionStorage.setItem(key, window.btoa(stringValue));
+                    // Also clear legacy local storage to prevent confusion
+                    localStorage.removeItem(key);
+                } else {
+                    sessionStorage.removeItem(key);
+                    localStorage.removeItem(key);
+                }
+                return;
+            }
+
+            // Specialized handling for active account ID (now in sessionStorage)
+            if (key === 'school_active_account_id') {
+                if (value) {
+                    sessionStorage.setItem(key, String(value));
+                    localStorage.removeItem(key);
+                } else {
+                    sessionStorage.removeItem(key);
+                    localStorage.removeItem(key);
+                }
+                return;
+            }
+
+            // === AGGRESSIVE AUTO-PRUNING (Option A) ===
+            const now = getSyncedDate();
+            const sixMonthsAgo = new Date(now);
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+            const threeMonthsAgo = new Date(now);
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+            // PRUNE PAYMENTS: Keep only last 6 months + approved/pending transactions
+            if (key === 'school_payments_v1') {
+                const payments = value as Payment[];
+                valueToSave = payments.filter(p => {
+                    const paymentDate = new Date(p.date);
+                    const status = (p.status || '').toLowerCase();
+                    // Keep if: recent (6mo) OR approved status OR pending (awaiting Director approval) OR has attachments (evidence)
+                    return paymentDate >= sixMonthsAgo ||
+                        status === 'approved' ||
+                        status === 'pending' ||
+                        (p.attachments && p.attachments.length > 0);
+                });
+
+                // If we pruned data, log it
+                if (payments.length !== valueToSave.length) {
+                    console.log(`🧹 Auto-pruned ${payments.length - valueToSave.length} old payments (older than 6 months, excluding approved/pending)`);
+                }
+            }
+
+            // PRUNE BILLINGS: Keep only last 6 months
+            if (key === 'school_billings_v1') {
+                const billings = value as Billing[];
+                valueToSave = billings.filter(b => {
+                    const billingDate = new Date(b.date);
+                    return billingDate >= sixMonthsAgo;
+                });
+
+                if (billings.length !== valueToSave.length) {
+                    console.log(`🧹 Auto-pruned ${billings.length - valueToSave.length} old billings (older than 6 months)`);
+                }
+            }
+
+            // PRUNE GENERAL TRANSACTIONS: Keep only last 3 months (these are heavy)
+            if (key === 'school_general_transactions_v1') {
+                const transactions = value as GeneralTransaction[];
+                valueToSave = transactions.filter(t => {
+                    const txDate = new Date(t.date);
+                    // Keep recent OR flagged items
+                    return txDate >= threeMonthsAgo || t.isFlagged;
+                });
+
+                if (transactions.length !== valueToSave.length) {
+                    console.log(`🧹 Auto-pruned ${transactions.length - valueToSave.length} old general transactions (older than 3 months)`);
+                }
+            }
+
+            // PRUNE STUDENTS: Strip old promotion history snapshots
+            if (key === 'school_students') {
+                const oneYearAgo = new Date(now);
+                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+                valueToSave = (value as EnrolledStudent[]).map(s => ({
+                    ...s,
+                    // Keep only last 5 promotion records, strip snapshots from old ones
+                    promotionHistory: s.promotionHistory?.map(h => {
+                        const hDate = new Date(h.date);
+                        if (!isNaN(hDate.getTime()) && hDate < oneYearAgo) {
+                            return {
+                                ...h,
+                                requirementsSnapshot: undefined,
+                                servicesSnapshot: undefined
+                            };
+                        }
+                        return h;
+                    }).slice(-5), // Keep only last 5 records
+                    // Strip profile pics to save space (can be re-uploaded)
+                    profilePic: s.profilePic ? (s.profilePic.length > 50000 ? undefined : s.profilePic) : undefined
+                }));
+            }
+
+            // PRUNE DELETED ITEMS: Keep only last 100 deleted billings/payments
+            if (key === 'school_deleted_billings_v1') {
+                valueToSave = (value as any[]).slice(-100);
+            }
+            if (key === 'school_deleted_payments_v1') {
+                valueToSave = (value as any[]).slice(-100);
+            }
+
             localStorage.setItem(key, JSON.stringify(valueToSave));
         } catch (e) {
-            if (e instanceof Error && e.name === 'QuotaExceededError') {
-                console.warn(`Storage Quota Exceeded for ${key}. Attempting to save with emergency optimizations...`);
+            if (e instanceof Error && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+                console.error(`❌ STORAGE QUOTA EXCEEDED for ${key}!`);
 
+                // Show user-visible alert
+                alert(`⚠️ STORAGE FULL!\n\nYour browser storage is full. Recent changes to "${key}" may not be saved.\n\nPlease contact the Director to run a storage cleanup, or clear old data manually.`);
+
+                try {
+                    // Emergency purge of heavy, non-critical data
+                    const heavyKeys = [
+                        'school_global_audit_logs_v1',
+                        'school_inventory_logs_v1',
+                        'school_post_history_v1',
+                        'school_deleted_billings_v1',
+                        'school_deleted_payments_v1'
+                    ];
+
+                    console.log('🚨 Attempting emergency purge of:', heavyKeys);
+                    heavyKeys.forEach(k => {
+                        try {
+                            localStorage.removeItem(k);
+                            console.log(`✅ Cleared ${k}`);
+                        } catch (err) {
+                            console.error(`Failed to clear ${k}`, err);
+                        }
+                    });
+                } catch (purgeError) {
+                    console.error("Emergency purge failed", purgeError);
+                }
+
+                // Attempt to save with extreme optimizations
                 let emergencyValue = valueToSave;
 
-                // Strip Heavy Fields based on key
                 if (key === 'school_students') {
                     emergencyValue = (valueToSave as EnrolledStudent[]).map(s => ({
                         ...s,
-                        profilePic: s.profilePic ? "[STRIPPED]" : undefined,
-                        promotionHistory: s.promotionHistory?.map(h => ({
-                            ...h,
-                            requirementsSnapshot: undefined // Strip ALL snapshots to save massive space
-                        }))
+                        profilePic: undefined,
+                        promotionHistory: undefined, // Strip ALL history
+                        documentHistory: undefined
                     }));
-                } else if (key === 'school_payments_v1' || key === 'school_general_transactions_v1' || key === 'school_deleted_payments_v1') {
-                    emergencyValue = (value as any[]).map(t => ({
+                } else if (key === 'school_payments_v1') {
+                    // Keep only last 50 payments
+                    emergencyValue = (valueToSave as Payment[]).slice(-50).map(p => ({
+                        ...p,
+                        attachments: undefined, // Strip attachments
+                        history: undefined
+                    }));
+                } else if (key === 'school_billings_v1') {
+                    // Keep only last 50 billings
+                    emergencyValue = (valueToSave as Billing[]).slice(-50).map(b => ({
+                        ...b,
+                        attachments: undefined,
+                        history: undefined
+                    }));
+                } else if (key === 'school_general_transactions_v1') {
+                    // Keep only last 20 transactions
+                    emergencyValue = (valueToSave as GeneralTransaction[]).slice(-20).map(t => ({
                         ...t,
-                        attachments: undefined // Strip proof images
-                    }));
-                } else if (key === 'app_school_applications_v1') {
-                    emergencyValue = (value as SchoolApplication[]).map(app => ({
-                        ...app,
-                        profilePhoto: undefined,
-                        academicResults: undefined
+                        attachments: undefined,
+                        longDescription: undefined
                     }));
                 } else if (key === 'school_tutor_contents_v1') {
-                    emergencyValue = (value as TutorContent[]).map(c => ({
+                    emergencyValue = (value as TutorContent[]).slice(0, 10).map(c => ({
                         ...c,
-                        thumbnailUrl: undefined // Strip thumbnails
-                    }));
-                } else if (key === 'school_news_v1') {
-                    emergencyValue = (value as NewsItem[]).map(n => ({
-                        ...n,
-                        mediaUrl: undefined // Strip images
+                        thumbnailUrl: undefined,
+                        description: (c.description || "").substring(0, 50) + "..."
                     }));
                 }
 
                 try {
                     localStorage.setItem(key, JSON.stringify(emergencyValue));
-                    console.log(`Successfully saved ${key} with emergency optimizations.`);
-                    return;
+                    console.log(`✅ Successfully saved ${key} with emergency optimizations.`);
+                    alert(`✅ Emergency save successful!\n\nSome old data was removed to make space. Your recent transaction should now be saved.`);
                 } catch (e2) {
-                    console.error(`Even with optimizations, storage failed for ${key}.`, e2);
+                    console.error(`❌ TOTAL STORAGE FAILURE for ${key}. Data WILL NOT persist.`, e2);
+                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data even after cleanup. Please:\n1. Clear browser cache\n2. Contact system administrator\n3. Export important data immediately`);
                 }
+            } else {
+                console.error(`Storage Error for ${key}:`, e);
             }
-            console.warn(`Storage Failure for ${key}:`, e);
         }
     };
 
@@ -2640,21 +3200,66 @@ function useSchoolDataInternal() {
 
     const [featuredSchools, setFeaturedSchools] = useState<FeaturedSchool[]>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('app_featured_schools_v1');
+            const saved = localStorage.getItem('app_featured_schools_v2');
             return saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
         }
         return INITIAL_FEATURED_SCHOOLS;
     });
 
+    // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
+    useEffect(() => {
+        const fetchCloudConfig = async () => {
+            if (!hydrated) return;
+            try {
+                const config = await developerService.getLandingPageConfig();
+                if (config) {
+                    if (config.landing_content) setLandingPageContent(config.landing_content);
+                    if (config.wallpapers) setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
+                    if (config.featured_schools) setFeaturedSchools(config.featured_schools);
+                }
+            } catch (err) {
+                console.error("Failed to fetch cloud config:", err);
+            }
+        };
+        fetchCloudConfig();
+    }, [hydrated]);
+
     useEffect(() => {
         safeSetItem('app_landing_content_v1', landingPageContent);
         safeSetItem('app_developer_settings_v1', developerSettings);
-        safeSetItem('app_featured_schools_v1', featuredSchools);
+        safeSetItem('app_featured_schools_v2', featuredSchools);
     }, [landingPageContent, developerSettings, featuredSchools, hydrated]);
 
-    const updateLandingPageContent = (content: LandingPageRoleContent[]) => setLandingPageContent(content);
-    const updateDeveloperSettings = (settings: DeveloperSettings) => setDeveloperSettings(settings);
-    const updateFeaturedSchools = (schools: FeaturedSchool[]) => setFeaturedSchools(schools);
+    const updateLandingPageContent = async (content: LandingPageRoleContent[]) => {
+        setLandingPageContent(content);
+        try {
+            await developerService.saveLandingPageConfig({ landing_content: content });
+        } catch (err) {
+            console.error("Cloud Sync Error (Landing Content):", err);
+        }
+    };
+
+    const updateDeveloperSettings = async (settings: DeveloperSettings) => {
+        setDeveloperSettings(settings);
+        try {
+            await developerService.saveLandingPageConfig({ wallpapers: settings.wallpapers });
+        } catch (err) {
+            console.error("Cloud Sync Error (Developer Settings):", err);
+        }
+    };
+
+    const updateFeaturedSchools = async (schools: FeaturedSchool[]) => {
+        setFeaturedSchools(schools);
+        try {
+            await developerService.saveLandingPageConfig({ featured_schools: schools });
+        } catch (err) {
+            console.error("Cloud Sync Error (Featured Schools):", err);
+        }
+    };
+    // Assuming StoreData interface is defined elsewhere and this is the return object of useSchoolDataInternal
+    // Adding setSchoolProfile to the return object of the hook.
+    // The instruction implies adding it to an interface, but the diff shows it being added to the returned object.
+    // I will add it to the returned object as per the second part of the instruction.
 
     const [schoolApplications, setSchoolApplications] = useState<SchoolApplication[]>(() => {
         if (typeof window !== 'undefined') {
@@ -2687,7 +3292,7 @@ function useSchoolDataInternal() {
     const addSchoolApplication = (app: Omit<SchoolApplication, 'id' | 'status' | 'submittedAt'>) => {
         const newApp: SchoolApplication = {
             ...app,
-            id: crypto.randomUUID(),
+            id: generateId(),
             status: 'pending',
             submittedAt: new Date().toISOString()
         };
@@ -2831,7 +3436,10 @@ function useSchoolDataInternal() {
 
 
     const addBilling = (b: Billing) => {
-        setBillings(prev => [...prev, b]);
+        setBillings(prev => {
+            if (prev.some(item => item.id === b.id)) return prev;
+            return [...prev, b];
+        });
         setStudents(prev => prev.map(s => {
             if (s.id === b.studentId) {
                 return { ...s, totalFees: s.totalFees + b.amount, balance: s.balance + b.amount };
@@ -2851,7 +3459,7 @@ function useSchoolDataInternal() {
             ...bill,
             status: 'Void' as TransactionStatus,
             history: [...bill.history, {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 action: 'Deleted',
                 details: reason,
                 user: 'Bursar',
@@ -2880,10 +3488,13 @@ function useSchoolDataInternal() {
     };
 
     const addPayment = (p: Payment) => {
-        setPayments(prev => [...prev, p]);
+        setPayments(prev => {
+            if (prev.some(item => item.id === p.id)) return prev;
+            return [...prev, p];
+        });
         setStudents(prev => prev.map(s => {
             if (s.id === p.studentId) {
-                return { ...s, balance: s.balance - p.amount };
+                return { ...s, balance: (s.balance || 0) - p.amount };
             }
             return s;
         }));
@@ -2895,39 +3506,67 @@ function useSchoolDataInternal() {
         const payment = payments.find(p => p.id === id);
         if (!payment) return;
 
+        const methodLower = (payment.method || '').toLowerCase().trim();
+        const isDigitalIntegration = methodLower.includes('schoolpay') || methodLower.includes('pegpay');
+
         // 1. Soft Delete - Move to Trash
         const deletedPayment: Payment = {
             ...payment,
             status: 'rejected', // Mark as rejected/void
             history: [...(payment.history || []), {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 action: 'Deleted',
-                details: reason,
-                user: 'Bursar', // Should be dynamic
+                details: isDigitalIntegration ? `Unlinked digital payment: ${reason}` : reason,
+                user: activeRole || 'Bursar',
                 timestamp: new Date().toISOString()
             }]
         };
-        // Add custom field for convenience if not in type (We will rely on history for reason)
-        // Or better yet, we can attach the reason property if we cast or if we add it to the type.
-        // For safely, relying on history is best, but for the UI table 'deleteReason' field
-        // I'll augment it in the view or here if I can.
-        // To match what I did in the mock, I will try to add it.
         (deletedPayment as any).deleteReason = reason;
 
         setDeletedPayments(prev => [deletedPayment, ...prev]);
 
-        // 2. Remove from Active
+        // 2. If it's a digital integration, move it back to UNCLAIMED so it can be re-linked
+        if (isDigitalIntegration) {
+            const unclaimedRecord: Payment = {
+                ...payment,
+                studentId: 0, // Reset student link
+                status: 'pending', // Reset status for re-syncing
+                metadata: {
+                    ...(payment.metadata || {}),
+                    unlinkedFrom: payment.studentId,
+                    unlinkedReason: reason,
+                    unlinkedAt: new Date().toISOString()
+                },
+                history: [...(payment.history || []), {
+                    id: generateId(),
+                    action: 'Unlinked',
+                    details: `Unlinked from Student ID ${payment.studentId} and moved to Unclaimed Store. Reason: ${reason}`,
+                    user: activeRole || 'Bursar',
+                    timestamp: new Date().toISOString()
+                }]
+            };
+            setUnclaimedPayments(prev => {
+                // Prevent duplicate references in unclaimed
+                if (payment.reference && prev.some(up => up.reference === payment.reference)) return prev;
+                return [unclaimedRecord, ...prev];
+            });
+        }
+
+        // 3. Remove from Active
         setPayments(prev => prev.filter(p => p.id !== id));
 
-        // 3. Reverse Balance
+        // 4. Reverse Balance
         setStudents(prev => prev.map(s => {
             if (s.id === payment.studentId) {
-                return { ...s, balance: s.balance + payment.amount };
+                return { ...s, balance: (s.balance || 0) + payment.amount };
             }
             return s;
         }));
 
-        logGlobalAction('Payment Deleted', `Deleted payment "${payment.description}" (Amount: ${payment.amount}) for student ID ${payment.studentId}. Reason: ${reason}`);
+        logGlobalAction(
+            isDigitalIntegration ? 'Payment Unlinked' : 'Payment Deleted',
+            `${isDigitalIntegration ? 'Unlinked' : 'Deleted'} payment "${payment.description}" (Ref: ${payment.reference}) for student ID ${payment.studentId}. Reason: ${reason}`
+        );
     };
 
     const restoreBilling = (id: string) => {
@@ -3008,7 +3647,7 @@ function useSchoolDataInternal() {
                         ...p,
                         status: 'rejected',
                         history: [...(p.history || []), {
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             action: 'Deleted',
                             details: "Student Account Deleted (Batch)",
                             user: 'Bursar',
@@ -3030,7 +3669,7 @@ function useSchoolDataInternal() {
                     ...b,
                     status: 'Void', // Mark void
                     history: [...(b.history || []), {
-                        id: crypto.randomUUID(),
+                        id: generateId(),
                         action: 'Deleted',
                         details: "Student Account Deleted (Batch)",
                         user: 'Bursar',
@@ -3079,7 +3718,7 @@ function useSchoolDataInternal() {
             updateInventoryItem(updatedItem);
 
             addInventoryLog({
-                id: crypto.randomUUID(),
+                id: generateId(),
                 itemId: item.id,
                 itemName: item.name,
                 action: changeAmount >= 0 ? 'add' : 'reduce',
@@ -3110,7 +3749,7 @@ function useSchoolDataInternal() {
 
         // Check if billings already exist for this student and semester (duplicate prevention)
         const existingBillings = billings.filter(
-            b => b.studentId === student.id && b.term === student.semester
+            b => b.studentId === student.id && b.term === student.semester && b.type !== 'Adjustment'
         );
 
         if (existingBillings.length > 0) {
@@ -3124,7 +3763,7 @@ function useSchoolDataInternal() {
         // 1. Generate Tuition Billing
         if (levelConfig.tuitionFee && levelConfig.tuitionFee > 0) {
             const tuitionBilling: Billing = {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 studentId: student.id,
                 programmeId: programme.id,
                 level: student.level,
@@ -3137,7 +3776,7 @@ function useSchoolDataInternal() {
                 date: currentDate,
                 status: 'Pending',
                 history: [{
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     action: 'Created',
                     details: 'Automatic billing generated upon enrollment',
                     user: 'System',
@@ -3158,7 +3797,7 @@ function useSchoolDataInternal() {
                 }
 
                 const serviceBilling: Billing = {
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     studentId: student.id,
                     programmeId: programme.id,
                     level: student.level,
@@ -3171,7 +3810,7 @@ function useSchoolDataInternal() {
                     date: currentDate,
                     status: 'Pending',
                     history: [{
-                        id: crypto.randomUUID(),
+                        id: generateId(),
                         action: 'Created',
                         details: 'Automatic service billing generated',
                         user: 'System',
@@ -3292,8 +3931,13 @@ function useSchoolDataInternal() {
         });
     };
 
-    const updateSuggestionStatus = (id: string, status: Suggestion['status']) => {
-        setSuggestions(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+    const updateSuggestionStatus = (id: string, status: Suggestion['status'], feedback?: string) => {
+        setSuggestions(prev => prev.map(s => s.id === id ? {
+            ...s,
+            status,
+            feedback: feedback !== undefined ? feedback : s.feedback,
+            feedbackDate: feedback !== undefined ? new Date().toISOString() : s.feedbackDate
+        } : s));
     };
 
     // RESULTS ACTIONS
@@ -3480,7 +4124,7 @@ function useSchoolDataInternal() {
             const amount = Number(item.amount);
             totalDeduction += amount;
             return {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 date: req.date,
                 amount: amount,
                 type: 'Expense',
@@ -3786,6 +4430,7 @@ function useSchoolDataInternal() {
         activeAccountId,
         setActiveAccountId,
         updateSchoolProfile,
+        setSchoolProfile: (profile: Partial<SchoolProfile>) => setSchoolProfile(prev => ({ ...prev, ...profile })),
         bursaries,
         programmes,
         documentTemplates,
@@ -3839,6 +4484,7 @@ function useSchoolDataInternal() {
         deleteRegistrarStudent,
         deleteStudentResult,
         performDeepRepair,
+        calculateStudentInitialFinancials,
 
         promotionBatches,
         requisitionDraft,
@@ -4038,9 +4684,21 @@ function useSchoolDataInternal() {
 
         staffAccounts,
         updateStaffPassword,
+        resetStaffPassword,
+        updateStaffProfile,
+        portalBranding,
+        updatePortalBranding,
         setCourseUnits,
         setTutors,
         setProgrammes,
+
+        // Financial & Subscription Exports
+        submitSubscriptionRequest,
+        verifySubscriptionRequest,
+        purchasePlatformPass,
+        subscribeToTutor,
+        claimTutorEarnings,
+        processPayout,
 
         // Portal Sync
         portalData,

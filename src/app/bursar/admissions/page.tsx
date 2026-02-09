@@ -59,6 +59,16 @@ export default function AdmissionsPage() {
         ? selectedProgramme.levels
         : (selectedProgramme?.feeStructure?.map(fs => fs.level) || []);
 
+    // Marketing Agent Autocompletion
+    const marketingAgentSuggestions = React.useMemo(() => {
+        const agents = new Set<string>();
+        // Check Admissions
+        registrarStudents.forEach(s => { if (s.marketingAgent) agents.add(s.marketingAgent); });
+        // Check Active Enrollments
+        enrolledStudents.forEach(s => { if (s.marketingAgent) agents.add(s.marketingAgent); });
+        return Array.from(agents).sort();
+    }, [registrarStudents, enrolledStudents]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         // 1. Update Local State Immediately (Fast)
@@ -1141,9 +1151,21 @@ export default function AdmissionsPage() {
                                         </div>
                                         <div style={{ gridColumn: 'span 2' }}>
                                             <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Marketing Agent <span style={{ color: 'red' }}>*</span></label>
+                                            <datalist id="marketing-agents-list">
+                                                {marketingAgentSuggestions.map(agent => (
+                                                    <option key={agent} value={agent} />
+                                                ))}
+                                            </datalist>
                                             <input
-                                                name="marketingAgent" value={localFormData.marketingAgent} onChange={handleChange} onBlur={handleBlur} placeholder="Name or ID" required
-                                                className="input" style={{ width: '100%', padding: '0.8rem', background: '#020617', border: '1px solid #1e293b', borderRadius: '0.5rem', color: 'white' }}
+                                                name="marketingAgent"
+                                                list="marketing-agents-list"
+                                                value={localFormData.marketingAgent}
+                                                onChange={handleChange}
+                                                onBlur={handleBlur}
+                                                placeholder="Name or ID"
+                                                required
+                                                className="input"
+                                                style={{ width: '100%', padding: '0.8rem', background: '#020617', border: '1px solid #1e293b', borderRadius: '0.5rem', color: 'white' }}
                                             />
                                         </div>
                                     </div>

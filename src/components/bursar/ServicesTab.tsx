@@ -13,7 +13,8 @@ interface ServicesTabProps {
 const AVAILABLE_LEVELS = ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Certificate', 'Diploma'];
 
 export default function ServicesTab({ services, students, updateService, addService, updateStudent, deleteService }: ServicesTabProps) {
-    const { billings, deleteBilling, schoolProfile, batchUpdateStudents, logGlobalAction } = useSchoolData();
+    const { billings, deleteBilling, schoolProfile, batchUpdateStudents, logGlobalAction, activeRole } = useSchoolData();
+    const isDirector = activeRole === 'Director';
     // --- STATE ---
     const [createModalParams, setCreateModalParams] = useState({ open: false, name: '', cost: 0, isEdit: false, id: '' });
     const [serviceDeleteModal, setServiceDeleteModal] = useState<{ open: boolean, serviceId: string, serviceName: string }>({ open: false, serviceId: '', serviceName: '' });
@@ -198,9 +199,10 @@ export default function ServicesTab({ services, students, updateService, addServ
                             ...(s.serviceMetadata || {}),
                             [batchModal.serviceId]: {
                                 ...(s.serviceMetadata?.[batchModal.serviceId] || {}),
-                                quantity: newQty
+                                quantity: newQty,
+                                date: s.serviceMetadata?.[batchModal.serviceId]?.date || new Date().toISOString().split('T')[0]
                             }
-                        }
+                        } as any
                     });
                 }
             });
@@ -451,18 +453,18 @@ export default function ServicesTab({ services, students, updateService, addServ
             <div className="card flex flex-col sm:flex-row justify-around items-center gap-6 p-6 sm:p-8" style={{ background: 'linear-gradient(to right, #3b82f6, #8b5cf6)', marginBottom: '2rem', color: 'white' }}>
                 <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>Total Projected Revenue</div>
-                    <div style={{ fontSize: '1.5rem', md: '2rem', fontWeight: 'bold' }}>UGX {grandTotals.totalRev.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>UGX {grandTotals.totalRev.toLocaleString()}</div>
                 </div>
                 <div className="border-t sm:border-t-0 sm:border-l border-white/30 pt-4 sm:pt-0 sm:pl-8 text-center w-full sm:w-auto">
                     <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>Active Subscriptions</div>
-                    <div style={{ fontSize: '1.5rem', md: '2rem', fontWeight: 'bold' }}>{grandTotals.totalSubs.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{grandTotals.totalSubs.toLocaleString()}</div>
                 </div>
             </div>
 
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Available Services</h2>
-                <button onClick={() => setCreateModalParams({ open: true, name: '', cost: 0, isEdit: false, id: '' })} className="btn btn-primary" style={{ background: '#10b981' }}>+ Create New Service</button>
+                {!isDirector && <button onClick={() => setCreateModalParams({ open: true, name: '', cost: 0, isEdit: false, id: '' })} className="btn btn-primary" style={{ background: '#10b981' }}>+ Create New Service</button>}
             </div>
 
             {/* Cards */}
@@ -475,7 +477,7 @@ export default function ServicesTab({ services, students, updateService, addServ
                                 <h3 className="text-sm md:text-lg" style={{ margin: 0 }}>{service.name}</h3>
                                 <div>
                                     <div style={{ color: '#3b82f6', fontWeight: 'bold', textAlign: 'right' }}>UGX {service.cost.toLocaleString()}</div>
-                                    <button onClick={() => setCreateModalParams({ open: true, name: service.name, cost: service.cost, isEdit: true, id: service.id })} style={{ float: 'right', background: 'none', border: 'none', color: '#9ca3af', fontSize: '0.7rem', textDecoration: 'underline', cursor: 'pointer' }}>Edit</button>
+                                    {!isDirector && <button onClick={() => setCreateModalParams({ open: true, name: service.name, cost: service.cost, isEdit: true, id: service.id })} style={{ float: 'right', background: 'none', border: 'none', color: '#9ca3af', fontSize: '0.7rem', textDecoration: 'underline', cursor: 'pointer' }}>Edit</button>}
                                 </div>
                             </div>
                             <div style={{ margin: '1.5rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -484,9 +486,9 @@ export default function ServicesTab({ services, students, updateService, addServ
                                     <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Subscribers</div>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <button onClick={() => setAddOneModal({ open: true, serviceId: service.id, serviceName: service.name })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.3rem 0.5rem' }}>+ Add One</button>
+                                    {!isDirector && <button onClick={() => setAddOneModal({ open: true, serviceId: service.id, serviceName: service.name })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.3rem 0.5rem' }}>+ Add One</button>}
                                     <button onClick={() => setViewListModal({ open: true, serviceId: service.id, serviceName: service.name })} className="btn btn-outline" style={{ fontSize: '0.8rem' }}>View List</button>
-                                    <button onClick={() => setBatchModal({ open: true, serviceId: service.id, serviceName: service.name })} className="btn btn-outline" style={{ fontSize: '0.8rem', borderColor: '#8b5cf6', color: '#8b5cf6' }}>Batch Add</button>
+                                    {!isDirector && <button onClick={() => setBatchModal({ open: true, serviceId: service.id, serviceName: service.name })} className="btn btn-outline" style={{ fontSize: '0.8rem', borderColor: '#8b5cf6', color: '#8b5cf6' }}>Batch Add</button>}
                                 </div>
                             </div>
                             <div style={{ borderTop: '1px solid #333', paddingTop: '0.5rem', color: '#10b981', fontSize: '0.9rem' }}>
@@ -776,7 +778,7 @@ export default function ServicesTab({ services, students, updateService, addServ
                                 </span>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                {selectedStudentIds.length > 0 && (
+                                {!isDirector && selectedStudentIds.length > 0 && (
                                     <button
                                         onClick={() => setSubDeleteModal({ open: true, studentIds: selectedStudentIds, serviceId: viewListModal.serviceId })}
                                         className="premium-btn"
@@ -861,7 +863,7 @@ export default function ServicesTab({ services, students, updateService, addServ
                                         {visibleColumns.class && <th style={{ padding: '1rem' }}>Class</th>}
                                         {visibleColumns.qty && <th style={{ padding: '1rem' }}>Qty</th>}
                                         {visibleColumns.date && <th style={{ padding: '1rem' }}>Date Added</th>}
-                                        {visibleColumns.action && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
+                                        {visibleColumns.action && !isDirector && <th className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>Action</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -885,7 +887,7 @@ export default function ServicesTab({ services, students, updateService, addServ
                                                     <span style={{ background: 'rgba(255,255,255,0.1)', padding: '0.2rem 0.6rem', borderRadius: '8px', fontSize: '0.85rem' }}>{s.serviceMetadata?.[viewListModal.serviceId]?.quantity || 1}</span>
                                                 </td>}
                                                 {visibleColumns.date && <td style={{ padding: '1rem', opacity: 0.6, fontSize: '0.9rem' }}>{s.serviceMetadata?.[viewListModal.serviceId]?.date}</td>}
-                                                {visibleColumns.action && <td className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>
+                                                {visibleColumns.action && !isDirector && <td className="no-print" style={{ padding: '1rem', textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => setSubDeleteModal({ open: true, studentIds: [s.id], serviceId: viewListModal.serviceId })}
                                                         style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
