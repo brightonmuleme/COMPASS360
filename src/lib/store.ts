@@ -2626,11 +2626,13 @@ function useSchoolDataInternal() {
             return s;
         });
 
-        // SEEDING / MIGRATION:
+        // SEEDING / MIGRATION: Purge any old mock data (Alice, David, John) from persistent storage
+        const realStudents = migratedStudents.filter((s: EnrolledStudent) =>
+            !['ALICE MUTESI', 'DAVID OPIO', 'JOHN KAMAU'].includes(s.name.toUpperCase())
+        );
+
         // We only add INITIAL_STUDENTS if the storage is completely empty.
-        // This prevents the "disappearing student" issue (like Nakanwagi) 
-        // where mock data was overwriting real updates on every refresh.
-        const finalStudents = migratedStudents.length > 0 ? migratedStudents : INITIAL_STUDENTS;
+        const finalStudents = realStudents.length > 0 ? realStudents : INITIAL_STUDENTS;
 
         setStudents(finalStudents);
 
