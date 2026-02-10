@@ -67,19 +67,36 @@ export const databaseService = {
     getSchoolCloudState: async (schoolId: string) => {
         const { data, error } = await supabase
             .from('schools')
-            .select('cloud_state')
+            .select('settings')
             .eq('id', schoolId)
             .single();
 
-        if (error) return null;
-        return data?.cloud_state;
+        if (error || !data?.settings) return null;
+        // The cloud state is stored within the 'settings' JSON field
+        const settings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
+        return settings.cloud_state || null;
     },
 
     saveSchoolCloudState: async (schoolId: string, state: any) => {
-        // Optimized: Only update the cloud_state column
+        // First get current settings to avoid overwriting other keys
+        const { data: school } = await supabase
+            .from('schools')
+            .select('settings')
+            .eq('id', schoolId)
+            .single();
+
+        const currentSettings = school?.settings
+            ? (typeof school.settings === 'string' ? JSON.parse(school.settings) : school.settings)
+            : {};
+
+        const updatedSettings = {
+            ...currentSettings,
+            cloud_state: state
+        };
+
         const { error } = await supabase
             .from('schools')
-            .update({ cloud_state: state })
+            .update({ settings: updatedSettings })
             .eq('id', schoolId);
 
         if (error) throw error;

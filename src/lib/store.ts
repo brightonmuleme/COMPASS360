@@ -3200,19 +3200,33 @@ function useSchoolDataInternal() {
                     return;
                 }
 
-                // 3. Check for Active School Status by ID (The "Staff" Lock)
-                if (schoolId && schoolId !== 'vine_intl') {
+                // 3. Identify the School ID (Metadata -> Email Fallback -> Default)
+                let resolvedSchoolId = schoolId;
+
+                if (!resolvedSchoolId || resolvedSchoolId === 'vine_intl') {
+                    // Try to find the school record by email if not in metadata
+                    const { data: emailSchool } = await supabase
+                        .from('schools')
+                        .select('id')
+                        .eq('email', userEmail)
+                        .maybeSingle();
+
+                    if (emailSchool) resolvedSchoolId = emailSchool.id;
+                }
+
+                // 4. Check for Active School Status by ID (The "Staff/Institution" Lock)
+                if (resolvedSchoolId && resolvedSchoolId !== 'vine_intl') {
                     const { data: schoolData } = await supabase
                         .from('schools')
                         .select('status, name')
-                        .eq('id', schoolId)
+                        .eq('id', resolvedSchoolId)
                         .maybeSingle();
 
                     if (schoolData) {
-                        if (schoolData.status !== schoolProfile.status || schoolId !== schoolProfile.id) {
+                        if (schoolData.status !== schoolProfile.status || resolvedSchoolId !== schoolProfile.id) {
                             setSchoolProfile(prev => ({
                                 ...prev,
-                                id: schoolId, // CRITICAL FIX: Update the actual ID so cloud sync pulls correct data
+                                id: resolvedSchoolId, // CRITICAL FIX: Update the actual ID so cloud sync pulls correct data
                                 name: schoolData.name || prev.name,
                                 status: (schoolData.status as any)
                             }));
@@ -3220,11 +3234,11 @@ function useSchoolDataInternal() {
                         }
                     } else if (application?.status === 'Approved') {
                         // Application approved but school record ID not yet available to user or record missing
-                        if (schoolProfile.status !== 'Pending' || schoolId !== schoolProfile.id) {
-                            setSchoolProfile(prev => ({ ...prev, id: schoolId, status: 'Pending' }));
+                        if (schoolProfile.status !== 'Pending' || resolvedSchoolId !== schoolProfile.id) {
+                            setSchoolProfile(prev => ({ ...prev, id: resolvedSchoolId, status: 'Pending' }));
                         }
                     }
-                } else if (schoolId === 'vine_intl' && schoolProfile.id !== 'vine_intl') {
+                } else if (resolvedSchoolId === 'vine_intl' && schoolProfile.id !== 'vine_intl') {
                     // Reset to default if explicitly vine_intl (optional cleanup)
                     setSchoolProfile(prev => ({ ...prev, id: 'vine_intl' }));
                 }
