@@ -158,32 +158,30 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                 // Verify School Status before letting them in
                 const { user } = await authService.getCurrentUser();
                 const schoolId = user?.user_metadata?.school_id;
+                const userEmail = user?.email;
 
+                // 1. Check for Pending Application by Email
+                const { data: application } = await supabase
+                    .from('school_applications')
+                    .select('status')
+                    .eq('email', userEmail)
+                    .maybeSingle();
+
+                if (application && application.status !== 'Approved') {
+                    await authService.logout();
+                    alert("Waiting for developer approval. Please contact support for assistance.");
+                    setIsLoading(false);
+                    return;
+                }
+
+                // 2. Check for Inactive School by ID (for approved/existing staff)
                 if (schoolId) {
                     const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
-                    if (school) {
-                        if (school.status !== 'Active') {
-                            await authService.logout();
-                            alert("Your school account is currently inactive. Please contact support.");
-                            setIsLoading(false);
-                            return;
-                        }
-                    } else {
-                        // School not found in active table, check pending applications
-                        const { user: currentUser } = await authService.getCurrentUser();
-                        const { data: application } = await supabase
-                            .from('school_applications')
-                            .select('status')
-                            .eq('email', currentUser?.email)
-                            .eq('status', 'Pending')
-                            .single();
-
-                        if (application) {
-                            await authService.logout();
-                            alert("Access Denied: Your school application is currently 'Pending Review'. Please wait for developer approval.");
-                            setIsLoading(false);
-                            return;
-                        }
+                    if (school && school.status !== 'Active') {
+                        await authService.logout();
+                        alert("Account Inactive: Please contact support.");
+                        setIsLoading(false);
+                        return;
                     }
                 }
                 await proceedToLogin();
