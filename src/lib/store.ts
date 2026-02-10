@@ -2,6 +2,7 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { developerService } from '@/services/developerService';
+import { supabase } from '@/lib/supabase';
 
 // --- HELPERS ---
 export const generateId = () => {
@@ -2416,7 +2417,7 @@ function useSchoolDataInternal() {
         email: 'info@vine.ac.ug',
         principal: 'Dr. John Doe',
         administrator: 'Ms. Jane Smith',
-        status: 'Active'
+        status: 'Pending'
     });
     const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
         if (typeof window !== 'undefined') {
@@ -2773,7 +2774,8 @@ function useSchoolDataInternal() {
             phone: '+256 700 000000',
             email: 'info@vine.ac.ug',
             principal: 'Dr. John Doe',
-            administrator: 'Ms. Jane Smith'
+            administrator: 'Ms. Jane Smith',
+            status: 'Pending'
         }));
 
         setHydrated(true);
@@ -3223,12 +3225,24 @@ function useSchoolDataInternal() {
                         setFeaturedSchools(config.featured_schools);
                     }
                 }
+
+                // --- SECURITY SYNC: Force verify school status ---
+                if (schoolProfile.id && schoolProfile.id !== 'vine_intl') {
+                    const { data: schoolData } = await supabase.from('schools').select('status').eq('id', schoolProfile.id).single();
+                    if (schoolData && schoolData.status !== schoolProfile.status) {
+                        console.log(`Syncing school status: ${schoolProfile.status} -> ${schoolData.status}`);
+                        setSchoolProfile(prev => ({ ...prev, status: schoolData.status }));
+                    } else if (!schoolData) {
+                        // If not found in active schools, and it's not the default Vine, it MUST be pending
+                        setSchoolProfile(prev => ({ ...prev, status: 'Pending' }));
+                    }
+                }
             } catch (err) {
                 console.error("Failed to fetch cloud config:", err);
             }
         };
         fetchCloudConfig();
-    }, [hydrated]);
+    }, [hydrated, schoolProfile.id]);
 
     useEffect(() => {
         safeSetItem('app_landing_content_v1', landingPageContent);

@@ -161,11 +161,29 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
 
                 if (schoolId) {
                     const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
-                    if (school && school.status !== 'Active') {
-                        await authService.logout();
-                        alert("Your school account is currently pending approval. Please wait for the developer to grant access.");
-                        setIsLoading(false);
-                        return;
+                    if (school) {
+                        if (school.status !== 'Active') {
+                            await authService.logout();
+                            alert("Your school account is currently inactive. Please contact support.");
+                            setIsLoading(false);
+                            return;
+                        }
+                    } else {
+                        // School not found in active table, check pending applications
+                        const { user: currentUser } = await authService.getCurrentUser();
+                        const { data: application } = await supabase
+                            .from('school_applications')
+                            .select('status')
+                            .eq('email', currentUser?.email)
+                            .eq('status', 'Pending')
+                            .single();
+
+                        if (application) {
+                            await authService.logout();
+                            alert("Access Denied: Your school application is currently 'Pending Review'. Please wait for developer approval.");
+                            setIsLoading(false);
+                            return;
+                        }
                     }
                 }
                 await proceedToLogin();
