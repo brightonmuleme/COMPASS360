@@ -6,10 +6,10 @@ import { Lock, EyeOff, Eye, ShieldCheck, RefreshCw, AlertCircle, Home, ArrowLeft
 import styles from "../bursar/RoleSelection.module.css"; // Reuse existing styles
 
 export default function UnifiedRoleSelection() {
-    const { setActiveRole, setActiveAccountId, staffAccounts, portalBranding, schoolProfile, logout } = useSchoolData();
+    const { setActiveRole, setActiveAccountId, staffAccounts, portalBranding, schoolProfile, logout, developerProfile } = useSchoolData();
     const router = useRouter();
 
-    const [selectingRole, setSelectingRole] = React.useState<typeof roles[0] | null>(null);
+    const [selectingRole, setSelectingRole] = React.useState<any>(null);
     const [password, setPassword] = React.useState("");
     const [error, setError] = React.useState("");
     const [showPassword, setShowPassword] = React.useState(false);
@@ -25,6 +25,11 @@ export default function UnifiedRoleSelection() {
 
         if (!selectingRole) return;
 
+        if (selectingRole.id === 'Developer') {
+            router.push('/developer');
+            return;
+        }
+
         const account = staffAccounts.find(acc => acc.role === selectingRole.id);
         if (account && account.password === password) {
             setActiveRole(selectingRole.id);
@@ -37,7 +42,7 @@ export default function UnifiedRoleSelection() {
     };
 
     const roles: {
-        id: AccountantRole,
+        id: AccountantRole | 'Developer',
         title: string,
         description: string,
         icon: string,
@@ -45,6 +50,15 @@ export default function UnifiedRoleSelection() {
         path: string,
         locked?: boolean
     }[] = [
+            // --- DEVELOPER PORTAL (If Authorized) ---
+            ...(developerProfile ? [{
+                id: 'Developer' as const,
+                title: 'Developer Portal',
+                description: 'Master control panel for platform management and diagnostics.',
+                icon: '🛠️',
+                color: '#3b82f6',
+                path: '/developer'
+            }] : []),
             // --- ALL STAFF ROLES NOW LAND AT THE BURSAR HUB ---
             // The Layout and Sidebar will handle the specific view filtering.
             {

@@ -25,7 +25,7 @@ function BursarLayoutContent({
 }: {
     children: React.ReactNode;
 }) {
-    const { activeRole, hydrated, studentProfile, tutorProfile } = useSchoolData();
+    const { activeRole, hydrated, studentProfile, tutorProfile, developerProfile } = useSchoolData();
     const [mounted, setMounted] = useState(() => (typeof window !== 'undefined' && portalAlreadyMounted));
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const pathname = usePathname();
@@ -109,9 +109,9 @@ function BursarLayoutContent({
     // ALL Staff Roles are allowed in this Layout
     const allStaffRoles = [
         'Bursar', 'Expense Manager', 'Estate Manager', 'Director',
-        'Registrar', 'School News Coordinator'
+        'Registrar', 'School News Coordinator', 'Developer'
     ];
-    const isAuthorized = activeRole && allStaffRoles.includes(activeRole);
+    const isAuthorized = (activeRole && allStaffRoles.includes(activeRole)) || !!developerProfile;
 
     if (!isAuthorized) {
         return (

@@ -42,7 +42,7 @@ function AuthContent() {
     const [institutionName, setInstitutionName] = useState('');
 
     const {
-        setActiveRole, setActiveAccountId, featuredSchools, setSchoolProfile
+        setActiveRole, setActiveAccountId, featuredSchools, setSchoolProfile, setDeveloperProfile
     } = useSchoolData();
 
     // Theme Color Mapping
@@ -59,17 +59,23 @@ function AuthContent() {
     const proceedToLogin = async () => {
         try {
             const { user } = await authService.getCurrentUser();
-            const schoolId = user?.user_metadata?.school_id;
+            const userEmail = user?.email;
             const userRole = user?.user_metadata?.role || (role === 'school' ? 'Director' : role === 'accountant' ? 'Bursar' : role);
+            const isDeveloper = (userRole.toLowerCase() === 'developer') || (userEmail === 'callmebreyton500@gmail.com');
 
-            if (userRole === 'student') {
+            if (isDeveloper) {
+                setDeveloperProfile({
+                    id: user!.id,
+                    name: user!.user_metadata?.full_name || 'Developer',
+                    role: 'Developer'
+                });
+                router.push('/developer');
+            } else if (userRole === 'student') {
                 router.push('/student-portal');
             } else if (userRole === 'tutor') {
                 router.push('/tutor');
-            } else if (['Director', 'Bursar', 'Registrar', 'developer'].includes(userRole)) {
-                // Determine portal path
-                const path = userRole === 'developer' ? '/developer' : '/bursar';
-                router.push(path);
+            } else if (['Director', 'Bursar', 'Registrar'].includes(userRole)) {
+                router.push('/bursar');
             } else {
                 router.push('/portal');
             }
@@ -88,29 +94,33 @@ function AuthContent() {
                 const { user } = await authService.getCurrentUser();
                 const schoolId = user?.user_metadata?.school_id;
                 const userEmail = user?.email;
+                const userRole = (user?.user_metadata?.role || '').toLowerCase();
+                const isDeveloper = userRole === 'developer' || userEmail === 'callmebreyton500@gmail.com';
 
-                // 1. Check for Pending Application by Email
-                const { data: application } = await supabase
-                    .from('school_applications')
-                    .select('status')
-                    .eq('email', userEmail)
-                    .maybeSingle();
+                if (!isDeveloper) {
+                    // 1. Check for Pending Application by Email
+                    const { data: application } = await supabase
+                        .from('school_applications')
+                        .select('status')
+                        .eq('email', userEmail)
+                        .maybeSingle();
 
-                if (application && application.status !== 'Approved') {
-                    await authService.logout();
-                    alert("Waiting for developer approval. Please contact support for assistance.");
-                    setIsLoading(false);
-                    return;
-                }
-
-                // 2. Check for Inactive School by ID
-                if (schoolId) {
-                    const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
-                    if (school && school.status !== 'Active') {
+                    if (application && application.status !== 'Approved') {
                         await authService.logout();
-                        alert("Account Inactive: Please contact support.");
+                        alert("Waiting for developer approval. Please contact support for assistance.");
                         setIsLoading(false);
                         return;
+                    }
+
+                    // 2. Check for Inactive School by ID
+                    if (schoolId) {
+                        const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
+                        if (school && school.status !== 'Active') {
+                            await authService.logout();
+                            alert("Account Inactive: Please contact support.");
+                            setIsLoading(false);
+                            return;
+                        }
                     }
                 }
                 await proceedToLogin();

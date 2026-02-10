@@ -914,6 +914,135 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         }
     };
 
+    const printReportingForm = () => {
+        if (!selectedStudent || isStudentView) return;
+
+        const prog = programmes.find(p => p.name === selectedStudent.programme || p.id === selectedStudent.programme);
+
+        // Template Selection
+        let template = documentTemplates.find(t => t.type === 'CLEARANCE' && (t as any).programmeId === prog?.id);
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault);
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE');
+
+        if (!template) return alert("No Reporting/Clearance Form template found in system.");
+
+        let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
+
+        // Logo Logic
+        const specificLogo = localStorage.getItem(`logo_${template.id}`);
+        const globalLogo = localStorage.getItem('school_logo');
+        const activeLogo = specificLogo || globalLogo;
+        const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 80px; width: auto; display: block; margin: 0 auto 10px auto;" />` : '';
+
+        // Calculations for Placeholder Values
+        const currentBillings = billings.filter(b => b.studentId === selectedStudent.id && b.term === selectedStudent.semester);
+        const currentPayments = payments.filter(p => p.studentId === selectedStudent.id && (p.term === selectedStudent.semester || !p.term));
+
+        // 1. Compulsory Services List
+        const compulsoryServices = services.filter(s => s.isCompulsory);
+        const compulsoryListHtml = `<ul style="margin: 0; padding: 0; list-style: none;">` +
+            compulsoryServices.map(s => {
+                const totalAllocated = currentPayments.reduce((acc, p) => acc + (p.allocations?.[s.name] || 0), 0);
+                const status = totalAllocated >= s.cost ? '<span style="color: green; font-weight: bold;">[ FULLY PAID ]</span>' :
+                    totalAllocated > 0 ? `<span style="color: orange; font-weight: bold;">[ PARTIAL: ${formatMoney(totalAllocated)} ]</span>` :
+                        '<span style="color: red; font-weight: bold;">[ UNPAID ]</span>';
+                return `<li style="margin-bottom: 5px;">${s.name}: ${status}</li>`;
+            }).join('') + `</ul>`;
+
+        // 2. Optional Services List
+        const optionalServices = services.filter(s => !s.isCompulsory && selectedStudent.services.includes(s.id));
+        const optionalListHtml = optionalServices.length > 0 ?
+            `<ul style="margin: 0; padding: 0; list-style: none;">` +
+            optionalServices.map(s => {
+                const totalAllocated = currentPayments.reduce((acc, p) => acc + (p.allocations?.[s.name] || 0), 0);
+                const status = totalAllocated >= s.cost ? '<span style="color: green; font-weight: bold;">[ FULLY PAID ]</span>' :
+                    totalAllocated > 0 ? `<span style="color: orange; font-weight: bold;">[ PARTIAL: ${formatMoney(totalAllocated)} ]</span>` :
+                        '<span style="color: red; font-weight: bold;">[ UNPAID ]</span>';
+                return `<li style="margin-bottom: 5px;">${s.name}: ${status}</li>`;
+            }).join('') + `</ul>` : 'No optional services subscribed.';
+
+        // 3. Arrears Settlement (B/F)
+        const bfBillings = currentBillings.filter(b => isArrearsKey(b.description || b.type || ""));
+        const totalBfBilled = bfBillings.reduce((s, b) => s + b.amount, 0) || (selectedStudent.previousBalance || 0);
+        const totalBfAllocated = currentPayments.reduce((acc, p) => {
+            const alloc = p.allocations || {};
+            const bfKey = Object.keys(alloc).find(k => isArrearsKey(k));
+            return acc + (bfKey ? (alloc[bfKey] || 0) : 0);
+        }, 0);
+
+        const bfRate = totalBfBilled > 0 ? (totalBfAllocated / totalBfBilled) * 100 : 100;
+        const bfStatusHtml = totalBfBilled > 0 ?
+            `<div style="font-weight: bold;">${bfRate >= 100 ? '<span style="color: green;">FULLY SETTLED (100%)</span>' :
+                `<span style="color: orange;">PARTIALLY SETTLED (${bfRate.toFixed(1)}%)</span>`}</div>
+            <div style="font-size: 10px; color: #666;">Allocated: ${formatMoney(totalBfAllocated)} / Total: ${formatMoney(totalBfBilled)}</div>` :
+            '<span style="color: green; font-weight: bold;">NO ARREARS</span>';
+
+        // 4. Requirements Summary
+        const reqSummaryHtml = selectedStudent.physicalRequirements && selectedStudent.physicalRequirements.length > 0 ?
+            `<table style="width: 100%; border-collapse: collapse; margin-top: 5px;">` +
+            selectedStudent.physicalRequirements.map(r => `
+                <tr>
+                    <td style="padding: 4px; border-bottom: 1px solid #eee;">${r.name}</td>
+                    <td style="padding: 4px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; color: ${r.brought >= r.required ? 'green' : 'red'};">
+                        ${r.brought} / ${r.required} ${r.brought >= r.required ? '✅' : '❌'}
+                    </td>
+                </tr>
+            `).join('') + `</table>` : 'No physical requirements recorded.';
+
+        // Replacements for Clearance template
+        const replacements: Record<string, string> = {
+            '{{institution_name}}': schoolProfile?.name || 'Vine International Institute',
+            '{{institution_address}}': schoolProfile?.poBox || 'P.O. Box 000, Kampala',
+            '{{institution_contact}}': schoolProfile?.phone || schoolProfile?.email || '',
+            '{{institution_email}}': schoolProfile?.email || '',
+            '{{programme_logo}}': logoHtml,
+            '{{student_name}}': selectedStudent.name,
+            '{{pay_code}}': selectedStudent.payCode || 'N/A',
+            '{{programme_name}}': prog?.name || selectedStudent.programme || '',
+            '{{current_level}}': selectedStudent.semester,
+            '{{clearance_status}}': selectedStudent.accountStatus?.toUpperCase() || 'UNKNOWN',
+            '{{financial_percentage}}': clearancePercentage.toFixed(1) + '%',
+            '{{compulsory_services_list}}': compulsoryListHtml,
+            '{{optional_services_list}}': optionalListHtml,
+            '{{bf_clearance_rate}}': bfStatusHtml,
+            '{{requirements_summary}}': reqSummaryHtml,
+            '{{current_date}}': new Date().toLocaleDateString(),
+            '{{bursar_name}}': activeRole === 'Director' ? 'The Director' : 'The Institute Bursar'
+        };
+
+        const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        Object.entries(replacements).forEach(([key, val]) => {
+            content = content.replace(new RegExp(escapeRegExp(key), 'g'), val);
+        });
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute'; iframe.style.width = '0px'; iframe.style.height = '0px'; iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+            doc.open();
+            doc.write(`
+                <html>
+                <head>
+                    <title>Report - ${selectedStudent.name}</title>
+                    <style>@media print { body { -webkit-print-color-adjust: exact; } }</style>
+                </head>
+                <body style="padding: 20mm; font-family: sans-serif; color: #000 !important; background: #fff !important;">${content}</body>
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.frameElement.parentNode.removeChild(window.frameElement); }, 1000);
+                    }
+                </script>
+                </html>
+            `);
+            doc.close();
+        }
+    };
+
+
     const printReceipt = (tx: any) => {
         if (!selectedStudent || isStudentView) return;
 
@@ -1108,22 +1237,37 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                     </div>
                     <div className="flex items-center gap-4">
                         {!isStudentView && !isDirectorView && (
-                            <button
-                                onClick={handlePostToPortal}
-                                disabled={isPosting || isProcessingPromotion}
-                                className="px-6 py-2.5 rounded-full text-xs md:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 group relative overflow-hidden"
-                                style={{
-                                    background: isPosting ? 'rgba(59, 130, 246, 0.1)' : PREMIUM_BLUE,
-                                    color: 'white',
-                                    border: 'none',
-                                    boxShadow: isPosting ? 'none' : '0 8px 30px rgba(37, 99, 235, 0.4)'
-                                }}
-                            >
-                                <span className="relative z-10">{isPosting ? '📡 Syncing...' : '🚀 Post to Portal'}</span>
-                                {!isPosting && (
-                                    <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12"></div>
-                                )}
-                            </button>
+                            <>
+                                <button
+                                    onClick={printReportingForm}
+                                    disabled={isProcessingPromotion}
+                                    className="px-6 py-2.5 rounded-full text-xs md:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 group relative overflow-hidden"
+                                    style={{
+                                        background: 'rgba(255,255,255,0.05)',
+                                        color: 'white',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+                                    }}
+                                >
+                                    <span className="relative z-10">🖨️ Reporting Form</span>
+                                </button>
+                                <button
+                                    onClick={handlePostToPortal}
+                                    disabled={isPosting || isProcessingPromotion}
+                                    className="px-6 py-2.5 rounded-full text-xs md:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 group relative overflow-hidden"
+                                    style={{
+                                        background: isPosting ? 'rgba(59, 130, 246, 0.1)' : PREMIUM_BLUE,
+                                        color: 'white',
+                                        border: 'none',
+                                        boxShadow: isPosting ? 'none' : '0 8px 30px rgba(37, 99, 235, 0.4)'
+                                    }}
+                                >
+                                    <span className="relative z-10">{isPosting ? '📡 Syncing...' : '🚀 Post to Portal'}</span>
+                                    {!isPosting && (
+                                        <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12"></div>
+                                    )}
+                                </button>
+                            </>
                         )}
                         {!isStudentView && (
                             <button

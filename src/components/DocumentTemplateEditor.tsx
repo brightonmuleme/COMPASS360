@@ -11,8 +11,9 @@ interface EditorProps {
 // Aligned with placeholders used in PaymentModesPage and AdmissionsPage
 const DYNAMIC_FIELDS = [
     { category: 'Institution', fields: ['{{institution_name}}', '{{institution_address}}', '{{institution_email}}', '{{institution_contact}}', '{{programme_logo}}'] },
-    { category: 'Student', fields: ['{{student_name}}', '{{student_code}}', '{{programme_name}}', '{{current_level}}', '{{pay_code}}', '{{clearance_percentage}}'] },
-    { category: 'Receipt / Finance', fields: ['{{receipt_number}}', '{{transaction_id}}', '{{date}}', '{{payment_particulars}}', '{{payment_description}}', '{{payment_method}}', '{{amount}}', '{{amount_words}}', '{{currency}}', '{{balance}}'] },
+    { category: 'Student', fields: ['{{student_name}}', '{{student_code}}', '{{programme_name}}', '{{current_level}}', '{{pay_code}}', '{{clearance_percentage}}', '{{clearance_status}}', '{{account_status}}'] },
+    { category: 'Receipt / Finance', fields: ['{{receipt_number}}', '{{transaction_id}}', '{{date}}', '{{payment_particulars}}', '{{payment_description}}', '{{payment_method}}', '{{amount}}', '{{amount_words}}', '{{currency}}', '{{balance}}', '{{arrears}}', '{{bf_clearance_rate}}'] },
+    { category: 'Clearance & Requirements', fields: ['{{financial_percentage}}', '{{compulsory_services_list}}', '{{requirements_brought_list}}', '{{requirements_summary}}'] },
     { category: 'Admission', fields: ['{{reporting_date}}', '{{admission_date}}', '{{year}}'] },
     { category: 'System', fields: ['{{current_date}}', '{{bursar_name}}', '{{user_name}}'] },
 ];
@@ -191,20 +192,33 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
             '{{student_code}}': 'STU-001',
             '{{pay_code}}': '99001122',
             '{{receipt_number}}': 'RCP-2024-001',
-            '{{payment_description}}': 'Tuition Fees Payment',
-            '{{amount}}': '500,000',
+            '{{transaction_id}}': 'TRX-998877',
+            '{{payment_particulars}}': 'Tuition & Medical Fees',
+            '{{payment_description}}': 'Full Payment for Semester 1',
+            '{{payment_method}}': 'Bank Transfer',
+            '{{amount}}': '1,200,000',
             '{{currency}}': 'UGX',
-            '{{amount_words}}': 'Five Hundred Thousand Shillings Only',
-            '{{balance}}': 'UGX 100,000',
+            '{{amount_words}}': 'One Million Two Hundred Thousand Shillings Only',
+            '{{balance}}': '0',
+            '{{arrears}}': '200,000',
+            '{{bf_clearance_rate}}': 'PARTIALLY SETTLED (50%)',
             '{{date}}': new Date().toLocaleDateString(),
             '{{current_date}}': new Date().toLocaleDateString(),
             '{{admission_date}}': '01/02/2024',
             '{{reporting_date}}': '15/02/2024',
             '{{programme_name}}': 'Bachelor of Medicine',
             '{{year}}': '2024',
-            '{{current_level}}': 'Year 1',
+            '{{current_level}}': 'Year 1 Semester 1',
             '{{bursar_name}}': 'Jane Smith',
-            '{{user_name}}': 'Admin User'
+            '{{user_name}}': 'Admin User',
+            '{{clearance_status}}': 'CLEARED',
+            '{{account_status}}': 'Active',
+            '{{clearance_percentage}}': '100%',
+            '{{financial_percentage}}': '85%',
+            '{{compulsory_services_list}}': 'Tuition (Paid), Medical (Paid)',
+            '{{optional_services_list}}': 'Hostel (Paid), Transport (Partial)',
+            '{{requirements_brought_list}}': 'Reams (2/2), Soap (1/1)',
+            '{{requirements_summary}}': 'All core physical requirements have been verified and received by the registrar.'
         };
 
         Object.entries(MOCK_DATA).forEach(([key, val]) => {
