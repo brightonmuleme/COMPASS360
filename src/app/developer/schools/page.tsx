@@ -40,18 +40,19 @@ export default function SchoolValidationPage() {
         if (confirm(`Approve ${app.school_name}? This will create a live school profile.`)) {
             setLoading(true);
             try {
-                // 1. Create the school
-                const { error: schoolError } = await supabase.from('schools').insert([{
+                const { data: newSchool, error: schoolError } = await supabase.from('schools').insert([{
                     name: app.school_name,
                     email: app.email,
-                    plan: app.plan || 'Standard',
                     status: 'Active'
-                }]);
+                }]).select().single();
 
                 if (schoolError) throw schoolError;
 
                 // 2. Update application status
                 await supabase.from('school_applications').update({ status: 'Approved' }).eq('id', id);
+
+                // 3. (Optional) Create a default staff account for the admin?
+                // For now, just confirming approval is enough as the user exists in Auth.
 
                 alert("School approved successfully!");
                 fetchData();
@@ -132,7 +133,7 @@ export default function SchoolValidationPage() {
                                     <tr>
                                         <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Institution</th>
                                         <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Contact Person</th>
-                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Plan Type</th>
+                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Phone Number</th>
                                         <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose text-right">Verification</th>
                                     </tr>
                                 </thead>
@@ -145,7 +146,7 @@ export default function SchoolValidationPage() {
                                             </td>
                                             <td className="p-5 text-sm font-bold text-slate-600">{app.admin_name || 'N/A'}</td>
                                             <td className="p-5">
-                                                <span className="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-[10px] font-black uppercase tracking-wider">{app.plan || 'Standard'}</span>
+                                                <span className="text-xs font-bold text-slate-600">{app.phone || 'N/A'}</span>
                                             </td>
                                             <td className="p-5">
                                                 <div className="flex justify-end gap-3">
@@ -187,7 +188,7 @@ export default function SchoolValidationPage() {
                             <thead className="bg-slate-50/50 border-b border-slate-100">
                                 <tr>
                                     <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">School ID & Name</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pricing Plan</th>
+                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Email</th>
                                     <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Status</th>
                                     <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Management</th>
                                 </tr>
@@ -207,7 +208,7 @@ export default function SchoolValidationPage() {
                                             </div>
                                         </td>
                                         <td className="p-5">
-                                            <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-lg text-[10px] font-black uppercase tracking-wider">{school.plan}</span>
+                                            <div className="text-xs font-bold text-slate-600">{school.email || 'N/A'}</div>
                                         </td>
                                         <td className="p-5">
                                             <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex w-fit items-center gap-1.5 ${school.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
