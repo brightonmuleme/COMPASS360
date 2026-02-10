@@ -3203,15 +3203,19 @@ function useSchoolDataInternal() {
                 // 3. Identify the School ID (Metadata -> Email Fallback -> Default)
                 let resolvedSchoolId = schoolId;
 
-                if (!resolvedSchoolId || resolvedSchoolId === 'vine_intl') {
-                    // Try to find the school record by email if not in metadata
-                    const { data: emailSchool } = await supabase
-                        .from('schools')
-                        .select('id')
-                        .eq('email', userEmail)
-                        .maybeSingle();
+                // ALWAYS verify the school ID against the database to catch mismatches
+                const { data: emailSchool } = await supabase
+                    .from('schools')
+                    .select('id')
+                    .eq('email', userEmail)
+                    .maybeSingle();
 
-                    if (emailSchool) resolvedSchoolId = emailSchool.id;
+                if (emailSchool) {
+                    // Use the database ID as the source of truth
+                    resolvedSchoolId = emailSchool.id;
+                } else if (!resolvedSchoolId || resolvedSchoolId === 'vine_intl') {
+                    // No school found by email, keep existing or default
+                    resolvedSchoolId = schoolId || 'vine_intl';
                 }
 
                 // 4. Check for Active School Status by ID (The "Staff/Institution" Lock)
