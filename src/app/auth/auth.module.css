@@ -1,0 +1,105 @@
+.authContainer {
+    min-height: 100vh;
+    width: 100%;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    padding: 2rem 1rem;
+}
+
+.ambientGlow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.3;
+    z-index: 1;
+    pointer-events: none;
+    transition: all 1s ease;
+}
+
+.glow1 {
+    top: -100px;
+    left: -100px;
+}
+
+.glow2 {
+    bottom: -100px;
+    right: -100px;
+}
+
+.authCard {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 500px;
+    background: rgba(17, 24, 39, 0.8);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 32px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.authHeader {
+    display: flex;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.tabButton {
+    flex: 1;
+    padding: 1.25rem;
+    background: transparent;
+    color: #9ca3af;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+}
+
+.tabButtonActive {
+    color: #fff;
+    border-bottom: 3px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.authContent {
+    padding: 2.5rem;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 640px) {
+    .authContainer {
+        padding: 0;
+        align-items: flex-start;
+    }
+
+    .authCard {
+        max-width: none;
+        min-height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .authContent {
+        padding: 2rem 1.5rem;
+    }
+}

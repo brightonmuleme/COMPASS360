@@ -1,9 +1,9 @@
 "use client";
 import React, { useState } from 'react';
 import { useSchoolData } from '@/lib/store';
+import { useRouter } from 'next/navigation';
 import styles from './landing.module.css';
 import PortalShowcase from '../components/landing/PortalShowcase';
-import SignUpModal from '../components/landing/SignUpModal';
 import LearnMoreModal from '../components/landing/LearnMoreModal';
 import SchoolShowcase from '../components/landing/SchoolShowcase';
 import BackgroundSlideshow from '../components/landing/BackgroundSlideshow';
@@ -17,7 +17,8 @@ import BackgroundSlideshow from '../components/landing/BackgroundSlideshow';
 // I will use the artifact filenames.
 export default function Home() {
   const { landingPageContent, developerSettings } = useSchoolData();
-  const [activeModal, setActiveModal] = useState<{ type: 'signup' | 'learnMore' | 'signin', role: string } | null>(null);
+  const router = useRouter();
+  const [activeModal, setActiveModal] = useState<{ type: 'learnMore', role: string } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   React.useEffect(() => {
@@ -57,9 +58,9 @@ export default function Home() {
           tagline={role.tagline}
           imageSrc={role.image}
           themeColor={role.theme}
-          onSignUp={() => setActiveModal({ type: 'signup', role: role.id })}
+          onSignUp={() => router.push(`/auth?role=${role.id}&mode=signup`)}
           onLearnMore={() => setActiveModal({ type: 'learnMore', role: role.id })}
-          onSignIn={() => setActiveModal({ type: 'signin', role: role.id })}
+          onSignIn={() => router.push(`/auth?role=${role.id}&mode=signin`)}
         />
       ))}
 
@@ -67,13 +68,6 @@ export default function Home() {
       <SchoolShowcase />
 
       {/* Modals */}
-      {(activeModal?.type === 'signup' || activeModal?.type === 'signin') && (
-        <SignUpModal
-          role={activeModal.role as any}
-          initialMode={activeModal.type === 'signin' ? 'signin' : 'signup'}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
 
       {activeModal?.type === 'learnMore' && (
         <LearnMoreModal
