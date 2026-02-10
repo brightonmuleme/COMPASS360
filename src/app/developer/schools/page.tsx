@@ -40,19 +40,21 @@ export default function SchoolValidationPage() {
         if (confirm(`Approve ${app.school_name}? This will create a live school profile.`)) {
             setLoading(true);
             try {
-                const { data: newSchool, error: schoolError } = await supabase.from('schools').insert([{
-                    name: app.school_name,
-                    email: app.email,
-                    status: 'Active'
-                }]).select().single();
+                const response = await fetch('/api/admin/approve-school', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        applicationId: id,
+                        schoolName: app.school_name,
+                        email: app.email
+                    })
+                });
 
-                if (schoolError) throw schoolError;
+                const result = await response.json();
 
-                // 2. Update application status
-                await supabase.from('school_applications').update({ status: 'Approved' }).eq('id', id);
-
-                // 3. (Optional) Create a default staff account for the admin?
-                // For now, just confirming approval is enough as the user exists in Auth.
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to approve school');
+                }
 
                 alert("School approved successfully!");
                 fetchData();
