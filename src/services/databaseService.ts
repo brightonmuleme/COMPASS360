@@ -65,69 +65,46 @@ export const databaseService = {
     // --- CLOUD STATE SYNC (For Cross-Device Consistency) ---
 
     getSchoolCloudState: async (schoolId: string) => {
-        const { data, error } = await supabase
-            .from('schools')
-            .select('settings')
-            .eq('id', schoolId)
-            .single();
+        try {
+            const response = await fetch(`/api/cloud/sync?schoolId=${schoolId}`);
 
-        if (error || !data?.settings) return null;
-        // The cloud state is stored within the 'settings' JSON field
-        const settings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
-        return settings.cloud_state || null;
+            if (!response.ok) {
+                console.error('☁️ Failed to fetch cloud state:', await response.text());
+                return null;
+            }
+
+            const { cloudState } = await response.json();
+            return cloudState;
+        } catch (error) {
+            console.error('☁️ Error fetching cloud state:', error);
+            return null;
+        }
     },
 
     saveSchoolCloudState: async (schoolId: string, state: any) => {
         try {
             console.log('☁️ CLOUD SAVE: Starting for school ID:', schoolId);
 
-            // First get current settings to avoid overwriting other keys
-            const { data: school, error: fetchError } = await supabase
-                .from('schools')
-                .select('settings')
-                .eq('id', schoolId)
-                .single();
+            const response = await fetch('/api/cloud/sync', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    schoolId,
+                    cloudState: state
+                })
+            });
 
-            if (fetchError) {
-                console.error('☁️ CLOUD SAVE ERROR: Failed to fetch current settings:', fetchError);
-                throw fetchError;
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('☁️ CLOUD SAVE ERROR:', errorData);
+                throw new Error(errorData.error || 'Failed to save cloud state');
             }
 
-            console.log('☁️ CLOUD SAVE: Current settings:', school?.settings);
+            const result = await response.json();
+            console.log('☁️ CLOUD SAVE SUCCESS:', result);
 
-            // Handle NULL or empty settings explicitly
-            let currentSettings = {};
-            if (school?.settings) {
-                if (typeof school.settings === 'string') {
-                    try {
-                        currentSettings = JSON.parse(school.settings);
-                    } catch (e) {
-                        console.warn('☁️ CLOUD SAVE: Failed to parse settings, using empty object');
-                    }
-                } else {
-                    currentSettings = school.settings;
-                }
-            }
-
-            const updatedSettings = {
-                ...currentSettings,
-                cloud_state: state
-            };
-
-            console.log('☁️ CLOUD SAVE: Attempting to save:', updatedSettings);
-
-            const { error: updateError, data: updateData } = await supabase
-                .from('schools')
-                .update({ settings: updatedSettings })
-                .eq('id', schoolId)
-                .select();
-
-            if (updateError) {
-                console.error('☁️ CLOUD SAVE ERROR: Update failed:', updateError);
-                throw updateError;
-            }
-
-            console.log('☁️ CLOUD SAVE SUCCESS: Data saved to cloud:', updateData);
             return true;
         } catch (error) {
             console.error('☁️ CLOUD SAVE CRITICAL ERROR:', error);
