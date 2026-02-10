@@ -18,10 +18,6 @@ export const authService = {
     // 1. LOGIN
     login: async (credentials: { username: string; password: string }): Promise<AuthResponse> => {
         try {
-            // Force Sign Out first to clear any "ghost" or "zombie" sessions
-            // This prevents the "There is already a signed in user" error
-            await supabase.auth.signOut();
-
             // Supabase uses 'email' for login by default.
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: credentials.username,
