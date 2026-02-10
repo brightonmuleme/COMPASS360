@@ -1097,20 +1097,9 @@ const INITIAL_INCOME_CATEGORIES: TransactionCategoryItem[] = [
     { id: 'ic_4', name: 'Donations', subcategories: [] },
 ];
 
-export const INITIAL_SERVICES: Service[] = [
-    { id: 'transport', name: 'School Transport', cost: 150000 },
-    { id: 'meals', name: 'Lunch Program', cost: 200000 },
-    { id: 'uniform', name: 'Extra Uniform Set', cost: 100000 },
-    { id: 'trip', name: 'Study Trip Fund', cost: 50000 },
-];
+export const INITIAL_SERVICES: Service[] = [];
 
-export const INITIAL_BURSARIES: Bursary[] = [
-    { id: 'none', name: 'None (Standard Payer)', value: 0 },
-    { id: 'half', name: 'Half Bursary', value: 950000 },
-    { id: 'full', name: 'Full Bursary', value: 1900000 },
-    { id: 'sports', name: 'Sports Scheme', value: 500000 },
-    { id: 'staff', name: 'Staff Child', value: 600000 },
-];
+export const INITIAL_BURSARIES: Bursary[] = [];
 
 export const INITIAL_REQUISITION_DRAFT: Requisition = {
     id: 'draft',
@@ -1269,28 +1258,7 @@ export const INITIAL_RESULT_PAGE_CONFIGS: ResultPageConfig[] = [
     }
 ];
 
-const INITIAL_PROGRAMMES: Programme[] = [
-    {
-        id: 'mbchb', code: 'MBChB', name: 'Bachelor of Medicine & Surgery', type: 'Degree', duration: '5 Years',
-        feeStructure: [], documents: {}, levels: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5']
-    },
-    {
-        id: 'pharm', code: 'BPHARM', name: 'Bachelor of Pharmacy', type: 'Degree', duration: '4 Years',
-        feeStructure: [], documents: {}, levels: ['Year 1', 'Year 2', 'Year 3', 'Year 4']
-    },
-    {
-        id: 'nurs', code: 'BNS', name: 'Bachelor of Nursing Science', type: 'Degree', duration: '4 Years',
-        feeStructure: [], documents: {}, levels: ['Year 1', 'Year 2', 'Year 3', 'Year 4']
-    },
-    {
-        id: 'mid', code: 'DCM', name: 'Diploma in Midwifery', type: 'Diploma', duration: '2 Years',
-        feeStructure: [], documents: {}, levels: ['Year 1', 'Year 2']
-    },
-    {
-        id: 'clin', code: 'DCM', name: 'Diploma in Clinical Medicine', type: 'Diploma', duration: '3 Years',
-        feeStructure: [], documents: {}, levels: ['Year 1', 'Year 2', 'Year 3']
-    }
-];
+const INITIAL_PROGRAMMES: Programme[] = [];
 
 export interface PromotionChange {
     studentId: number;
@@ -1361,33 +1329,7 @@ export const INITIAL_APP_OFFERS: AppOffer[] = [
 export const INITIAL_BILLINGS: Billing[] = [];
 export const INITIAL_PAYMENTS: Payment[] = [];
 
-export const INITIAL_STUDENTS: EnrolledStudent[] = [
-    {
-        id: 101, name: "JOHN KAMAU", payCode: "8821-099", programme: "Diploma in Clinical Medicine", level: "Year 1", semester: "Year 1, Semester 1", balance: 500000, totalFees: 2500000, services: ['meals'], bursary: 'none', previousBalance: 0, status: 'active', origin: 'bursar',
-        physicalRequirements: [
-            { name: "Ream of Paper", required: 2, brought: 2, color: "#3b82f6", entries: [{ id: '1', date: '2024-01-15', quantity: 2 }] },
-            { name: "Scrub Suits", required: 2, brought: 1, color: "#8b5cf6", entries: [{ id: '2', date: '2024-01-20', quantity: 1 }] }
-        ],
-        subscriptionExpiry: "2026-02-28T23:59:59",
-        walletBalance: 0,
-        paymentRequests: [],
-        tutorSubscriptions: []
-    },
-    {
-        id: 102, name: "ALICE MUTESI", payCode: "PAY-001", programme: "Bachelor of Medicine & Surgery", level: "Year 1", semester: "Year 1, Semester 1",
-        balance: 0, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'cleared', origin: 'bursar',
-        walletBalance: 15000,
-        paymentRequests: [],
-        tutorSubscriptions: []
-    },
-    {
-        id: 103, name: "DAVID OPIO", payCode: "PAY-002", programme: "Bachelor of Medicine & Surgery", level: "Year 1", semester: "Year 1, Semester 1",
-        balance: 500000, totalFees: 3000000, services: [], bursary: 'none', previousBalance: 0, status: 'active', tuitionStatus: 'probation', origin: 'bursar',
-        walletBalance: 0,
-        paymentRequests: [],
-        tutorSubscriptions: []
-    }
-];
+export const INITIAL_STUDENTS: EnrolledStudent[] = [];
 
 export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
     {
@@ -1426,14 +1368,7 @@ export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
     }
 ];
 
-export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [
-    { id: 'staff_1', username: 'director', password: 'password123', role: 'Director', name: 'Dr. John Doe', schoolId: 'vine_intl' },
-    { id: 'staff_2', username: 'registrar', password: 'password123', role: 'Registrar', name: 'Ms. Alice', schoolId: 'vine_intl' },
-    { id: 'staff_3', username: 'news', password: 'password123', role: 'School News Coordinator', name: 'Mr. News', schoolId: 'vine_intl' },
-    { id: 'staff_4', username: 'expense', password: 'password123', role: 'Expense Manager', name: 'Muleme Bright', schoolId: 'vine_intl' },
-    { id: 'staff_5', username: 'estate', password: 'password123', role: 'Estate Manager', name: 'Mr. Estate', schoolId: 'vine_intl' },
-    { id: 'staff_6', username: 'bursar', password: 'password123', role: 'Bursar', name: 'Sarah Namuli', schoolId: 'vine_intl' },
-];
+export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [];
 
 export const INITIAL_TUTORS: Tutor[] = [
     {
@@ -4519,7 +4454,13 @@ function useSchoolDataInternal() {
         const timer = setTimeout(async () => {
             try {
                 // Only push if we are currently logged in as a valid school schoolProfile
-                if (schoolProfile.status === 'Active') {
+                if (schoolProfile.status === 'Active' && schoolProfile.id !== 'vine_intl') {
+                    // SAFEGUARD: Don't push if students array is empty but we haven't synced with cloud yet
+                    // To avoid overwriting existing cloud data with local mock initial state
+                    if (students.length === 0 && !localStorage.getItem('school_last_cloud_sync')) {
+                        console.log("☁️ Compass Cloud: Skipping initial empty sync to prevent data loss");
+                        return;
+                    }
                     await databaseService.saveSchoolCloudState(schoolProfile.id, stateToCloud);
                     localStorage.setItem('school_last_pushed_hash', stateHash);
                     localStorage.setItem('school_last_cloud_sync', stateToCloud.timestamp);
