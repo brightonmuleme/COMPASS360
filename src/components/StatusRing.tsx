@@ -2,12 +2,12 @@
 import React from 'react';
 import { EnrolledStudent, useSchoolData, determineStudentStatus, calculateClearancePercentage } from '@/lib/store';
 
-export const StatusRing = ({ student, size = 60 }: { student: EnrolledStudent, size?: number }) => {
+export const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
     const { financialSettings, students, billings, payments, bursaries } = useSchoolData();
 
     // Bug Fix: Real-Time Financial Mirroring (Pay Code Sync)
     // Pass all students to enable automatic Pay Code lookup in the calculation
-    const percentage = calculateClearancePercentage(
+    const calculatedPercentage = calculateClearancePercentage(
         student,
         billings,
         payments,
@@ -16,6 +16,8 @@ export const StatusRing = ({ student, size = 60 }: { student: EnrolledStudent, s
         undefined,
         students // Enable Pay Code mirroring
     );
+
+    const percentage = propPercentage !== undefined ? propPercentage : calculatedPercentage;
 
     // Determine if this calculation is mirrored from Bursar
     const isMirrored = student.origin === 'registrar' && student.payCode;

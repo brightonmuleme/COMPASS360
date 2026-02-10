@@ -2,6 +2,7 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { developerService } from '@/services/developerService';
+import { databaseService } from '@/services/databaseService';
 import { supabase } from '@/lib/supabase';
 
 // --- HELPERS ---
@@ -4481,6 +4482,94 @@ function useSchoolDataInternal() {
         };
     };
 
+    // --- CLOUD SYNCHRONIZATION (CROSS-DEVICE CONSISTENCY) ---
+    const [lastCloudSync, setLastCloudSync] = useState<string>(() => {
+        if (typeof window !== 'undefined') return localStorage.getItem('school_last_cloud_sync') || "";
+        return "";
+    });
+    const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+
+    // 1. MASTER PUSH EFFECT (Debounced)
+    useEffect(() => {
+        if (!hydrated || !schoolProfile.id || isCloudSyncing) return;
+
+        // Core Business State Bundle
+        const stateToCloud = {
+            students,
+            payments,
+            billings,
+            bursaries,
+            programmes,
+            services,
+            staffAccounts,
+            schoolProfile,
+            documentTemplates,
+            timestamp: new Date().toISOString()
+        };
+
+        const stateHash = JSON.stringify(stateToCloud);
+        // Skip if same as last successful push
+        if (stateHash === localStorage.getItem('school_last_pushed_hash')) return;
+
+        const timer = setTimeout(async () => {
+            try {
+                // Only push if we are currently logged in as a valid school schoolProfile
+                if (schoolProfile.status === 'Active') {
+                    await databaseService.saveSchoolCloudState(schoolProfile.id, stateToCloud);
+                    localStorage.setItem('school_last_pushed_hash', stateHash);
+                    localStorage.setItem('school_last_cloud_sync', stateToCloud.timestamp);
+                    setLastCloudSync(stateToCloud.timestamp);
+                    console.log("☁️ Compass Cloud: Institutional Data Synced Successfully");
+                }
+            } catch (e) {
+                console.error("☁️ Compass Cloud: Sync failed", e);
+            }
+        }, 8000); // 8 second debounce to avoid spamming Supabase
+
+        return () => clearTimeout(timer);
+    }, [students, payments, billings, bursaries, programmes, services, staffAccounts, schoolProfile.id, hydrated]);
+
+    // 2. MANUAL PULL FUNCTION
+    const pullFromCloud = async (force = false) => {
+        if (!schoolProfile.id) return;
+        setIsCloudSyncing(true);
+        try {
+            const cloudState = await databaseService.getSchoolCloudState(schoolProfile.id);
+            if (cloudState && cloudState.students) {
+                // If cloud is newer OR forced, apply it
+                const cloudTime = new Date(cloudState.timestamp || 0).getTime();
+                const localTime = new Date(lastCloudSync || 0).getTime();
+
+                if (force || cloudTime > localTime) {
+                    console.log("☁️ Compass Cloud: Pulling fresher data from server...");
+                    if (cloudState.students) setStudents(cloudState.students);
+                    if (cloudState.payments) setPayments(cloudState.payments);
+                    if (cloudState.billings) setBillings(cloudState.billings);
+                    if (cloudState.bursaries) setBursaries(cloudState.bursaries);
+                    if (cloudState.programmes) setProgrammes(cloudState.programmes);
+                    if (cloudState.services) setServices(cloudState.services);
+                    if (cloudState.staffAccounts) setStaffAccounts(cloudState.staffAccounts);
+
+                    setLastCloudSync(cloudState.timestamp);
+                    localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
+                    // Update the pushed hash to prevent immediate re-push
+                    localStorage.setItem('school_last_pushed_hash', JSON.stringify(cloudState));
+                }
+            }
+        } catch (e) {
+            console.error("☁️ Compass Cloud: Pull failed", e);
+        } finally {
+            setIsCloudSyncing(false);
+        }
+    };
+
+    // 3. AUTO-PULL ON LOGIN/MOUNT
+    useEffect(() => {
+        if (hydrated && schoolProfile.id) {
+            pullFromCloud();
+        }
+    }, [hydrated, schoolProfile.id]);
+
     const studentRequirements = useMemo(() => {
         const totals: Record<string, number> = {};
         students.forEach(s => {
@@ -4521,6 +4610,9 @@ function useSchoolDataInternal() {
         financialSettings,
         updateFinancialSettings,
         schoolProfile,
+        lastCloudSync,
+        isCloudSyncing,
+        pullFromCloud,
         activeRole,
         setActiveRole,
         activeAccountId,

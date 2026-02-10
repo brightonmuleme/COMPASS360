@@ -4,113 +4,23 @@ import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequireme
 import { numberToWords } from '@/lib/numberToWords';
 import { Transaction, FEE_STRUCTURE, BURSARY_SCHEMES } from '@/app/bursar/sharedData';
 import { TransactionFormModal } from './TransactionFormModal';
+import { StatusRing } from '@/components/StatusRing';
 import { schoolPayService } from '@/services/schoolPayService';
+import { calculateStudentFinancials } from '@/lib/financialCore';
 
 
 // --- CONSTANTS ---
 const DELETE_REASONS = ['Duplicate Entry', 'Wrong Amount', 'Entered in Error', 'Payment Refunded', 'Other'];
 const isArrearsKey = (str: string) => /brought\s*forward|bf|arrears|prev|balance\s*b\/f/i.test(str);
 
-// --- COMPONENT: StatusRing ---
 // --- STYLING CONSTANTS ---
 const PREMIUM_GOLD = 'linear-gradient(135deg, #fbbf24, #d97706)';
 const PREMIUM_BLUE = 'linear-gradient(135deg, #3b82f6, #2563eb)';
 const PREMIUM_GLASS = 'rgba(255, 255, 255, 0.03)';
 const PREMIUM_BORDER = '1px solid rgba(255, 255, 255, 0.08)';
 
-export const StatusRing = ({ student, size = 64, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
-    const { financialSettings } = useSchoolData();
+export { StatusRing };
 
-    let percentage = 0;
-    if (propPercentage !== undefined) {
-        percentage = Math.max(0, Math.min(100, propPercentage));
-    } else {
-        const { totalFees, balance } = student;
-        const billed = totalFees;
-        const paid = totalFees - balance;
-        percentage = billed > 0 ? (paid / billed) * 100 : 100;
-        percentage = Math.max(0, Math.min(100, percentage));
-    }
-
-    const radius = (size / 2) - 6;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (percentage / 100) * circumference;
-
-    const status = student.accountStatus;
-    let color = '#ef4444';
-    let glowColor = 'rgba(239, 68, 68, 0.5)';
-
-    const statusStr = status as string;
-    if (statusStr === 'clearance' || statusStr === 'cleared') {
-        color = '#10b981';
-        glowColor = 'rgba(16, 185, 129, 0.5)';
-    } else if (statusStr === 'probation') {
-        color = '#8b5cf6';
-        glowColor = 'rgba(139, 92, 246, 0.5)';
-    } else if (statusStr === 'defaulter') {
-        color = '#ef4444';
-        glowColor = 'rgba(239, 68, 68, 0.5)';
-    } else {
-        if (percentage >= 100) {
-            color = '#10b981';
-            glowColor = 'rgba(16, 185, 129, 0.5)';
-        } else if (percentage >= (financialSettings?.probationPct ?? 80)) {
-            color = '#8b5cf6';
-            glowColor = 'rgba(139, 92, 246, 0.5)';
-        } else {
-            color = '#ef4444';
-            glowColor = 'rgba(239, 68, 68, 0.5)';
-        }
-    }
-
-    return (
-        <div style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width={size} height={size}>
-                <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                <circle
-                    cx={size / 2} cy={size / 2} r={radius}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="6"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={offset}
-                    strokeLinecap="round"
-                    transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                    style={{
-                        transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                        filter: `drop-shadow(0 0 6px ${glowColor})`
-                    }}
-                />
-            </svg>
-            <div style={{ position: 'absolute', fontSize: '11px', fontWeight: '900', color: '#fff', letterSpacing: '-0.02em' }}>
-                {percentage.toFixed(0)}<span style={{ fontSize: '7px', opacity: 0.7 }}>%</span>
-            </div>
-        </div>
-    );
-};
-
-// --- HELPER: Financial Calculation ---
-const calculateStudentFinancials = (student: EnrolledStudent, studentBillings: any[], studentPayments: any[], bursaryValue: number = 0) => {
-    // Check for isBroughtForward flag in ledger or Fallback to String Matching
-    const hasBFBill = studentBillings.some(b =>
-        b.isBroughtForward === true ||
-        /brought|forward|bf/i.test(b.description || "") ||
-        /brought|forward|bf/i.test(b.type || "")
-    );
-
-    // If hasBFBill is true, manual previous balance MUST be ignored (Rule 1)
-    const finalEffectivePrev = hasBFBill ? 0 : (student.previousBalance || 0);
-
-    // Current Arrears = Total Ledger Billings + Manual Prev (if not in ledger) - Bursary - Total Ledger Payments
-    const totalBillings = studentBillings.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
-    const totalPayments = studentPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-    const outstandingBalance = (totalBillings + finalEffectivePrev) - bursaryValue - totalPayments;
-
-    return {
-        outstandingBalance
-    };
-};
 
 
 // --- SUB-COMPONENT: BillingsTrashList ---
@@ -374,32 +284,22 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
     }, [selectedStudent, payments, billings, viewContext]);
 
     // --- FINANCIALS FOR RIGHT SIDE (DYNAMIC - CONTEXT AWARE) ---
-    const outstandingBalance = useMemo(() => {
-        if (!selectedStudent) return 0;
-        const { targetTerm, startPrevBal, bursaryId, isCurrent } = viewContext;
+    const financialSummary = useMemo(() => {
+        if (!selectedStudent) return { outstandingBalance: 0, clearancePaid: 0, clearanceTarget: 0 };
+        const { targetTerm } = viewContext;
 
-        const studentBillings = billings.filter(b => b.studentId === selectedStudent.id && b.term === targetTerm);
-        const studentPayments = payments.filter(p => p.studentId === selectedStudent.id && (p.term === targetTerm || (!p.term && isCurrent)));
-
-        const bursaryValue = bursaryId && bursaryId !== 'none'
-            ? (bursaries.find(b => b.id === bursaryId)?.value || 0)
-            : 0;
-
-        // Calculate using helper but with manual override for prevBal since helper defaults to student.previousBalance
-        const totalBillings = studentBillings.reduce((sum, b) => sum + b.amount, 0);
-        const totalPayments = studentPayments.reduce((sum, p) => sum + p.amount, 0);
-
-        // If B/F Bill exists in totalBillings, do NOT add startPrevBal (double count).
-        const hasBFBill = studentBillings.some(b =>
-            b.isBroughtForward === true ||
-            isArrearsKey(b.description || "") ||
-            isArrearsKey(b.type || "")
+        const summary = calculateStudentFinancials(
+            selectedStudent,
+            billings,
+            payments,
+            bursaries,
+            targetTerm
         );
-        const finalEffectivePrev = hasBFBill ? 0 : (startPrevBal || 0);
 
-        return totalBillings - bursaryValue + finalEffectivePrev - totalPayments;
+        return summary;
     }, [selectedStudent, billings, payments, bursaries, viewContext]);
 
+    const outstandingBalance = financialSummary.outstandingBalance;
     const arrears = outstandingBalance;
 
     // Calculate Total Billing
@@ -419,58 +319,17 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
     const clearancePercentage = useMemo(() => {
         if (!selectedStudent) return 0;
 
-        // 1. Current Semester Basics
-        const currentTerm = selectedStudent.semester;
-        const currentBursaryId = selectedStudent.bursary;
-        const currentPrevBal = selectedStudent.previousBalance || 0;
-
-        // 2. Target Billings (Tuition + BF) - EXCLUDES SERVICES
-        const targetBillings = billings.filter(b =>
-            b.studentId === selectedStudent.id &&
-            b.term === currentTerm &&
-            (b.type === 'Tuition' || isArrearsKey(b.type || "") || isArrearsKey(b.description || ""))
+        // Note: For the "Ring", we always use the student's current semester financials
+        const currentSummary = calculateStudentFinancials(
+            selectedStudent,
+            billings,
+            payments,
+            bursaries,
+            selectedStudent.semester
         );
-        const totalTargetBilled = targetBillings.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
 
-        // 3. Bursaries (Current)
-        const bursaryValue = currentBursaryId && currentBursaryId !== 'none'
-            ? (bursaries.find(b => b.id === currentBursaryId)?.value || 0)
-            : 0;
-
-        // 4. Tuition & Balance Payments (Numerator: Current Term)
-        const studentPayments = payments.filter(p => p.studentId === selectedStudent.id && (p.term === currentTerm || !p.term));
-
-        const totalTuitionPaid = studentPayments.reduce((acc, p) => {
-            let amount = 0;
-            if (p.allocations && Object.keys(p.allocations).length > 0) {
-                const allocations = p.allocations || {};
-                Object.entries(allocations).forEach(([key, val]) => {
-                    const k = key.toLowerCase();
-                    if (k.includes('tuition') || isArrearsKey(k)) {
-                        amount += (Number(val) || 0);
-                    }
-                });
-            } else {
-                amount = Number(p.amount) || 0;
-            }
-            return acc + amount;
-        }, 0);
-
-        // Check for BF Bill to prevent previous balance double counting
-        const allStudentBillings = billings.filter(b => b.studentId === selectedStudent.id);
-        const hasBFBill = allStudentBillings.some(b =>
-            b.isBroughtForward === true ||
-            isArrearsKey(b.description || "") ||
-            isArrearsKey(b.type || "")
-        );
-        const effectivePrev = hasBFBill ? 0 : currentPrevBal;
-
-        // Formula: Tuition Paid / (Target Billing + Missing BF - Bursary)
-        const denominator = totalTargetBilled + effectivePrev - bursaryValue;
-
-        if (denominator <= 0) return 100;
-
-        const pct = (totalTuitionPaid / denominator) * 100;
+        if (currentSummary.clearanceTarget <= 0) return 100;
+        const pct = (currentSummary.clearancePaid / currentSummary.clearanceTarget) * 100;
         return Math.max(0, Math.min(100, pct));
     }, [selectedStudent, billings, payments, bursaries]);
 
@@ -720,7 +579,11 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             allTxs.forEach(tx => {
                 // DEDUPLICATION: Check if this receipt number already exists in ANY payment record
                 const existing = payments.find(p => p.reference === tx.schoolpayReceiptNumber);
-                const student = students.find(s => s.payCode === tx.studentPaymentCode);
+
+                // RESILIENT MATCHING: Trim and case-insensitive Pay Code check
+                const student = students.find(s =>
+                    s.payCode?.trim().toLowerCase() === tx.studentPaymentCode?.trim().toLowerCase()
+                );
 
                 if (existing) {
                     // AUTO-RELINK: If we found a match for a previously "Unlinked" (studentId 0) payment
@@ -1007,6 +870,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{bf_clearance_rate}}': bfStatusHtml,
             '{{requirements_summary}}': reqSummaryHtml,
             '{{current_date}}': new Date().toLocaleDateString(),
+            '{{balance}}': formatMoney(arrears),
             '{{bursar_name}}': activeRole === 'Director' ? 'The Director' : 'The Institute Bursar'
         };
 
@@ -1080,7 +944,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{transaction_amount}}': formatMoney(payment.amount), // Legacy support
             '{{amount_words}}': numberToWords(payment.amount),
             '{{amount_in_words}}': numberToWords(payment.amount), // Legacy support
-            '{{balance}}': formatMoney(selectedStudent.balance),
+            '{{balance}}': formatMoney(outstandingBalance),
             // Default to Particulars if available, else Description, else Generic
             '{{payment_description}}': payment.allocations ? Object.keys(payment.allocations).join(', ') : (payment.description || 'Tuition Payment'),
             '{{payment_particulars}}': payment.allocations ?

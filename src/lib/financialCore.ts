@@ -47,7 +47,6 @@ export const calculateStudentFinancials = (
     const bursaryValue = bursaryData ? bursaryData.value : 0;
 
     // 2. IDENTIFY BF (BROUGHT FORWARD) BILLS IN CURRENT CONTEXT
-    const isArrearsKey = (str: string) => /brought\s*forward|bf|arrears|prev|balance\s*b\/f/i.test(str);
 
     const hasBFBillInTerm = currentBillings.some(b =>
         b.isBroughtForward === true ||

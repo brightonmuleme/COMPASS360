@@ -9,7 +9,7 @@ import ChangePasswordModal from "../shared/ChangePasswordModal";
 export default function BursarSidebar({ isOpen, onClose }: { isOpen?: boolean, onClose?: () => void }) {
     const pathname = usePathname();
     const router = useRouter();
-    const { activeRole, setActiveRole, activeAccountId, staffAccounts, schoolProfile, logout } = useSchoolData();
+    const { activeRole, setActiveRole, activeAccountId, staffAccounts, schoolProfile, logout, lastCloudSync, isCloudSyncing, pullFromCloud } = useSchoolData();
     const [showChangePassword, setShowChangePassword] = useState(false);
 
     const activeStaff = staffAccounts.find(a => a.id === activeAccountId);
@@ -219,6 +219,22 @@ export default function BursarSidebar({ isOpen, onClose }: { isOpen?: boolean, o
                             </div>
                             <div className="text-[9px] text-blue-400 uppercase font-black tracking-widest mt-0.5 opacity-80">
                                 {activeRole}
+                            </div>
+                            {/* Cloud Sync Status */}
+                            <div className="mt-2 flex items-center gap-2 px-2 py-1 bg-white/5 rounded-lg border border-white/5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${isCloudSyncing ? 'bg-blue-400 animate-pulse' : 'bg-emerald-500'}`} />
+                                <div className="flex flex-col">
+                                    <span className="text-[7px] text-slate-500 uppercase font-black tracking-tighter">Cloud {isCloudSyncing ? 'Syncing...' : 'Connected'}</span>
+                                    {lastCloudSync && <span className="text-[6px] text-slate-600 font-medium">Last: {new Date(lastCloudSync).toLocaleTimeString()}</span>}
+                                </div>
+                                <button
+                                    onClick={() => pullFromCloud(true)}
+                                    disabled={isCloudSyncing}
+                                    className="ml-auto text-blue-400/60 hover:text-blue-400 disabled:opacity-30"
+                                    title="Force Pull from Cloud"
+                                >
+                                    <svg className={`w-3 h-3 ${isCloudSyncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                </button>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                                 <button

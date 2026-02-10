@@ -3,57 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequirement } from '@/lib/store';
 import { numberToWords } from '@/lib/numberToWords';
 import { databaseService } from '@/services/databaseService';
+import { StatusRing } from '@/components/StatusRing';
 
 // --- COPIED COMPONENT: StatusRing ---
-const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
-    const { financialSettings } = useSchoolData();
-
-    // If propPercentage is provided, use it. Otherwise calculate locally.
-    let percentage = 0;
-
-    if (propPercentage !== undefined) {
-        percentage = Math.max(0, Math.min(100, propPercentage));
-    } else {
-        const { totalFees, balance } = student;
-        const billed = totalFees;
-        const paid = totalFees - balance;
-        percentage = billed > 0 ? (paid / billed) * 100 : 100; // Default cleared if no fees
-        percentage = Math.max(0, Math.min(100, percentage));
-    }
-
-    const radius = (size / 2) - 5;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (percentage / 100) * circumference;
-
-    // Strict Color Logic
-    const probationThreshold = financialSettings?.probationPct ?? 80;
-    let color = '#ef4444'; // Red (Defaulter)
-
-    if (percentage >= 100) color = '#10b981'; // Green (Cleared)
-    else if (percentage >= probationThreshold) color = '#8b5cf6'; // Purple (Probation)
-
-    return (
-        <div style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width={size} height={size}>
-                <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                <circle
-                    cx={size / 2} cy={size / 2} r={radius}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="6"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={offset}
-                    strokeLinecap="round"
-                    transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-                />
-            </svg>
-            <div style={{ position: 'absolute', fontSize: '10px', fontWeight: 'bold', color: color }}>
-                {percentage.toFixed(1)}%
-            </div>
-        </div>
-    );
-};
 
 export const StudentFinancialRecord = ({ studentId }: { studentId: number }) => {
     const { students, services, programmes, payments, billings, bursaries, documentTemplates, schoolProfile, accounts, manualPaymentMethods } = useSchoolData();

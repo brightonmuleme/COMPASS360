@@ -83,22 +83,18 @@ export default function MyAccountPage() {
         setStatus(null);
 
         try {
-            // 1. Update Supabase if authenticated
-            const { user } = await authService.getCurrentUser();
-            if (user) {
-                const res = await authService.updateUser({ password: newPassword });
-                if (!res.success) {
-                    throw new Error(res.error || "Failed to update password");
-                }
-            }
+            // SECURITY FIX: We no longer call authService.updateUser({ password }) here.
+            // This prevents changing a specific role's password (e.g. Registrar) from
+            // overriding the main school login password in Supabase.
+            // Role passwords are now kept private within the staff accounts.
 
-            // 2. Update Local Store
+            // Update Local Store (Role-specific password)
             updateStaffProfile(account.id, { password: newPassword });
 
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
-            setStatus({ type: 'success', message: 'Password changed successfully! Keep it private.' });
+            setStatus({ type: 'success', message: 'Role password changed successfully! This change is private to your login.' });
         } catch (error: any) {
             setStatus({ type: 'error', message: error.message });
         } finally {

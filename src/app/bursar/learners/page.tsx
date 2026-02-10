@@ -277,7 +277,7 @@ function LearnersContent() {
             };
 
             const currentTerm = filterLevel || selectedStudent.semester;
-            const { outstandingBalance, totalBilled } = calculateStudentFinancials(selectedStudent, null, currentTerm);
+            const { outstandingBalance, totalBilled } = calculateFinancials(selectedStudent, billings, payments, bursaries, currentTerm);
 
             setSelectedStudent(prev => prev ? ({ ...prev, balance: outstandingBalance, totalFees: totalBilled }) : null);
         }
@@ -311,7 +311,7 @@ function LearnersContent() {
     // --- DYNAMIC VIEW HANDLER ---
     const handleViewStudent = (student: EnrolledStudent) => {
         const currentTerm = filterLevel || student.semester;
-        const { totalBilled, outstandingBalance } = calculateStudentFinancials(student, null, currentTerm);
+        const { totalBilled, outstandingBalance } = calculateFinancials(student, billings, payments, bursaries, currentTerm);
 
         setSelectedStudent({
             ...student,
@@ -482,7 +482,7 @@ function LearnersContent() {
     useEffect(() => {
         if (selectedStudent) {
             const studentTx = transactions.filter(t => t.studentName === selectedStudent.name);
-            const { totalBilled, outstandingBalance } = calculateStudentFinancials(selectedStudent, studentTx);
+            const { totalBilled, outstandingBalance } = calculateFinancials(selectedStudent, billings, payments, bursaries);
 
             // Only update if changed to avoid loop
             if (selectedStudent.balance !== outstandingBalance || selectedStudent.totalFees !== totalBilled) {
@@ -528,11 +528,6 @@ function LearnersContent() {
 
 
 
-    // --- FLUID MATH HELPERS ---
-
-    const calculateStudentFinancials = (student: EnrolledStudent, _unusedTx?: any, targetTerm?: string) => {
-        return calculateFinancials(student, billings, payments, bursaries, targetTerm);
-    };
 
     // --- FINANCIAL ACTIONS ---
 
@@ -576,9 +571,11 @@ function LearnersContent() {
         // Also remove the corresponding 'billed' transaction log if we want to be thorough, 
         // but for now, rely on dynamic math which rebuilds 'totalBilled' from the services array.
 
-        const { totalBilled, outstandingBalance } = calculateStudentFinancials(
+        const { totalBilled, outstandingBalance } = calculateFinancials(
             updatedStudentRef,
-            transactions.filter(t => t.studentName === selectedStudent.name)
+            billings,
+            payments,
+            bursaries
         );
 
         const finalStudent = { ...updatedStudentRef, balance: outstandingBalance, totalFees: totalBilled };
@@ -679,9 +676,11 @@ function LearnersContent() {
     const handleApplyBursary = (bursaryId: string) => {
         if (!selectedStudent) return;
         const updatedStudentRef = { ...selectedStudent, bursary: bursaryId };
-        const { totalBilled, outstandingBalance } = calculateStudentFinancials(
+        const { totalBilled, outstandingBalance } = calculateFinancials(
             updatedStudentRef,
-            transactions.filter(t => t.studentName === selectedStudent.name)
+            billings,
+            payments,
+            bursaries
         );
 
         const finalStudent = { ...updatedStudentRef, balance: outstandingBalance, totalFees: totalBilled };
@@ -799,7 +798,7 @@ function LearnersContent() {
         const sourceTransactions = transactionsOverride || transactions;
         const studentTx = sourceTransactions.filter(t => t.studentName === student.name);
         // Use CLEARANCE financial metrics for status logic
-        const { clearanceTarget, clearancePaid } = calculateStudentFinancials(student, studentTx);
+        const { clearanceTarget, clearancePaid } = calculateFinancials(student, billings, payments, bursaries);
 
         // 1. Check ALL Mandatory Requirements (Critical Gate)
         const allMandatoryMet = checkMandatoryCompliance(student, 'all', sourceTransactions);
@@ -818,92 +817,12 @@ function LearnersContent() {
 
     // --- UI COMPONENTS ---
 
-    const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
-        let rawPercentage = 0;
-        let clearanceTarget = 0;
-        let clearancePaid = 0;
-
-        if (propPercentage !== undefined) {
-            rawPercentage = propPercentage;
-            // Optionally fetch these for the tooltip if needed, but for now we'll just use 0 or skip
-        } else {
-            // Use Total Financials for Visuals (Clearing Debt = Clearance)
-            const studentTx = transactions.filter(t => t.studentName === student.name);
-            const financials = calculateStudentFinancials(student, studentTx);
-            clearanceTarget = financials.clearanceTarget;
-            clearancePaid = financials.clearancePaid;
-
-            // Percentage based on Clearance Target (Tuition + Arrears) and Paid (Tuition + Arrears Allocations)
-            if (clearanceTarget > 0) {
-                rawPercentage = (clearancePaid / clearanceTarget) * 100;
-            } else {
-                // No Tuition/Arrears to pay = 100% Cleared (even if Services pending? User said Status Ring ignores Services)
-                rawPercentage = 100;
-            }
-        }
-
-        const percentage = Math.max(0, rawPercentage); // Allow > 100%
-
-        const radius = (size / 2) - 5;
-        const circumference = 2 * Math.PI * radius;
-        // Cap visual offset at 100% so ring doesn't break, but show text > 100
-        const visualPercentage = Math.min(100, percentage);
-        const offset = circumference - (visualPercentage / 100) * circumference;
-
-        const status = student.accountStatus;
-        let color = '#ef4444'; // Default Red
-
-        // Task: Sync Ring Colors (Status Priority -> Fallback Percentage)
-        // Cast to string to handle 'cleared' check from user request if not in union type
-        const statusStr = status as string;
-        if (statusStr === 'clearance' || statusStr === 'cleared') {
-            color = '#10b981'; // GREEN
-        } else if (statusStr === 'probation') {
-            color = '#8b5cf6'; // PURPLE
-        } else if (statusStr === 'defaulter') {
-            color = '#ef4444'; // RED
-        } else {
-            // FALLBACK Logic: If status is empty, use percentage
-            if (percentage >= 100) {
-                color = '#10b981'; // GREEN
-            } else if (percentage >= localProbationPct) {
-                color = '#8b5cf6'; // PURPLE
-            } else {
-                color = '#ef4444'; // RED
-            }
-        }
-
-        return (
-            <div
-                title={`Bal: ${student.balance}, Target: ${clearanceTarget}, Paid: ${clearancePaid}, Status: ${status}`}
-                style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-                <svg width={size} height={size}>
-                    <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                    <circle
-                        cx={size / 2} cy={size / 2} r={radius}
-                        fill="none"
-                        stroke={color}
-                        strokeWidth="6"
-                        strokeDasharray={circumference}
-                        strokeDashoffset={offset}
-                        strokeLinecap="round"
-                        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-                    />
-                </svg>
-                <div style={{ position: 'absolute', fontSize: '10px', fontWeight: 'bold', color: color }}>
-                    {Math.round(percentage)}%
-                </div>
-            </div>
-        );
-    };
 
     const filteredStudents = useMemo(() => {
         // First, calculate dynamic financials for everyone using the central engine
         const calculatedList = enrolledStudents.map(student => {
             const currentTerm = filterLevel || student.semester;
-            const stats = calculateStudentFinancials(student, null, currentTerm);
+            const stats = calculateFinancials(student, billings, payments, bursaries, currentTerm);
 
             return {
                 ...student,
@@ -970,7 +889,7 @@ function LearnersContent() {
     ): EnrolledStudent[] => {
         return students.map(s => {
             const studentTx = transactions.filter(t => t.studentName === s.name);
-            const stats = calculateStudentFinancials(s, studentTx);
+            const stats = calculateFinancials(s, billings, payments, bursaries);
             const tTotal = stats.tuitionBilled;
             const tPaid = stats.tuitionPaid;
             let newStatus: 'clearance' | 'defaulter' | 'probation' = 'defaulter';
@@ -1042,7 +961,7 @@ function LearnersContent() {
         setEnrolledStudents(prev => prev.map(s => {
             if (selectedIds.includes(s.id)) {
                 const studentTx = transactions.filter(t => t.studentName === s.name);
-                const stats = calculateStudentFinancials(s, studentTx);
+                const stats = calculateFinancials(s, billings, payments, bursaries);
 
                 // Tuition Basis for Bulk Logic
                 const tTotal = stats.tuitionBilled;
@@ -1300,7 +1219,7 @@ function LearnersContent() {
 
         const rows = filteredStudents.map(s => {
             const studentTx = transactions.filter(t => t.studentName === s.name);
-            const stats = calculateStudentFinancials(s, studentTx);
+            const stats = calculateFinancials(s, billings, payments, bursaries);
             const pct = stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100;
 
             const studentRow = [
@@ -2708,10 +2627,10 @@ function LearnersContent() {
                                         })}
 
                                         {/* Footer Audit Totals */}
-                                        <td style={{ textAlign: 'right', color: '#60a5fa' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateCreditPool(s.id, calculateStudentFinancials(s, transactions.filter(t => t.studentName === s.name))), 0))}</td>
-                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateStudentFinancials(s, transactions.filter(t => t.studentName === s.name)).totalBilled, 0))}</td>
-                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateStudentFinancials(s, transactions.filter(t => t.studentName === s.name)).totalPayments, 0))}</td>
-                                        <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateStudentFinancials(s, transactions.filter(t => t.studentName === s.name)).outstandingBalance, 0))}</td>
+                                        <td style={{ textAlign: 'right', color: '#60a5fa' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateCreditPool(s.id, calculateFinancials(s, billings, payments, bursaries)), 0))}</td>
+                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).totalBilled, 0))}</td>
+                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).totalPayments, 0))}</td>
+                                        <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).outstandingBalance, 0))}</td>
                                         <td style={{ textAlign: 'center' }}>-</td>
                                         {/* Spacer Cell */}
                                         <td style={{ width: '100px', border: 'none', background: 'transparent' }}></td>

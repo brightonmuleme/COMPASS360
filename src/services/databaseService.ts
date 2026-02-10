@@ -60,5 +60,29 @@ export const databaseService = {
 
         if (error) throw error;
         return data[0];
+    },
+
+    // --- CLOUD STATE SYNC (For Cross-Device Consistency) ---
+
+    getSchoolCloudState: async (schoolId: string) => {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('cloud_state')
+            .eq('id', schoolId)
+            .single();
+
+        if (error) return null;
+        return data?.cloud_state;
+    },
+
+    saveSchoolCloudState: async (schoolId: string, state: any) => {
+        // Optimized: Only update the cloud_state column
+        const { error } = await supabase
+            .from('schools')
+            .update({ cloud_state: state })
+            .eq('id', schoolId);
+
+        if (error) throw error;
+        return true;
     }
 };
