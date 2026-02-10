@@ -3272,19 +3272,24 @@ function useSchoolDataInternal() {
                         .maybeSingle();
 
                     if (schoolData) {
-                        if (schoolData.status !== schoolProfile.status) {
+                        if (schoolData.status !== schoolProfile.status || schoolId !== schoolProfile.id) {
                             setSchoolProfile(prev => ({
                                 ...prev,
+                                id: schoolId, // CRITICAL FIX: Update the actual ID so cloud sync pulls correct data
                                 name: schoolData.name || prev.name,
                                 status: (schoolData.status as any)
                             }));
+                            setLastCloudSync(""); // Force fresh pull for new institution
                         }
                     } else if (application?.status === 'Approved') {
                         // Application approved but school record ID not yet available to user or record missing
-                        if (schoolProfile.status !== 'Pending') {
-                            setSchoolProfile(prev => ({ ...prev, status: 'Pending' }));
+                        if (schoolProfile.status !== 'Pending' || schoolId !== schoolProfile.id) {
+                            setSchoolProfile(prev => ({ ...prev, id: schoolId, status: 'Pending' }));
                         }
                     }
+                } else if (schoolId === 'vine_intl' && schoolProfile.id !== 'vine_intl') {
+                    // Reset to default if explicitly vine_intl (optional cleanup)
+                    setSchoolProfile(prev => ({ ...prev, id: 'vine_intl' }));
                 }
             } catch (err) {
                 console.error("Institutional Sync Error:", err);
