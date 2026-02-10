@@ -218,6 +218,44 @@ export const authService = {
     confirmSignIn: async (challengeResponse: string): Promise<AuthResponse> => {
         // In some flows we might use this
         return { success: true, error: undefined }
-    }
+    },
 
+    // 7. UPDATE USER (Metadata & Security)
+    updateUser: async (updates: { name?: string; phone?: string; password?: string }): Promise<AuthResponse> => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("No authenticated user found");
+
+            const authUpdates: any = {};
+            if (updates.password) authUpdates.password = updates.password;
+
+            // Prepare metadata updates
+            const newMetadata = { ...user.user_metadata };
+            if (updates.name) newMetadata.full_name = updates.name;
+            if (updates.phone) newMetadata.phone_number = updates.phone;
+
+            if (Object.keys(newMetadata).length > 0) {
+                authUpdates.data = newMetadata;
+            }
+
+            // A. Update Auth Metadata / Password
+            const { error: authError } = await supabase.auth.updateUser(authUpdates);
+            if (authError) throw authError;
+
+            // B. Update Public Profile Table (if it exists)
+            if (updates.name) {
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({ full_name: updates.name })
+                    .eq('id', user.id);
+
+                if (profileError) console.error("Profile update sync failed (non-critical):", profileError);
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            console.error("Update failed", error);
+            return { success: false, error: error.message };
+        }
+    }
 };

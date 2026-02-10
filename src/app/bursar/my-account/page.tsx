@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSchoolData } from '@/lib/store';
 import { Shield, User, Lock, Save, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { authService } from '@/services/authService';
 
 export default function MyAccountPage() {
     const { activeAccountId, staffAccounts, updateStaffProfile, activeRole } = useSchoolData();
@@ -34,12 +35,27 @@ export default function MyAccountPage() {
         }
 
         setIsSaving(true);
-        updateStaffProfile(account.id, { name: name.trim() });
+        setStatus(null);
 
-        setTimeout(() => {
+        try {
+            // 1. Update Supabase if authenticated
+            const { user } = await authService.getCurrentUser();
+            if (user) {
+                const res = await authService.updateUser({ name: name.trim() });
+                if (!res.success) {
+                    throw new Error(res.error || "Failed to update security profile");
+                }
+            }
+
+            // 2. Update Local Store
+            updateStaffProfile(account.id, { name: name.trim() });
+
+            setStatus({ type: 'success', message: 'Display name updated successfully! Changes are synced with your secure ID.' });
+        } catch (error: any) {
+            setStatus({ type: 'error', message: error.message });
+        } finally {
             setIsSaving(false);
-            setStatus({ type: 'success', message: 'Display name updated successfully! This will appear on the role portal.' });
-        }, 800);
+        }
     };
 
     const handleChangePassword = async () => {
@@ -64,15 +80,30 @@ export default function MyAccountPage() {
         }
 
         setIsSaving(true);
-        updateStaffProfile(account.id, { password: newPassword });
+        setStatus(null);
 
-        setTimeout(() => {
-            setIsSaving(false);
+        try {
+            // 1. Update Supabase if authenticated
+            const { user } = await authService.getCurrentUser();
+            if (user) {
+                const res = await authService.updateUser({ password: newPassword });
+                if (!res.success) {
+                    throw new Error(res.error || "Failed to update password");
+                }
+            }
+
+            // 2. Update Local Store
+            updateStaffProfile(account.id, { password: newPassword });
+
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
-            setStatus({ type: 'success', message: 'Password changed successfully!' });
-        }, 800);
+            setStatus({ type: 'success', message: 'Password changed successfully! Keep it private.' });
+        } catch (error: any) {
+            setStatus({ type: 'error', message: error.message });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -80,8 +111,8 @@ export default function MyAccountPage() {
             {/* Status Notification */}
             {status && (
                 <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 p-4 rounded-2xl border shadow-2xl animate-in slide-in-from-right-10 duration-300 ${status.type === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                     }`}>
                     {status.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                     <span className="text-sm font-medium">{status.message}</span>

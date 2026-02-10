@@ -2125,6 +2125,10 @@ function useSchoolDataInternal() {
         if (hydrated) safeSetItem('school_portal_branding_v1', portalBranding);
     }, [portalBranding, hydrated]);
 
+    useEffect(() => {
+        if (hydrated) safeSetItem('school_staff_accounts_v1', staffAccounts);
+    }, [staffAccounts, hydrated]);
+
     const updateStaffPassword = (accountId: string, newPassword: string) => {
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, password: newPassword } : acc));
     };
