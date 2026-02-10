@@ -3209,6 +3209,88 @@ function useSchoolDataInternal() {
     });
 
     // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
+    // --- SECURITY & INSTITUTIONAL SYNC ---
+    useEffect(() => {
+        const verifyInstitutionalAccess = async () => {
+            if (!hydrated) return;
+
+            // 1. Identify User Role & Identity
+            // If they are a tutor or student, they only need email verification (no developer approval lock)
+            if (tutorProfile || (studentProfile && studentProfile.id !== 'std_user_1')) {
+                // Ensure they are not blocked by institutional global state
+                if (schoolProfile.status !== 'Active' && schoolProfile.id === 'vine_intl') {
+                    setSchoolProfile(prev => ({ ...prev, status: 'Active' }));
+                }
+                return;
+            };
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const userEmail = user.email;
+                const userRole = (user.user_metadata?.role || '').toLowerCase();
+                const schoolId = user.user_metadata?.school_id || (userRole === 'developer' ? null : schoolProfile.id);
+
+                // Developer role always has access
+                if (userRole === 'developer') {
+                    if (schoolProfile.status !== 'Active') setSchoolProfile(prev => ({ ...prev, status: 'Active' }));
+                    return;
+                }
+
+                // 2. Check for Pending Application by Email (The "Sami" Lock)
+                const { data: application } = await supabase
+                    .from('school_applications')
+                    .select('status, school_name')
+                    .eq('email', userEmail)
+                    .maybeSingle();
+
+                if (application && application.status !== 'Approved') {
+                    if (schoolProfile.status !== 'Pending') {
+                        setSchoolProfile(prev => ({
+                            ...prev,
+                            name: application.school_name || prev.name,
+                            status: 'Pending'
+                        }));
+                    }
+                    return;
+                }
+
+                // 3. Check for Active School Status by ID (The "Staff" Lock)
+                if (schoolId && schoolId !== 'vine_intl') {
+                    const { data: schoolData } = await supabase
+                        .from('schools')
+                        .select('status, name')
+                        .eq('id', schoolId)
+                        .maybeSingle();
+
+                    if (schoolData) {
+                        if (schoolData.status !== schoolProfile.status) {
+                            setSchoolProfile(prev => ({
+                                ...prev,
+                                name: schoolData.name || prev.name,
+                                status: (schoolData.status as any)
+                            }));
+                        }
+                    } else if (application?.status === 'Approved') {
+                        // Application approved but school record ID not yet available to user or record missing
+                        if (schoolProfile.status !== 'Pending') {
+                            setSchoolProfile(prev => ({ ...prev, status: 'Pending' }));
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Institutional Sync Error:", err);
+            }
+        };
+
+        verifyInstitutionalAccess();
+        // Constant background monitoring for live approval/revocation
+        const interval = setInterval(verifyInstitutionalAccess, 30000); // Check every 30s
+        return () => clearInterval(interval);
+    }, [hydrated, tutorProfile, studentProfile, schoolProfile.id, schoolProfile.status]);
+
+    // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
     useEffect(() => {
         const fetchCloudConfig = async () => {
             if (!hydrated) return;
@@ -3225,24 +3307,12 @@ function useSchoolDataInternal() {
                         setFeaturedSchools(config.featured_schools);
                     }
                 }
-
-                // --- SECURITY SYNC: Force verify school status ---
-                if (schoolProfile.id && schoolProfile.id !== 'vine_intl') {
-                    const { data: schoolData } = await supabase.from('schools').select('status').eq('id', schoolProfile.id).single();
-                    if (schoolData && schoolData.status !== schoolProfile.status) {
-                        console.log(`Syncing school status: ${schoolProfile.status} -> ${schoolData.status}`);
-                        setSchoolProfile(prev => ({ ...prev, status: schoolData.status }));
-                    } else if (!schoolData) {
-                        // If not found in active schools, and it's not the default Vine, it MUST be pending
-                        setSchoolProfile(prev => ({ ...prev, status: 'Pending' }));
-                    }
-                }
             } catch (err) {
                 console.error("Failed to fetch cloud config:", err);
             }
         };
         fetchCloudConfig();
-    }, [hydrated, schoolProfile.id]);
+    }, [hydrated]);
 
     useEffect(() => {
         safeSetItem('app_landing_content_v1', landingPageContent);
