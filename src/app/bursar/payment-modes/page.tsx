@@ -725,7 +725,7 @@ export default function PaymentModesPage() {
                         ]
                     };
 
-                    updatePayment(updatedPayment.id, updatedPayment);
+                    updatePayment(updatedPayment);
 
                     // Remove from unsynced list
                     setViewTxs(prev => ({
