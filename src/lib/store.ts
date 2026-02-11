@@ -4491,8 +4491,11 @@ function useSchoolDataInternal() {
         // Core Business State Bundle
         const stateToCloud = {
             students,
+            registrarStudents,
             payments,
             billings,
+            generalTransactions,
+            requisitions,
             bursaries,
             programmes,
             services,
@@ -4528,7 +4531,7 @@ function useSchoolDataInternal() {
         }, 8000); // 8 second debounce to avoid spamming Supabase
 
         return () => clearTimeout(timer);
-    }, [students, payments, billings, bursaries, programmes, services, staffAccounts, schoolProfile.id, hydrated]);
+    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, hydrated]);
 
     // 2. MANUAL PULL FUNCTION
     const pullFromCloud = async (force = false) => {
@@ -4544,8 +4547,11 @@ function useSchoolDataInternal() {
                 if (force || cloudTime > localTime) {
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
                     if (cloudState.students) setStudents(cloudState.students);
+                    if (cloudState.registrarStudents) setRegistrarStudents(cloudState.registrarStudents);
                     if (cloudState.payments) setPayments(cloudState.payments);
                     if (cloudState.billings) setBillings(cloudState.billings);
+                    if (cloudState.generalTransactions) setGeneralTransactions(cloudState.generalTransactions);
+                    if (cloudState.requisitions) setRequisitions(cloudState.requisitions);
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
                     if (cloudState.programmes) setProgrammes(cloudState.programmes);
                     if (cloudState.services) setServices(cloudState.services);
