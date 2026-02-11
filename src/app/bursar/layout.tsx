@@ -86,7 +86,7 @@ function BursarLayoutContent({
 
         // 4. DIRECTOR (VIEW ONLY + APPROVALS)
         if (activeRole === 'Director') {
-            const allowed = ['/admin/dashboard', '/bursar/learners', '/bursar/services', '/bursar/approvals', '/bursar/results', '/bursar/approvals/log', '/bursar/my-account', '/bursar/branding'];
+            const allowed = ['/admin/dashboard', '/bursar/learners', '/bursar/services', '/bursar/inventory', '/bursar/approvals', '/bursar/results', '/bursar/approvals/log', '/bursar/my-account', '/bursar/branding'];
             if (!allowed.some(p => path.startsWith(p))) {
                 router.replace('/bursar/learners');
             }

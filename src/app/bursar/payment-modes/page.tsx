@@ -693,7 +693,7 @@ export default function PaymentModesPage() {
         setLinkConfirm({ open: true, tx, student });
     };
 
-    const handleManualSync = (tx: any) => {
+    const handleManualSync = async (tx: any) => {
         const student = linkConfirm.student;
         if (!student) return;
 

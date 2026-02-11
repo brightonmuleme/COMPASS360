@@ -158,6 +158,9 @@ export default function BursarSidebar({ isOpen, onClose }: { isOpen?: boolean, o
                             <Link href="/bursar/services" className={`${styles.link} ${isActive('/bursar/services') ? styles.active : ''}`} onClick={handleClose}>
                                 Services & Bursaries
                             </Link>
+                            <Link href="/bursar/inventory" className={`${styles.link} ${isActive('/bursar/inventory') ? styles.active : ''}`} onClick={handleClose}>
+                                Stock Inventory
+                            </Link>
 
                             <div style={{ padding: '1rem 0 0.5rem 1rem', fontSize: '0.7rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>SYSTEM VIEW</div>
 

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSchoolData, InventoryItem, InventoryLog } from '@/lib/store';
+import { databaseService } from '@/services/databaseService';
 import { Menu, X, List, History, Settings, Plus, Edit, Trash2, AlertCircle, MoreVertical, Lock } from 'lucide-react';
 
 const SUGGESTED_UNITS = ['pcs', 'kgs', 'ltrs', 'metres', 'pairs', 'bags', 'boxes', 'tins'];
@@ -15,7 +16,8 @@ export default function InventoryPage() {
         inventoryLogs, addInventoryLog, updateInventoryLog, deleteInventoryLog,
         inventorySettings, updateInventorySettings,
         students,
-        studentRequirements
+        studentRequirements,
+        schoolProfile
     } = useSchoolData();
 
 
@@ -65,6 +67,7 @@ export default function InventoryPage() {
 
     // --- DERIVED DATA ---
     const activeList = inventoryLists.find(l => l.id === selectedListId);
+    const isReadOnly = activeRole === 'Director';
 
     const listGroups = useMemo(() => {
         if (!selectedListId) return [];
@@ -113,7 +116,21 @@ export default function InventoryPage() {
             }
         });
 
-        setTimeout(() => setIsSyncing(false), 800);
+        setTimeout(async () => {
+            setIsSyncing(false);
+            // FORCE CLOUD SYNC
+            try {
+                await databaseService.saveSchoolCloudState(schoolProfile.id, {
+                    inventoryLists: [reqList || { id: reqListId, name: 'Requirements' }, ...inventoryLists.filter(l => l.name !== 'Requirements')],
+                    inventoryGroups,
+                    inventoryItems,
+                    inventoryLogs,
+                    inventorySettings
+                });
+            } catch (err) {
+                console.error("Cloud sync error during requirements repair:", err);
+            }
+        }, 800);
     };
 
 
@@ -242,6 +259,7 @@ export default function InventoryPage() {
     };
 
     const handleQuickAction = (item: InventoryItem, e: React.MouseEvent) => {
+        if (isReadOnly) return;
         e.stopPropagation();
 
         // Special handling for Requirements List
@@ -301,6 +319,22 @@ export default function InventoryPage() {
                 key: prev.key + 1
             };
         });
+
+        // FORCE CLOUD SYNC
+        databaseService.saveSchoolCloudState(schoolProfile.id, {
+            inventoryItems: inventoryItems.map(i => i.id === item.id ? { ...i, quantity: newQty, lastUpdated: new Date().toISOString() } : i),
+            inventoryLogs: [{
+                id: crypto.randomUUID(),
+                itemId: item.id,
+                itemName: item.name,
+                action: action,
+                quantityChange: qty,
+                newQuantity: newQty,
+                comment: action === 'add' ? 'Quick Add' : (isRequirementsList ? 'Issued Requirement' : 'Quick Reduce'),
+                date: new Date().toISOString(),
+                user: activeRole || 'Unknown'
+            }, ...inventoryLogs]
+        }).catch(err => console.error("Cloud sync error after quick action:", err));
     };
 
     // --- HISTORY MANAGEMENT ---
@@ -503,7 +537,30 @@ export default function InventoryPage() {
 
                 <div className="flex-1 overflow-y-auto py-4 space-y-1">
                     <div className="px-4 pb-2 text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em]">Lists</div>
-                    {inventoryLists.map(list => (
+                    {/* Hardcoded Requirements Tab */}
+                    <button
+                        onClick={() => {
+                            let reqList = inventoryLists.find(l => l.name === 'Requirements');
+                            if (!reqList) {
+                                handleSyncRequirements();
+                            } else {
+                                setSelectedListId(reqList.id);
+                            }
+                            setIsSidebarOpen(false);
+                        }}
+                        className={`w-full text-left px-6 py-4 flex items-center justify-between transition-all relative group
+                            ${activeList?.name === 'Requirements'
+                                ? 'text-white bg-neutral-900 border-l-4 border-blue-600 font-bold'
+                                : 'text-neutral-500 hover:text-white hover:bg-neutral-900/50'
+                            }`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <List className={`w-4 h-4 ${activeList?.name === 'Requirements' ? 'text-blue-500' : 'text-neutral-600'}`} />
+                            <span className="text-sm">Requirements List</span>
+                        </div>
+                    </button>
+
+                    {inventoryLists.filter(l => l.name !== 'Requirements').map(list => (
                         <button
                             key={list.id}
                             onClick={() => {
@@ -517,23 +574,21 @@ export default function InventoryPage() {
                                 }`}
                         >
                             <div className="flex items-center gap-3">
-                                {list.name === 'Requirements' ? (
-                                    <List className={`w-4 h-4 ${selectedListId === list.id ? 'text-blue-500' : 'text-neutral-600'}`} />
-                                ) : (
-                                    <span className={`w-2 h-2 rounded-full ${selectedListId === list.id ? 'bg-blue-500' : 'bg-neutral-800 group-hover:bg-neutral-600'}`}></span>
-                                )}
+                                <span className={`w-2 h-2 rounded-full ${selectedListId === list.id ? 'bg-blue-500' : 'bg-neutral-800 group-hover:bg-neutral-600'}`}></span>
                                 <span className="text-sm">{list.name}</span>
                             </div>
                         </button>
                     ))}
 
-                    <button
-                        onClick={() => setIsAddingList(true)}
-                        className="w-full text-left px-6 py-4 text-xs font-bold text-neutral-600 hover:text-blue-400 flex items-center gap-2 transition-all mt-4 border-t border-neutral-900 pt-6"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Create New List
-                    </button>
+                    {!isReadOnly && (
+                        <button
+                            onClick={() => setIsAddingList(true)}
+                            className="w-full text-left px-6 py-4 text-xs font-bold text-neutral-600 hover:text-blue-400 flex items-center gap-2 transition-all mt-4 border-t border-neutral-900 pt-6"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Create New List
+                        </button>
+                    )}
                 </div>
 
                 {isAddingList && (
@@ -599,7 +654,7 @@ export default function InventoryPage() {
                             </div>
 
                             <div className="flex items-center gap-1 sm:gap-2">
-                                {activeList?.name === 'Requirements' && (
+                                {activeList?.name === 'Requirements' && !isReadOnly && (
                                     <button
                                         onClick={handleSyncRequirements}
                                         disabled={isSyncing}
@@ -609,14 +664,16 @@ export default function InventoryPage() {
                                         {isSyncing ? 'Syncing...' : 'Repair Registry'}
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => setIsManageGroupsOpen(true)}
+                                {!isReadOnly && (
+                                    <button
+                                        onClick={() => setIsManageGroupsOpen(true)}
 
-                                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-all"
-                                    title="Groups"
-                                >
-                                    <List className="w-5 h-5" />
-                                </button>
+                                        className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-all"
+                                        title="Groups"
+                                    >
+                                        <List className="w-5 h-5" />
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => {
                                         setVisibleLogsCount(LOG_LIMIT);
@@ -627,7 +684,7 @@ export default function InventoryPage() {
                                 >
                                     <History className="w-5 h-5" />
                                 </button>
-                                {activeList?.name !== 'Requirements' && (
+                                {activeList?.name !== 'Requirements' && !isReadOnly && (
                                     <button
                                         onClick={() => setIsSettingsOpen(true)}
                                         className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-all"
@@ -650,7 +707,7 @@ export default function InventoryPage() {
                                                 {group.name}
                                                 <span className="bg-neutral-800 text-neutral-500 rounded-full px-2 py-0.5 text-[10px]">{items.length}</span>
                                             </h3>
-                                            {activeList?.name !== 'Requirements' && (
+                                            {activeList?.name !== 'Requirements' && !isReadOnly && (
                                                 <button
                                                     onClick={() => {
                                                         setNewItemGroupId(group.id);
@@ -754,24 +811,26 @@ export default function InventoryPage() {
                                                     </div>
 
                                                     {/* Three Dots - Edit */}
-                                                    <button
-                                                        className="absolute top-1 sm:top-2 right-1 sm:right-2 p-1.5 sm:p-2 rounded-full hover:bg-black/20 text-white/50 hover:text-white transition-colors z-20"
+                                                    {!isReadOnly && (
+                                                        <button
+                                                            className="absolute top-1 sm:top-2 right-1 sm:right-2 p-1.5 sm:p-2 rounded-full hover:bg-black/20 text-white/50 hover:text-white transition-colors z-20"
 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingItem(item);
-                                                            setEditMode('adjust');
-                                                            setEditQuantity('');
-                                                            setEditComment('');
-                                                        }}
-                                                    >
-                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="12" cy="19" r="2" /></svg>
-                                                    </button>
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingItem(item);
+                                                                setEditMode('adjust');
+                                                                setEditQuantity('');
+                                                                setEditComment('');
+                                                            }}
+                                                        >
+                                                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="12" cy="19" r="2" /></svg>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
 
                                             {/* Add Item Card Ghost */}
-                                            {activeList?.name !== 'Requirements' && (
+                                            {activeList?.name !== 'Requirements' && !isReadOnly && (
                                                 <button
                                                     onClick={() => {
                                                         setNewItemGroupId(group.id);
