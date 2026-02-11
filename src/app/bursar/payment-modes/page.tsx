@@ -700,14 +700,83 @@ export default function PaymentModesPage() {
         setIsSyncing(true);
 
         try {
-            // Check for duplicates before adding
-            const isDuplicate = payments.some(p => p.reference === tx.reference);
-            if (isDuplicate) {
-                alert(`❌ ERROR: Transaction ${tx.reference} already exists in the system records.`);
-                setIsSyncing(false);
-                return;
+            // Check if payment already exists
+            const existingPayment = payments.find(p => p.reference === tx.reference);
+
+            if (existingPayment) {
+                // Case 1: Payment exists but is unlinked (student: 0 or null)
+                if (!existingPayment.studentId || existingPayment.studentId === 0) {
+                    console.log('📌 Updating unlinked payment to link to student:', student.name);
+
+                    // Update the existing payment to link to this student
+                    const updatedPayment: Payment = {
+                        ...existingPayment,
+                        studentId: student.id,
+                        recordedBy: 'SchoolPay System (Auto-Linked)',
+                        history: [
+                            ...(existingPayment.history || []),
+                            {
+                                id: generateId(),
+                                action: 'Linked',
+                                details: `Automatically linked to ${student.name} (${student.payCode})`,
+                                user: 'System',
+                                timestamp: new Date().toISOString()
+                            }
+                        ]
+                    };
+
+                    updatePayment(updatedPayment.id, updatedPayment);
+
+                    // Remove from unsynced list
+                    setViewTxs(prev => ({
+                        ...prev,
+                        transactions: prev.transactions.filter(t => t.id !== tx.id)
+                    }));
+
+                    setLinkConfirm({ open: false, tx: null, student: null });
+                    alert(`✅ Payment successfully linked to ${student.name}!`);
+                    return;
+                }
+
+                // Case 2: Payment exists and is linked to a different student
+                const linkedStudent = students.find(s => s.id === existingPayment.studentId);
+                const isManualPayment = existingPayment.recordedBy?.includes('Manual') ||
+                    existingPayment.id?.includes('manual');
+
+                if (isManualPayment) {
+                    // Offer to replace manual payment with verified SchoolPay data
+                    const confirmReplace = confirm(
+                        `⚠️ REPLACE MANUAL PAYMENT?\n\n` +
+                        `A manual payment with reference "${tx.reference}" already exists for:\n` +
+                        `${linkedStudent?.name || 'Unknown Student'}\n\n` +
+                        `Amount: USh ${existingPayment.amount.toLocaleString()}\n` +
+                        `Recorded by: ${existingPayment.recordedBy}\n\n` +
+                        `Do you want to REPLACE it with this verified SchoolPay transaction for ${student.name}?`
+                    );
+
+                    if (confirmReplace) {
+                        deletePayment(existingPayment.id, 'Replaced by verified SchoolPay transaction');
+                        // Continue to create new payment below
+                    } else {
+                        setIsSyncing(false);
+                        setLinkConfirm({ open: false, tx: null, student: null });
+                        return;
+                    }
+                } else {
+                    // Already a SchoolPay payment - skip
+                    alert(
+                        `ℹ️ This SchoolPay transaction has already been processed.\n\n` +
+                        `Reference: ${tx.reference}\n` +
+                        `Student: ${linkedStudent?.name || 'Unknown'}\n` +
+                        `Amount: USh ${existingPayment.amount.toLocaleString()}`
+                    );
+                    setIsSyncing(false);
+                    setLinkConfirm({ open: false, tx: null, student: null });
+                    return;
+                }
             }
 
+            // Case 3: Payment doesn't exist - create new
             const newPayment: Payment = {
                 id: `sp_manual_${tx.reference}`,
                 studentId: student.id,
@@ -715,7 +784,7 @@ export default function PaymentModesPage() {
                 date: tx.date || new Date().toISOString(),
                 method: tx.method || 'SchoolPay',
                 reference: tx.reference,
-                receiptNumber: tx.reference, // Same thing for SchoolPay
+                receiptNumber: tx.reference,
                 recordedBy: 'SchoolPay System (Linked)',
                 description: tx.description || 'School Fees',
                 term: student.semester || 'Unknown',
@@ -724,7 +793,7 @@ export default function PaymentModesPage() {
                 history: [{
                     id: generateId(),
                     action: 'Created',
-                    details: 'Linked manual SchoolPay record to student account',
+                    details: 'Linked SchoolPay transaction to student account',
                     user: 'Bursar',
                     timestamp: new Date().toISOString()
                 }]
@@ -739,6 +808,7 @@ export default function PaymentModesPage() {
             }));
 
             setLinkConfirm({ open: false, tx: null, student: null });
+            alert(`✅ Payment successfully linked to ${student.name}!`);
         } finally {
             setIsSyncing(false);
         }
