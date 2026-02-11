@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useSchoolData, PaymentIntegration, ManualPaymentMethod, BankAccount, Payment } from '@/lib/store';
 import { numberToWords } from '@/lib/numberToWords';
 import { schoolPayService } from '@/services/schoolPayService';
+import { databaseService } from '@/services/databaseService';
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
 const logGlobalAction = (action: string, details: string) => console.log(action, details);
@@ -15,7 +16,7 @@ export default function PaymentModesPage() {
         students, payments, generalTransactions, addPayment, deletePayment, // Restored
         deletedPayments, unclaimedPayments, // Get deleted and unclaimed payments
         documentTemplates, programmes, // Added for receipt printing
-        activeRole, updatePayment, developerSettings
+        activeRole, updatePayment, developerSettings, schoolProfile
     } = useSchoolData();
 
     // --- STATE MANAGEMENT ---
@@ -734,6 +735,18 @@ export default function PaymentModesPage() {
                     }));
 
                     setLinkConfirm({ open: false, tx: null, student: null });
+
+                    // FORCE CLOUD SYNC
+                    try {
+                        await databaseService.saveSchoolCloudState(schoolProfile.id, {
+                            payments: [...payments.filter(p => p.id !== updatedPayment.id), updatedPayment],
+                            students: students // Includes updated balances if handled by the store
+                        });
+                        console.log('☁️ CLOUD SYNC: Successfully pushed linked payment to cloud');
+                    } catch (syncErr) {
+                        console.error('☁️ CLOUD SYNC ERROR after linking:', syncErr);
+                    }
+
                     alert(`✅ Payment successfully linked to ${student.name}!`);
                     return;
                 }
@@ -808,6 +821,18 @@ export default function PaymentModesPage() {
             }));
 
             setLinkConfirm({ open: false, tx: null, student: null });
+
+            // FORCE CLOUD SYNC
+            try {
+                await databaseService.saveSchoolCloudState(schoolProfile.id, {
+                    payments: [...payments, newPayment],
+                    students: students
+                });
+                console.log('☁️ CLOUD SYNC: Successfully pushed new payment to cloud');
+            } catch (syncErr) {
+                console.error('☁️ CLOUD SYNC ERROR after adding:', syncErr);
+            }
+
             alert(`✅ Payment successfully linked to ${student.name}!`);
         } finally {
             setIsSyncing(false);
