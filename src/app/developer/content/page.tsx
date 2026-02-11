@@ -5,7 +5,7 @@ import { useSchoolData, LandingPageRoleContent, FeaturedSchool } from '@/lib/sto
 export default function ContentManager() {
     const {
         landingPageContent, updateLandingPageContent,
-        featuredSchools, updateFeaturedSchools,
+        featuredSchools, updateFeaturedSchools, deleteFeaturedSchool,
         developerSettings, updateDeveloperSettings
     } = useSchoolData();
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,6 +58,78 @@ export default function ContentManager() {
             }
         };
         reader.readAsDataURL(file);
+    };
+
+    const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || !schoolFormData) return;
+
+        Array.from(files).forEach(file => {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64String = reader.result as string;
+                const slimmed = await compressImage(base64String, 1200, 0.7);
+                setSchoolFormData(prev => prev ? {
+                    ...prev,
+                    gallery: [...(prev.gallery || []), slimmed]
+                } : null);
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const removeGalleryImage = (index: number) => {
+        if (!schoolFormData) return;
+        const newGallery = [...(schoolFormData.gallery || [])];
+        newGallery.splice(index, 1);
+        setSchoolFormData({ ...schoolFormData, gallery: newGallery });
+    };
+
+    const handleAddNewSchool = () => {
+        const newSchool: FeaturedSchool = {
+            id: `sch_${Date.now()}`,
+            name: 'New Featured School',
+            category: 'Category',
+            image: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=800',
+            tagline: 'Excellence in Education',
+            description: 'A brief description of the school.',
+            status: 'Active',
+            location: 'Location',
+            gallery: []
+        };
+        setEditingSchoolId(newSchool.id);
+        setSchoolFormData(newSchool);
+    };
+
+    const handleSaveSchool = async () => {
+        if (!schoolFormData) return;
+        setIsSaving(true);
+        try {
+            const isNew = !featuredSchools.find(s => s.id === schoolFormData.id);
+            let updated: FeaturedSchool[];
+            if (isNew) {
+                updated = [...featuredSchools, schoolFormData];
+            } else {
+                updated = featuredSchools.map(s => s.id === schoolFormData.id ? schoolFormData : s);
+            }
+            await updateFeaturedSchools(updated);
+            setEditingSchoolId(null);
+            setSchoolFormData(null);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteSchool = async (id: string) => {
+        if (!window.confirm("Are you sure you want to delete this advertised school?")) return;
+        setIsSaving(true);
+        try {
+            await deleteFeaturedSchool(id);
+            setEditingSchoolId(null);
+            setSchoolFormData(null);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -343,6 +415,14 @@ export default function ContentManager() {
                         </div>
                         <h2 style={{ fontSize: '1.2rem', margin: 0, fontWeight: '900', color: '#0f172a' }}>Featured Schools Directory</h2>
                     </div>
+                    {!editingSchoolId && (
+                        <button
+                            onClick={handleAddNewSchool}
+                            style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase' }}
+                        >
+                            Add New School
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -351,52 +431,161 @@ export default function ContentManager() {
 
                         return (
                             <div key={school.id} style={{ border: '1px solid #f1f5f9', borderRadius: '1.5rem', padding: '1.5rem' }}>
-                                {isEditingSchool ? (
-                                    <div style={{ display: 'grid', gap: '1rem' }}>
-                                        <input
-                                            type="text"
-                                            value={schoolFormData?.name || ''}
-                                            onChange={(e) => setSchoolFormData(prev => prev ? { ...prev, name: e.target.value } : null)}
-                                            style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
-                                        />
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {isEditingSchool && schoolFormData ? (
+                                    <div style={{ display: 'grid', gap: '1.5rem' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>School Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={schoolFormData.name}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, name: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Category</label>
+                                                <input
+                                                    type="text"
+                                                    value={schoolFormData.category}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, category: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tagline</label>
+                                                <input
+                                                    type="text"
+                                                    value={schoolFormData.tagline}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, tagline: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Location</label>
+                                                <input
+                                                    type="text"
+                                                    value={schoolFormData.location || ''}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, location: e.target.value })}
+                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Description</label>
+                                            <textarea
+                                                value={schoolFormData.description}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData, description: e.target.value })}
+                                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', minHeight: '80px' }}
+                                            />
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Main Image</label>
+                                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                    <div style={{ width: '100px', height: '60px', borderRadius: '0.75rem', overflow: 'hidden', border: '1px solid #f1f5f9' }}>
+                                                        <img src={schoolFormData.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    </div>
+                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, false)} style={{ fontSize: '0.7rem', flex: 1 }} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>School Logo</label>
+                                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                    <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', border: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        {schoolFormData.logo ? <img src={schoolFormData.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : 'No Logo'}
+                                                    </div>
+                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, true)} style={{ fontSize: '0.7rem', flex: 1 }} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '1rem' }}>Gallery Management</label>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                                {(schoolFormData.gallery || []).map((img, idx) => (
+                                                    <div key={idx} style={{ position: 'relative', height: '80px', borderRadius: '0.75rem', overflow: 'hidden', border: '1px solid #f1f5f9' }}>
+                                                        <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                        <button
+                                                            onClick={() => removeGalleryImage(idx)}
+                                                            style={{ position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', cursor: 'pointer', fontSize: '10px' }}
+                                                        >✕</button>
+                                                    </div>
+                                                ))}
+                                                <label style={{
+                                                    height: '80px', borderRadius: '0.75rem', border: '2px dashed #e2e8f0',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    cursor: 'pointer', color: '#94a3b8', fontSize: '1.5rem'
+                                                }}>
+                                                    +
+                                                    <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} style={{ display: 'none' }} />
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                                            <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                                <button
+                                                    onClick={handleSaveSchool}
+                                                    style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                >
+                                                    Save School
+                                                </button>
+                                                <button
+                                                    onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }}
+                                                    style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#f1f5f9', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: '#64748b', fontSize: '0.8rem' }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
                                             <button
-                                                onClick={() => {
-                                                    if (!schoolFormData) return;
-                                                    const updated = featuredSchools.map((s: FeaturedSchool) => s.id === school.id ? schoolFormData : s);
-                                                    updateFeaturedSchools(updated);
-                                                    setEditingSchoolId(null);
-                                                    setSchoolFormData(null);
-                                                }}
-                                                style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                                onClick={() => handleDeleteSchool(school.id)}
+                                                style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#fee2e2', color: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
                                             >
-                                                Save
-                                            </button>
-                                            <button
-                                                onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }}
-                                                style={{ padding: '0.5rem 1rem', borderRadius: '0.75rem', background: '#f1f5f9', border: 'none', cursor: 'pointer' }}
-                                            >
-                                                Cancel
+                                                Delete School
                                             </button>
                                         </div>
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                                        <div style={{ width: '80px', height: '60px', borderRadius: '1rem', overflow: 'hidden', background: '#f8fafc' }}>
+                                        <div style={{ width: '100px', height: '70px', borderRadius: '1rem', overflow: 'hidden', background: '#f8fafc', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
                                             <img src={school.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>{school.name}</h4>
-                                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>{school.category} • {school.tagline}</p>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                {school.logo && <img src={school.logo} alt="" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />}
+                                                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: '#0f172a' }}>{school.name}</h4>
+                                            </div>
+                                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: '700' }}>
+                                                <span style={{ color: '#3b82f6' }}>{school.category}</span> • {school.location}
+                                            </p>
+                                            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>"{school.tagline}"</p>
                                         </div>
                                         <button
                                             onClick={() => {
                                                 setEditingSchoolId(school.id);
                                                 setSchoolFormData({ ...school });
                                             }}
-                                            style={{ padding: '0.4rem 1rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '800', color: '#64748b' }}
+                                            style={{
+                                                padding: '0.6rem 1.25rem',
+                                                borderRadius: '0.75rem',
+                                                border: '1px solid #e2e8f0',
+                                                background: 'white',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '800',
+                                                color: '#64748b',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                            onMouseOut={(e) => e.currentTarget.style.background = 'white'}
                                         >
-                                            Edit
+                                            Edit Details
                                         </button>
                                     </div>
                                 )}
@@ -404,6 +593,17 @@ export default function ContentManager() {
                         );
                     })}
                 </div>
+                {featuredSchools.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '2px dashed #f1f5f9', borderRadius: '2rem' }}>
+                        <p style={{ color: '#94a3b8', fontWeight: '600', margin: 0 }}>No featured schools advertised yet.</p>
+                        <button
+                            onClick={handleAddNewSchool}
+                            style={{ marginTop: '1.5rem', padding: '0.75rem 2rem', borderRadius: '1rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '800' }}
+                        >
+                            Create First Listing
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

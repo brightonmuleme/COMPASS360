@@ -738,13 +738,14 @@ export interface FeaturedSchool {
     id: string;
     name: string;
     category: string;
-    image: string;
+    image: string; // This is the main thumbnail
     logo?: string;
     tagline: string;
     description: string;
     contact?: string;
     email?: string;
     location?: string;
+    gallery?: string[]; // Added: array of showcase image URLs
     status: 'Pending' | 'Active' | 'Rejected';
 }
 
@@ -844,19 +845,23 @@ export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
         { portal: 'school', amount: 150000, currency: 'UGX', interval: 'monthly' }
     ]
 };
-
 export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
     {
         id: '1',
-        name: 'Aurora Scitech Academy',
+        name: 'Kampala Institute of Health Professionals',
         category: 'Science & Technology',
         image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/1_logo.png',
         tagline: 'Innovating the future, today.',
-        description: 'A world-class facility dedicated to STEM education with state-of-the-art labs.',
-        contact: '+256 700 000001',
-        email: 'info@aurora.sc.ug',
+        description: 'A world-class facility dedicated to health education with state-of-the-art labs and clinical training programs.',
+        contact: '+256 700 123456',
+        email: 'info@kihp.ac.ug',
         location: 'Kira Road, Kampala',
+        gallery: [
+            'https://images.unsplash.com/photo-1576091160550-217359f42f8c?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     },
     {
@@ -870,6 +875,10 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         contact: '+256 700 000002',
         email: 'admissions@summit.intl',
         location: 'Entebbe',
+        gallery: [
+            'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     },
     {
@@ -883,6 +892,10 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         contact: '+256 700 000003',
         email: 'hello@kingsbury.edu',
         location: 'Mukono',
+        gallery: [
+            'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1564981797816-1043664bf78d?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     },
     {
@@ -896,6 +909,10 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         contact: '+256 700 000004',
         email: 'desk@futurefoundry.ug',
         location: 'Nakawa',
+        gallery: [
+            'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     },
     {
@@ -909,6 +926,10 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         contact: '+256 700 000005',
         email: 'play@littleexplorers.ac.ug',
         location: 'Nakasero, Kampala',
+        gallery: [
+            'https://images.unsplash.com/photo-1587582423116-ec07293f0395?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1576489911415-6a7574507df5?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     },
     {
@@ -922,6 +943,10 @@ export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
         contact: '+256 700 000006',
         email: 'admin@vla.edu',
         location: 'Munyonyo',
+        gallery: [
+            'https://images.unsplash.com/photo-1504608524841-42fe6f032b4b?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/flagged/photo-1551307402-99933d74c651?auto=format&fit=crop&q=80&w=800'
+        ],
         status: 'Active'
     }
 ];
@@ -3313,6 +3338,16 @@ function useSchoolDataInternal() {
             console.error("Cloud Sync Error (Featured Schools):", err);
         }
     };
+
+    const deleteFeaturedSchool = async (id: string) => {
+        const updated = featuredSchools.filter(s => s.id !== id);
+        setFeaturedSchools(updated);
+        try {
+            await developerService.saveLandingPageConfig({ featured_schools: updated });
+        } catch (err) {
+            console.error("Cloud Sync Error (Delete Featured School):", err);
+        }
+    };
     // Assuming StoreData interface is defined elsewhere and this is the return object of useSchoolDataInternal
     // Adding setSchoolProfile to the return object of the hook.
     // The instruction implies adding it to an interface, but the diff shows it being added to the returned object.
@@ -4703,6 +4738,7 @@ function useSchoolDataInternal() {
         updateDeveloperSettings,
         featuredSchools,
         updateFeaturedSchools,
+        deleteFeaturedSchool,
         schoolApplications,
         addSchoolApplication,
         updateSchoolApplicationStatus,
