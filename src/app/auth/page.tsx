@@ -75,7 +75,7 @@ function AuthContent() {
             } else if (userRole === 'tutor') {
                 router.push('/tutor');
             } else if (['Director', 'Bursar', 'Registrar'].includes(userRole)) {
-                router.push('/bursar');
+                router.push('/portal');
             } else {
                 router.push('/portal');
             }
