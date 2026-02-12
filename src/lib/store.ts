@@ -3200,9 +3200,9 @@ function useSchoolDataInternal() {
     // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
     // --- SECURITY & INSTITUTIONAL SYNC ---
     useEffect(() => {
-        const verifyInstitutionalAccess = async () => {
+        const verifyInstitutionalAccess = async (isBackground = false) => {
             if (!hydrated) return;
-            setCheckingAccess(true);
+            if (!isBackground) setCheckingAccess(true);
 
             // 1. Identify User Role & Identity
             // If they are a tutor or student, they only need email verification (no developer approval lock)
@@ -3329,9 +3329,9 @@ function useSchoolDataInternal() {
             }
         };
 
-        verifyInstitutionalAccess();
+        verifyInstitutionalAccess(false); // Initial load (show spinner)
         // Constant background monitoring for live approval/revocation
-        const interval = setInterval(verifyInstitutionalAccess, 30000); // Check every 30s
+        const interval = setInterval(() => verifyInstitutionalAccess(true), 30000); // Check quietly every 30s
         return () => clearInterval(interval);
     }, [hydrated, schoolProfile.id, schoolProfile.status]);
 
