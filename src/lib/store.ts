@@ -3230,9 +3230,9 @@ function useSchoolDataInternal() {
                 const isDeveloper = userRole === 'developer' || userEmail === 'callmebreyton500@gmail.com';
 
                 if (isDeveloper) {
-                    if (schoolProfile.status !== 'Active') setSchoolProfile({ ...schoolProfile, status: 'Active' });
+                    if (schoolProfile.status !== 'Active') setSchoolProfile(prev => ({ ...prev, status: 'Active' }));
                     // Auto-hydrate developer profile if missing
-                    if (!developerProfile) {
+                    if (!developerProfile || developerProfile.id !== user.id) {
                         setDeveloperProfile({ id: user.id, name: user.user_metadata?.full_name || 'Admin', role: 'Developer' });
                     }
                     setCheckingAccess(false);
@@ -3241,7 +3241,7 @@ function useSchoolDataInternal() {
 
                 // --- TUTOR AUTO-HYDRATION ---
                 if (userRole === 'tutor') {
-                    if (!tutorProfile) {
+                    if (!tutorProfile || tutorProfile.id !== user.id) {
                         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
                         if (profile) {
                             setTutorProfile({
@@ -3333,7 +3333,7 @@ function useSchoolDataInternal() {
         // Constant background monitoring for live approval/revocation
         const interval = setInterval(verifyInstitutionalAccess, 30000); // Check every 30s
         return () => clearInterval(interval);
-    }, [hydrated, tutorProfile, studentProfile, schoolProfile.id, schoolProfile.status]);
+    }, [hydrated, schoolProfile.id, schoolProfile.status]);
 
     // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
     useEffect(() => {
@@ -4703,9 +4703,9 @@ function useSchoolDataInternal() {
                         const studs = cloudState.students;
                         const linksToMake: { up: Payment, studentId: number }[] = [];
 
-                        unclaimed.forEach(up => {
+                        unclaimed.forEach((up: Payment) => {
                             const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
-                            const match = studs.find(s =>
+                            const match = studs.find((s: EnrolledStudent) =>
                                 (s.payCode && upPayCode === s.payCode) ||
                                 (s.payCode && up.description?.includes(s.payCode)) ||
                                 (s.payCode && up.reference?.includes(s.payCode))
