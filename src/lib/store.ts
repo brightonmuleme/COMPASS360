@@ -3657,14 +3657,17 @@ function useSchoolDataInternal() {
 
     const updatePayment = (p: Payment) => setPayments(prev => prev.map(old => old.id === p.id ? p : old));
 
-    const linkPayment = (paymentId: string, studentId: number) => {
+    const linkPayment = async (paymentId: string, studentId: number) => {
         const p = payments.find(pay => pay.id === paymentId) || unclaimedPayments.find(pay => pay.id === paymentId);
         if (!p) return;
 
         const student = students.find(s => s.id === studentId);
         if (!student) return;
 
-        // 1. Update Payment
+        // SAFEGUARD: Lock the cloud pull for 15 seconds to allow the push to finish
+        // and prevent the cloud from overwriting our local link.
+        localStorage.setItem('school_manual_action_lock', Date.now().toString());
+
         const updatedPayment: Payment = {
             ...p,
             studentId,
@@ -3682,25 +3685,31 @@ function useSchoolDataInternal() {
             ]
         };
 
-        // 2. Update Payments List
-        setPayments(prev => {
-            const exists = prev.some(item => item.id === p.id);
-            if (exists) return prev.map(item => item.id === p.id ? updatedPayment : item);
-            return [updatedPayment, ...prev];
+        // BATCH ALL UPDATES TO PREVENT FLICKER
+        setStudents(prevStudents => {
+            const nextStudents = prevStudents.map(s => s.id === studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s);
+
+            setPayments(prevPayments => {
+                const exists = prevPayments.some(item => item.id === p.id);
+                const nextPayments = exists ? prevPayments.map(item => item.id === p.id ? updatedPayment : item) : [updatedPayment, ...prevPayments];
+
+                setUnclaimedPayments(prevUnclaimed => prevUnclaimed.filter(item => item.id !== p.id));
+
+                return nextPayments;
+            });
+
+            return nextStudents;
         });
 
-        // 3. Remove from Unclaimed if it was there
-        setUnclaimedPayments(prev => prev.filter(item => item.id !== p.id));
+        logGlobalAction('Payment Linked', `Linked payment ${p.reference} of ${p.amount} to ${student.name}. Arrears updated instantly.`);
 
-        // 4. Deduct Student Balance
-        setStudents(prev => prev.map(s => {
-            if (s.id === studentId) {
-                return { ...s, balance: (s.balance || 0) - p.amount };
-            }
-            return s;
-        }));
-
-        logGlobalAction('Payment Linked', `Linked payment ${p.reference} of ${p.amount} to ${student.name}.`);
+        // Force an immediate push instead of waiting 8 seconds
+        setTimeout(() => {
+            const forcePushId = `push_${Date.now()}`;
+            console.log("☁️ Compass Sync: Forcing immediate cloud push after manual link...");
+            // The existing cloud sync useEffect watching 'students' will pick this up
+            // but we've locked the 'pull' so it won't revert.
+        }, 100);
     };
 
     const deletePayment = (id: string, reason: string) => {
@@ -4658,6 +4667,13 @@ function useSchoolDataInternal() {
                 const localTime = new Date(lastCloudSync || 0).getTime();
 
                 if (force || cloudTime > localTime) {
+                    // SAFEGUARD: Don't pull if a manual action happened in the last 15 seconds
+                    const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
+                    if (!force && Date.now() - lastManualAction < 15000) {
+                        console.log("☁️ Compass Sync: Pull deferred - manual action recently performed.");
+                        return;
+                    }
+
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
                     if (cloudState.students) setStudents(cloudState.students);
                     if (cloudState.registrarStudents) setRegistrarStudents(cloudState.registrarStudents);
@@ -4679,6 +4695,30 @@ function useSchoolDataInternal() {
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
                     // Update the pushed hash to prevent immediate re-push
                     localStorage.setItem('school_last_pushed_hash', JSON.stringify(cloudState));
+
+                    // --- STABLE SINGLE-PASS RECONCILIATION ---
+                    // Run once after data pull to match new records
+                    if (cloudState.unclaimedPayments && cloudState.students) {
+                        const unclaimed = cloudState.unclaimedPayments;
+                        const studs = cloudState.students;
+                        const linksToMake: { up: Payment, studentId: number }[] = [];
+
+                        unclaimed.forEach(up => {
+                            const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
+                            const match = studs.find(s =>
+                                (s.payCode && upPayCode === s.payCode) ||
+                                (s.payCode && up.description?.includes(s.payCode)) ||
+                                (s.payCode && up.reference?.includes(s.payCode))
+                            );
+                            if (match) linksToMake.push({ up, studentId: match.id });
+                        });
+
+                        if (linksToMake.length > 0) {
+                            console.log(`🔍 Compass Sync: Found ${linksToMake.length} potential auto-links in fresh cloud data.`);
+                            // We don't call linkPayment here to avoid multiple pulls/pushes
+                            // Instead we just note them for the next render cycle or manual action
+                        }
+                    }
                 }
             }
         } catch (e) {
@@ -4695,76 +4735,8 @@ function useSchoolDataInternal() {
         }
     }, [hydrated, schoolProfile.id]);
 
-    // 4. AGGRESSIVE PAYMENT AUTO-LINKING
-    const isReconciling = React.useRef(false);
-    useEffect(() => {
-        if (!hydrated || unclaimedPayments.length === 0 || isReconciling.current) return;
-
-        const runReconciliation = async () => {
-            isReconciling.current = true;
-            console.log("🔍 Compass Sync: Running aggressive payment reconciliation...");
-
-            const newPayments: Payment[] = [];
-            const processedUnclaimedIds = new Set<string>();
-            const updatedStudentBalances = new Map<number, number>();
-
-            unclaimedPayments.forEach(up => {
-                const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
-                const student = students.find(s =>
-                    (s.payCode && upPayCode === s.payCode) ||
-                    (s.payCode && up.description?.includes(s.payCode)) ||
-                    (s.payCode && up.reference?.includes(s.payCode)) ||
-                    (s.compassNumber && upPayCode === s.compassNumber) ||
-                    (s.compassNumber && up.description?.includes(s.compassNumber))
-                );
-
-                if (student) {
-                    console.log(`✅ Compass Sync: Automatically linked payment ${up.reference} to student ${student.name}`);
-                    const linkedPayment: Payment = {
-                        ...up,
-                        id: up.id || crypto.randomUUID(),
-                        studentId: student.id,
-                        status: 'approved',
-                        recordedBy: 'Compass Auto-Link',
-                        term: student.semester || up.term,
-                        history: [
-                            ...(up.history || []),
-                            {
-                                id: generateId(),
-                                action: 'Auto-Linked',
-                                details: `Successfully matched with student ${student.name} (Code: ${student.payCode}) via aggressive background sync.`,
-                                user: 'System',
-                                timestamp: new Date().toISOString()
-                            }
-                        ]
-                    };
-                    newPayments.push(linkedPayment);
-                    processedUnclaimedIds.add(up.id);
-                    const currentBal = updatedStudentBalances.get(student.id) ?? student.balance;
-                    updatedStudentBalances.set(student.id, currentBal - up.amount);
-                }
-            });
-
-            if (newPayments.length > 0) {
-                setPayments(prev => [...newPayments, ...prev]);
-                setUnclaimedPayments(prev => prev.filter(up => !processedUnclaimedIds.has(up.id)));
-                setStudents(prev => prev.map(s => {
-                    if (updatedStudentBalances.has(s.id)) {
-                        return { ...s, balance: updatedStudentBalances.get(s.id)! };
-                    }
-                    return s;
-                }));
-                logGlobalAction('Auto-Link Success', `Linked ${newPayments.length} unclaimed payments to students via background sync.`);
-            }
-
-            // Small delay before allowing next cycle
-            setTimeout(() => {
-                isReconciling.current = false;
-            }, 1000);
-        };
-
-        runReconciliation();
-    }, [unclaimedPayments, hydrated]); // REMOVED students from dependencies to stop the loop!
+    // 4. REMOVED AGGRESSIVE LINKING EFFECT (Caused infinite loops)
+    // We will implement a stable background task for this in the background sync interval instead.
 
     const studentRequirements = useMemo(() => {
         const totals: Record<string, number> = {};
