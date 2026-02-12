@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from 'react';
-import { useSchoolData, BudgetPeriod, BudgetCategoryLimit, BudgetSubcategory } from '@/lib/store';
+import { useSchoolData, BudgetPeriod, BudgetCategoryLimit, BudgetSubcategory, EnrolledStudent, Payment } from '@/lib/store';
 import { ArrowLeft, Save, Plus, Trash2, ChevronDown, ChevronRight, Calculator, Edit2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -22,7 +22,6 @@ export default function BudgetDetailPage() {
 
     // Local State
     const [expenseLimits, setExpenseLimits] = useState<BudgetCategoryLimit[]>(period?.budgetCategories || []);
-    // Ensure we handle potential undefined for budgetIncomeCategories if it's new
     const [incomeLimits, setIncomeLimits] = useState<BudgetCategoryLimit[]>(period?.budgetIncomeCategories || []);
 
     // Derived State based on Active Tab
@@ -36,7 +35,6 @@ export default function BudgetDetailPage() {
     // Helper to set current limits
     const setCurrentLimits = (newLimits: BudgetCategoryLimit[] | ((prev: BudgetCategoryLimit[]) => BudgetCategoryLimit[])) => {
         if (activeTab === 'Expense') {
-            // TS dance for state setter
             if (typeof newLimits === 'function') {
                 setExpenseLimits(newLimits as any);
             } else {
@@ -55,8 +53,8 @@ export default function BudgetDetailPage() {
     // Effect: Sync if period loads later
     React.useEffect(() => {
         if (period) {
-            if (expenseLimits.length === 0 && period.budgetCategories?.length > 0) setExpenseLimits(period.budgetCategories);
-            if (incomeLimits.length === 0 && period.budgetIncomeCategories?.length > 0) setIncomeLimits(period.budgetIncomeCategories);
+            if (expenseLimits.length === 0 && (period.budgetCategories?.length || 0) > 0) setExpenseLimits(period.budgetCategories || []);
+            if (incomeLimits.length === 0 && (period.budgetIncomeCategories?.length || 0) > 0) setIncomeLimits(period.budgetIncomeCategories || []);
         }
     }, [period]);
 
@@ -85,7 +83,7 @@ export default function BudgetDetailPage() {
             id: crypto.randomUUID(),
             categoryId: cat.id,
             baseAmount: 0,
-            allowSubcategories: cat.subcategories.length > 0,
+            allowSubcategories: (cat.subcategories?.length || 0) > 0,
             subcategories: []
         };
         setCurrentLimits([...currentLimits, newLimit]);
@@ -345,19 +343,20 @@ export default function BudgetDetailPage() {
                                             </div>
                                         )}
                                     </div>
-                            )}
                                 </div>
-                            );
-                })}
+                            )}
                         </div>
+                    );
+                })}
+            </div>
 
-            {/* Mobile Floating Plus Button */ }
-                    <button
-                        onClick={() => setIsSelectionGridOpen(true)}
-                        className="md:hidden fixed bottom-6 right-6 w-16 h-16 bg-emerald-500 text-slate-950 rounded-[2rem] shadow-2xl shadow-emerald-500/20 flex items-center justify-center transition-transform active:scale-90 z-50 border-4 border-slate-950"
-                    >
-                        <Plus className="w-8 h-8" strokeWidth={3} />
-                    </button>
+            {/* Mobile Floating Plus Button */}
+            <button
+                onClick={() => setIsSelectionGridOpen(true)}
+                className="md:hidden fixed bottom-6 right-6 w-16 h-16 bg-emerald-500 text-slate-950 rounded-[2rem] shadow-2xl shadow-emerald-500/20 flex items-center justify-center transition-transform active:scale-90 z-50 border-4 border-slate-950"
+            >
+                <Plus className="w-8 h-8" strokeWidth={3} />
+            </button>
         </div>
-            );
+    );
 }
