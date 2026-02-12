@@ -20,6 +20,8 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
     const [mode, setMode] = useState<string>(initialMode);
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [authSuccess, setAuthSuccess] = useState<string | null>(null);
 
     // Form State
     const [username, setUsername] = useState('');
@@ -75,12 +77,12 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
             const name = attributes['name'] || user.user_metadata?.full_name || 'User';
             const userEmail = attributes['email'] || user.email;
 
-            // 1. Clear previous conflicting sessions
-            logout();
+            // 1. Skip conflicting checks for Tutors & clear legacy state if needed
+            if (normalizedRole !== 'tutor') {
+                logout();
+            }
 
             // 2. Exact Routing Logic (Case-Insensitive)
-            const normalizedRole = dbRole?.toLowerCase();
-
             if (normalizedRole === 'tutor') {
                 setTutorProfile({
                     id: user.id,
@@ -150,6 +152,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
     const handleSignIn = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setAuthError(null);
 
         try {
             // --- REAL AUTHENTICATION (Supabase) ---
@@ -157,49 +160,56 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
             if (response.success) {
                 // Verify School Status before letting them in
                 const { user } = await authService.getCurrentUser();
+                const attributes = await authService.getUserAttributes();
+                const dbRole = attributes['role'] || user?.user_metadata?.role;
+                const normalizedRole = (dbRole || '').toLowerCase();
                 const schoolId = user?.user_metadata?.school_id;
                 const userEmail = user?.email;
 
-                // 1. Check for Pending Application by Email
+                // 1. Check for Pending Application by Email (ONLY for School/Director roles)
                 const { data: application } = await supabase
                     .from('school_applications')
                     .select('status')
                     .eq('email', userEmail)
                     .maybeSingle();
 
-                if (application && application.status !== 'Approved') {
+                const isInstitutionalRole = !['tutor', 'student', 'developer'].includes(normalizedRole);
+
+                if (isInstitutionalRole && application && application.status !== 'Approved') {
                     await authService.logout();
-                    alert("Waiting for developer approval. Please contact support for assistance.");
+                    setAuthError("Waiting for developer approval. Please contact support.");
                     setIsLoading(false);
                     return;
                 }
 
                 // 2. Check for Inactive School by ID (for approved/existing staff)
-                if (schoolId) {
+                if (isInstitutionalRole && schoolId) {
                     const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
                     if (school && school.status !== 'Active') {
                         await authService.logout();
-                        alert("Account Inactive: Please contact support.");
+                        setAuthError("Account Inactive: Please contact support.");
                         setIsLoading(false);
                         return;
                     }
                 }
                 await proceedToLogin();
             } else {
-                alert(`Login Failed: ${response.error}`);
+                setAuthError(`Login Failed: ${response.error}`);
                 setIsLoading(false);
             }
         } catch (err: any) {
-            console.error("Login exception:", err);
-            alert("An unexpected error occurred. Please try again.");
+            setAuthError("An unexpected error occurred. Please try again.");
             setIsLoading(false);
         }
     };
 
     const handleRegisterSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setAuthError(null);
+        setAuthSuccess(null);
+
         if (password !== confirmPassword) {
-            alert("Passwords do not match!");
+            setAuthError("Passwords do not match!");
             return;
         }
 
@@ -227,17 +237,25 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
                         phone: phoneNumber
                     });
 
-                    alert(`Application for ${institutionName} submitted! Please verify your email and wait for developer approval.`);
+                    setAuthSuccess(`Application for ${institutionName} submitted! Please verify your email.`);
                 } else {
-                    alert(`Welcome aboard! Account created successfully.`);
+                    setAuthSuccess(`Welcome aboard! Verification email sent to ${email}.`);
                 }
-                setMode('signin');
+
+                // Allow user to see the success message for 1 second before switching back
+                setTimeout(() => {
+                    setMode('signin');
+                    setAuthSuccess(null);
+                }, 1000);
             } else {
-                alert(`Registration Failed: ${result.error}`);
+                if (result.error?.includes('already registered')) {
+                    setAuthError("This email is already registered. Try signing in!");
+                } else {
+                    setAuthError(`Registration Failed: ${result.error}`);
+                }
             }
         } catch (err: any) {
-            console.error("Registration Error", err);
-            alert("Could not complete registration. Please check your connection.");
+            setAuthError("Could not complete registration. Connection error.");
         } finally {
             setIsLoading(false);
         }
@@ -275,6 +293,18 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ role, onClose, initialMode = 
 
                 <div style={{ padding: '2.5rem', position: 'relative' }}>
                     <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: '#1f2937', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+
+                    {authError && (
+                        <div style={{ padding: '0.75rem 1rem', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '12px', color: '#f87171', fontSize: '0.85rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <AlertCircle size={16} /> {authError}
+                        </div>
+                    )}
+
+                    {authSuccess && (
+                        <div style={{ padding: '0.75rem 1rem', background: '#10b98115', border: '1px solid #10b98130', borderRadius: '12px', color: '#34d399', fontSize: '0.85rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Check size={16} /> {authSuccess}
+                        </div>
+                    )}
 
                     {mode === 'signin' ? (
                         <form onSubmit={handleSignIn}>

@@ -10,7 +10,20 @@ export default function TutorProfile() {
     // Lazy init: Find full Tutor object using the session ID to avoid type mismatches
     const [form, setForm] = useState<Tutor | null>(() => {
         if (!tutorProfile?.id) return null;
-        return tutors.find(t => t.id === tutorProfile.id) || null;
+        const existing = tutors.find(t => t.id === tutorProfile.id);
+        if (existing) return existing;
+
+        // Return a fresh object if they just joined
+        return {
+            id: tutorProfile.id,
+            name: tutorProfile.name || 'Tutor',
+            email: tutorProfile.email || '',
+            phone: '',
+            type: 'Full-time',
+            status: 'Active',
+            programmeIds: [],
+            stats: { subscribers: 0, views: 0, uploads: 0 }
+        } as Tutor;
     });
 
     const [saved, setSaved] = useState(false);
@@ -50,7 +63,7 @@ export default function TutorProfile() {
         setTimeout(() => setSaved(false), 3000);
     };
 
-    if (!form) return <div className="p-8 text-gray-500 animate-pulse">Loading profile data...</div>;
+    if (!tutorProfile?.id) return <div className="p-8 text-gray-500 animate-pulse">Waiting for session...</div>;
 
     return (
         <div className="max-w-2xl mx-auto">

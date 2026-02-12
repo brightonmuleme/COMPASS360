@@ -71,6 +71,7 @@ export const authService = {
                         {
                             id: data.user.id,
                             full_name: params.name,
+                            email: params.email,
                             role: params.role,
                             school_id: params.schoolId,
                             pay_code: params.payCode
@@ -79,6 +80,7 @@ export const authService = {
 
                 if (profileError) {
                     console.error("Profile creation failed!", profileError);
+                    return { success: false, error: "Cloud profile synchronization failed. Please contact support." };
                 }
             }
 

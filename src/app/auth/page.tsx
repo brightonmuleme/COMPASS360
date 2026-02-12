@@ -41,8 +41,12 @@ function AuthContent() {
     const [payCode, setPayCode] = useState('');
     const [institutionName, setInstitutionName] = useState('');
 
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+
     const {
-        setActiveRole, setActiveAccountId, featuredSchools, setSchoolProfile, setDeveloperProfile
+        setActiveRole, setActiveAccountId, featuredSchools, setSchoolProfile,
+        setDeveloperProfile, setTutorProfile, setStudentProfile, hydrated, checkingAccess, logout
     } = useSchoolData();
 
     // Theme Color Mapping
@@ -87,71 +91,85 @@ function AuthContent() {
     const handleSignIn = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setAuthError(null);
+        setAuthSuccess(null);
 
         try {
             const response = await authService.login({ username, password });
             if (response.success) {
+                // The global store's useEffect will now handle the hydration and verification
+                // because we've set checkingAccess(true) in the store. 
+                // We just need to wait for the store to recognize the new session.
+
                 const { user } = await authService.getCurrentUser();
-                const schoolId = user?.user_metadata?.school_id;
                 const userEmail = user?.email;
-                const userRole = (user?.user_metadata?.role || '').toLowerCase();
+                const attributes = await authService.getUserAttributes();
+                const userRole = (attributes['role'] || user?.user_metadata?.role || '').toLowerCase();
                 const isDeveloper = userRole === 'developer' || userEmail === 'callmebreyton500@gmail.com';
 
-                if (!isDeveloper) {
-                    // 1. Check for Pending Application by Email
-                    const { data: application } = await supabase
-                        .from('school_applications')
-                        .select('status')
-                        .eq('email', userEmail)
-                        .maybeSingle();
-
-                    if (application && application.status !== 'Approved') {
-                        await authService.logout();
-                        alert("Waiting for developer approval. Please contact support for assistance.");
-                        setIsLoading(false);
-                        return;
-                    }
-
-                    // 2. Check for Inactive School by ID
-                    if (schoolId) {
-                        const { data: school } = await supabase.from('schools').select('status').eq('id', schoolId).single();
-                        if (school && school.status !== 'Active') {
-                            await authService.logout();
-                            alert("Account Inactive: Please contact support.");
-                            setIsLoading(false);
-                            return;
-                        }
-                    }
+                if (userRole === 'tutor') {
+                    // Pre-hydrate for faster transition
+                    setTutorProfile({
+                        id: user!.id,
+                        name: attributes['name'] || user!.user_metadata?.full_name || 'Tutor',
+                        email: userEmail || '',
+                        role: 'Tutor',
+                        subscriptionDaysLeft: 30
+                    });
+                    router.push('/tutor');
+                } else if (isDeveloper) {
+                    setDeveloperProfile({ id: user!.id, name: 'Admin', role: 'Developer' });
+                    setSchoolProfile({ status: 'Active' });
+                    router.push('/developer');
+                } else {
+                    router.push('/portal');
                 }
-                await proceedToLogin();
             } else {
-                alert(`Login Failed: ${response.error}`);
+                setAuthError(`Login Failed: ${response.error}`);
                 setIsLoading(false);
             }
         } catch (err: any) {
-            console.error("Login exception:", err);
-            alert("Connection error occurred.");
+            setAuthError(err.message || "Connection error occurred.");
             setIsLoading(false);
         }
     };
 
     const handleRegisterSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setAuthError(null);
+        setAuthSuccess(null);
+
         if (password !== confirmPassword) {
-            alert("Passwords do not match!");
+            setAuthError("Passwords do not match!");
             return;
         }
 
         setIsLoading(true);
         try {
+            // 1. Better Duplicate Check: Lowercase comparison and checking Profiles table
+            const { data: existing } = await supabase
+                .from('profiles')
+                .select('id')
+                .ilike('email', email)
+                .maybeSingle();
+
+            if (existing) {
+                setAuthError("This email is already registered. Try signing in!");
+                setIsLoading(false);
+                return;
+            }
+
             const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+256${phoneNumber.replace(/^0/, '')}`;
+            // Normalize role to Uppercase for easier filtering in Registrar
+            const normalizedRole = role === 'school' ? 'Director' : (role === 'accountant' ? 'Bursar' : (role === 'tutor' ? 'Tutor' : role));
+
             const signupData = {
                 username: email,
                 password,
                 email,
                 phoneNumber: formattedPhone,
                 name: `${firstName} ${lastName}`.trim(),
-                role: role === 'school' ? 'Director' : role,
+                role: normalizedRole,
                 schoolId: selectedSchool || undefined,
                 payCode: payCode || undefined
             };
@@ -159,25 +177,26 @@ function AuthContent() {
             const response = await authService.signUp(signupData);
             if (response.success) {
                 if (role === 'school') {
-                    // Create School Application record in Supabase
                     await databaseService.submitSchoolApplication({
                         schoolName: institutionName,
                         adminName: `${firstName} ${lastName}`,
                         email: email,
                         phone: formattedPhone
                     });
-
-                    alert(`Application for ${institutionName} submitted! Please verify your email and wait for developer approval.`);
-                    router.push('/');
+                    setAuthSuccess(`Application submitted! Please verify your email.`);
                 } else {
-                    alert("Account created! Please check your email for verification.");
-                    setMode('signin');
+                    setAuthSuccess(`Verification email sent to ${email}!`);
                 }
+
+                setTimeout(() => {
+                    setMode('signin');
+                    setAuthSuccess(null);
+                }, 2000);
             } else {
-                alert(`Registration Error: ${response.error}`);
+                setAuthError(`Registration Failed: ${response.error}`);
             }
         } catch (err) {
-            alert("An unexpected error occurred.");
+            setAuthError("An unexpected error occurred.");
         } finally {
             setIsLoading(false);
         }
@@ -241,6 +260,18 @@ function AuthContent() {
                     >
                         <ArrowLeft size={16} /> Back to Home
                     </button>
+
+                    {authError && (
+                        <div style={{ padding: '0.75rem 1rem', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '12px', color: '#f87171', fontSize: '0.85rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <ShieldCheck size={16} /> {authError}
+                        </div>
+                    )}
+
+                    {authSuccess && (
+                        <div style={{ padding: '0.75rem 1rem', background: '#10b98115', border: '1px solid #10b98130', borderRadius: '12px', color: '#34d399', fontSize: '0.85rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <ShieldCheck size={16} /> {authSuccess}
+                        </div>
+                    )}
 
                     <div className="mb-8">
                         <div className="flex items-center gap-3 mb-2">

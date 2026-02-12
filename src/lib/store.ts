@@ -1656,6 +1656,7 @@ function useSchoolDataInternal() {
     const isBursarPortal = pathname.startsWith('/bursar');
     const isRegistrarPortal = pathname.startsWith('/admin');
 
+    const [checkingAccess, setCheckingAccess] = useState(true);
     const [hydrated, setHydrated] = useState(false);
 
     const loadFromStorage = (key: string, initial: any) => {
@@ -2311,6 +2312,27 @@ function useSchoolDataInternal() {
             } catch (e) { console.error(e); }
         }
     }, [appUpdates, appOffers, tutorContents, suggestions, studentProfile, tutorProfile, developerProfile, hydrated]);
+
+    // --- TUTOR LIST SYNC ---
+    // Ensure the logged-in tutor is always in the master list so pages that use tutors.find() don't break
+    useEffect(() => {
+        if (hydrated && tutorProfile && !tutors.find(t => t.id === tutorProfile.id)) {
+            setTutors(prev => [...prev, {
+                id: tutorProfile.id,
+                name: tutorProfile.name || 'Tutor',
+                email: tutorProfile.email,
+                phone: '',
+                type: 'Full-time',
+                status: 'Active',
+                programmeIds: [],
+                stats: { subscribers: 0, views: 0, uploads: 0 },
+                walletBalance: 0,
+                subscriptionPrice: 3500,
+                subscriptionDuration: '6 Months',
+                payoutRequests: []
+            }]);
+        }
+    }, [hydrated, tutorProfile, tutors]);
 
     const addSuggestion = (suggestion: Suggestion) => setSuggestions(prev => [suggestion, ...prev]);
     const updateStudentProfile = (profile: Partial<StudentProfile>) => setStudentProfile(prev => ({ ...prev, ...profile }));
@@ -3180,20 +3202,25 @@ function useSchoolDataInternal() {
     useEffect(() => {
         const verifyInstitutionalAccess = async () => {
             if (!hydrated) return;
+            setCheckingAccess(true);
 
             // 1. Identify User Role & Identity
             // If they are a tutor or student, they only need email verification (no developer approval lock)
             if (tutorProfile || (studentProfile && studentProfile.id !== 'std_user_1')) {
                 // Ensure they are not blocked by institutional global state
                 if (schoolProfile.status !== 'Active' && schoolProfile.id === 'vine_intl') {
-                    setSchoolProfile(prev => ({ ...prev, status: 'Active' }));
+                    setSchoolProfile({ ...schoolProfile, status: 'Active' });
                 }
+                setCheckingAccess(false);
                 return;
             };
 
             try {
                 const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
+                if (!user) {
+                    setCheckingAccess(false);
+                    return;
+                }
 
                 const userEmail = user.email;
                 const userRole = (user.user_metadata?.role || '').toLowerCase();
@@ -3203,8 +3230,31 @@ function useSchoolDataInternal() {
                 const isDeveloper = userRole === 'developer' || userEmail === 'callmebreyton500@gmail.com';
 
                 if (isDeveloper) {
-                    if (schoolProfile.status !== 'Active') setSchoolProfile(prev => ({ ...prev, status: 'Active' }));
+                    if (schoolProfile.status !== 'Active') setSchoolProfile({ ...schoolProfile, status: 'Active' });
+                    // Auto-hydrate developer profile if missing
+                    if (!developerProfile) {
+                        setDeveloperProfile({ id: user.id, name: user.user_metadata?.full_name || 'Admin', role: 'Developer' });
+                    }
+                    setCheckingAccess(false);
                     return;
+                }
+
+                // --- TUTOR AUTO-HYDRATION ---
+                if (userRole === 'tutor') {
+                    if (!tutorProfile) {
+                        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                        if (profile) {
+                            setTutorProfile({
+                                id: user.id,
+                                name: profile.full_name || user.user_metadata?.full_name || 'Tutor',
+                                email: userEmail || profile.email || '',
+                                role: 'Tutor',
+                                subscriptionDaysLeft: 30 // Default or fetch from a tutor_stats table later
+                            });
+                        }
+                    }
+                    setCheckingAccess(false);
+                    return; // Tutors skip institutional/school checks
                 }
 
                 // 2. Check for Pending Application by Email (The "Sami" Lock)
@@ -3222,6 +3272,7 @@ function useSchoolDataInternal() {
                             status: 'Pending'
                         }));
                     }
+                    setCheckingAccess(false);
                     return;
                 }
 
@@ -3273,6 +3324,8 @@ function useSchoolDataInternal() {
                 }
             } catch (err) {
                 console.error("Institutional Sync Error:", err);
+            } finally {
+                setCheckingAccess(false);
             }
         };
 
@@ -3580,6 +3633,16 @@ function useSchoolDataInternal() {
     };
 
     const addPayment = (p: Payment) => {
+        // If studentId is 0 or missing, it's an unclaimed digital payment
+        if (p.studentId === 0 || !p.studentId) {
+            setUnclaimedPayments(prev => {
+                if (prev.some(item => item.id === p.id || (p.reference && item.reference === p.reference))) return prev;
+                return [p, ...prev];
+            });
+            logGlobalAction('Unclaimed Payment', `Synchronized unclaimed payment (Ref: ${p.reference}) totaling ${p.amount}. It will be auto-linked when a student with this PayCode is enrolled.`);
+            return;
+        }
+
         setPayments(prev => {
             if (prev.some(item => item.id === p.id)) return prev;
             return [...prev, p];
@@ -3593,6 +3656,52 @@ function useSchoolDataInternal() {
     };
 
     const updatePayment = (p: Payment) => setPayments(prev => prev.map(old => old.id === p.id ? p : old));
+
+    const linkPayment = (paymentId: string, studentId: number) => {
+        const p = payments.find(pay => pay.id === paymentId) || unclaimedPayments.find(pay => pay.id === paymentId);
+        if (!p) return;
+
+        const student = students.find(s => s.id === studentId);
+        if (!student) return;
+
+        // 1. Update Payment
+        const updatedPayment: Payment = {
+            ...p,
+            studentId,
+            status: 'approved',
+            recordedBy: p.recordedBy?.includes('Auto-Sync') ? p.recordedBy : 'System (Linked)',
+            history: [
+                ...(p.history || []),
+                {
+                    id: generateId(),
+                    action: 'Linked',
+                    details: `Manually linked to student ${student.name} (${student.payCode})`,
+                    user: activeRole || 'Bursar',
+                    timestamp: new Date().toISOString()
+                }
+            ]
+        };
+
+        // 2. Update Payments List
+        setPayments(prev => {
+            const exists = prev.some(item => item.id === p.id);
+            if (exists) return prev.map(item => item.id === p.id ? updatedPayment : item);
+            return [updatedPayment, ...prev];
+        });
+
+        // 3. Remove from Unclaimed if it was there
+        setUnclaimedPayments(prev => prev.filter(item => item.id !== p.id));
+
+        // 4. Deduct Student Balance
+        setStudents(prev => prev.map(s => {
+            if (s.id === studentId) {
+                return { ...s, balance: (s.balance || 0) - p.amount };
+            }
+            return s;
+        }));
+
+        logGlobalAction('Payment Linked', `Linked payment ${p.reference} of ${p.amount} to ${student.name}.`);
+    };
 
     const deletePayment = (id: string, reason: string) => {
         const payment = payments.find(p => p.id === id);
@@ -4502,6 +4611,10 @@ function useSchoolDataInternal() {
             staffAccounts,
             schoolProfile,
             documentTemplates,
+            paymentIntegrations,
+            manualPaymentMethods,
+            financialSettings,
+            unclaimedPayments,
             timestamp: new Date().toISOString()
         };
 
@@ -4531,7 +4644,7 @@ function useSchoolDataInternal() {
         }, 8000); // 8 second debounce to avoid spamming Supabase
 
         return () => clearTimeout(timer);
-    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, hydrated]);
+    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, paymentIntegrations, manualPaymentMethods, financialSettings, unclaimedPayments, documentTemplates, hydrated]);
 
     // 2. MANUAL PULL FUNCTION
     const pullFromCloud = async (force = false) => {
@@ -4556,6 +4669,11 @@ function useSchoolDataInternal() {
                     if (cloudState.programmes) setProgrammes(cloudState.programmes);
                     if (cloudState.services) setServices(cloudState.services);
                     if (cloudState.staffAccounts) setStaffAccounts(cloudState.staffAccounts);
+                    if (cloudState.paymentIntegrations) setPaymentIntegrations(cloudState.paymentIntegrations);
+                    if (cloudState.manualPaymentMethods) setManualPaymentMethods(cloudState.manualPaymentMethods);
+                    if (cloudState.financialSettings) setFinancialSettings(cloudState.financialSettings);
+                    if (cloudState.unclaimedPayments) setUnclaimedPayments(cloudState.unclaimedPayments);
+                    if (cloudState.documentTemplates) setDocumentTemplates(cloudState.documentTemplates);
 
                     setLastCloudSync(cloudState.timestamp);
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
@@ -4576,6 +4694,81 @@ function useSchoolDataInternal() {
             pullFromCloud();
         }
     }, [hydrated, schoolProfile.id]);
+
+    // 4. AGGRESSIVE PAYMENT AUTO-LINKING
+    // Automatically matches unclaimed payments (from SchoolPay or manual) with students when payCodes match.
+    useEffect(() => {
+        if (!hydrated || unclaimedPayments.length === 0) return;
+
+        console.log("🔍 Compass Sync: Running aggressive payment reconciliation...");
+
+        const newPayments: Payment[] = [];
+        const processedUnclaimedIds = new Set<string>();
+        const updatedStudentBalances = new Map<number, number>();
+
+        unclaimedPayments.forEach(up => {
+            // Try to find a student who matches this payment's code/reference
+            const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
+
+            const student = students.find(s =>
+                // Primary Match: Pay Code
+                (s.payCode && upPayCode === s.payCode) ||
+                (s.payCode && up.description?.includes(s.payCode)) ||
+                (s.payCode && up.reference?.includes(s.payCode)) ||
+                // Secondary Match: Compass Number (if mapped)
+                (s.compassNumber && upPayCode === s.compassNumber) ||
+                (s.compassNumber && up.description?.includes(s.compassNumber))
+            );
+
+            if (student) {
+                console.log(`✅ Compass Sync: Automatically linked payment ${up.reference} to student ${student.name}`);
+
+                const linkedPayment: Payment = {
+                    ...up,
+                    id: up.id || crypto.randomUUID(),
+                    studentId: student.id,
+                    status: 'approved',
+                    recordedBy: 'Compass Auto-Link',
+                    term: student.semester || up.term,
+                    history: [
+                        ...(up.history || []),
+                        {
+                            id: generateId(),
+                            action: 'Auto-Linked',
+                            details: `Successfully matched with student ${student.name} (Code: ${student.payCode}) via aggressive background sync.`,
+                            user: 'System',
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                };
+
+                newPayments.push(linkedPayment);
+                processedUnclaimedIds.add(up.id);
+
+                // Track balance update
+                const currentBal = updatedStudentBalances.get(student.id) ?? student.balance;
+                updatedStudentBalances.set(student.id, currentBal - up.amount);
+            }
+        });
+
+        if (newPayments.length > 0) {
+            // 1. Add to active payments
+            setPayments(prev => [...newPayments, ...prev]);
+
+            // 2. Remove from unclaimed
+            setUnclaimedPayments(prev => prev.filter(up => !processedUnclaimedIds.has(up.id)));
+
+            // 3. Update student balances
+            setStudents(prev => prev.map(s => {
+                if (updatedStudentBalances.has(s.id)) {
+                    return { ...s, balance: updatedStudentBalances.get(s.id)! };
+                }
+                return s;
+            }));
+
+            logGlobalAction('Auto-Link Success', `Linked ${newPayments.length} unclaimed payments to students via background sync.`);
+        }
+    }, [students, unclaimedPayments, hydrated]);
 
     const studentRequirements = useMemo(() => {
         const totals: Record<string, number> = {};
@@ -4634,6 +4827,7 @@ function useSchoolDataInternal() {
         payments,
         filteredPayments,
         hydrated,
+        checkingAccess,
         addProgramme,
         updateProgramme,
         deleteProgramme,
@@ -4653,6 +4847,7 @@ function useSchoolDataInternal() {
         restoreBilling,
         addPayment,
         updatePayment,
+        linkPayment,
         deletePayment,
         restorePayment,
         deletedBillings,

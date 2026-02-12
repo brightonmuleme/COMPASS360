@@ -469,8 +469,12 @@ export default function TutorContentLibrary() {
         return filtered;
     }, [courseUnits, selectedProg]);
 
+    const myContents = useMemo(() => {
+        return tutorContents.filter(c => c.tutorId === currentTutorId);
+    }, [tutorContents, currentTutorId]);
+
     const displayedContent = useMemo(() => {
-        let content = tutorContents;
+        let content = myContents;
 
         if (activeTab === 'HOME') {
             // Support Search on Home Tab
@@ -531,17 +535,17 @@ export default function TutorContentLibrary() {
     }, [tutorContents, activeTab, selectedCU, selectedProg, selectedLevel, courseUnits, searchQuery]);
 
     const homeContent = useMemo(() => {
-        return [...tutorContents].sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-    }, [tutorContents]);
+        return [...myContents].sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
+    }, [myContents]);
 
     // --- DERIVED STATE ---
     const featuredContent = useMemo(() => {
         // 1. Priority: Explicitly featured/pinned content via isFeatured flag
-        const featured = tutorContents.find(c => c.isFeatured);
+        const featured = myContents.find(c => c.isFeatured);
         if (featured) return featured;
 
         // 2. Legacy: content pinned via profile ID
-        if (tutorProfile.pinnedContentId) return tutorContents.find(c => c.id === tutorProfile.pinnedContentId);
+        if (tutorProfile.pinnedContentId) return myContents.find(c => c.id === tutorProfile.pinnedContentId);
 
         // 3. Fallback: Most recent upload
         return homeContent[0];

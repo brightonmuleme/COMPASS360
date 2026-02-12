@@ -21,7 +21,14 @@ export default function TutorSettingsPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    const tutor = tutors.find(t => t.id === tutorProfile?.id);
+    const tutor = tutors.find(t => t.id === tutorProfile?.id) || (tutorProfile?.id ? {
+        id: tutorProfile.id,
+        name: tutorProfile.name || 'Tutor',
+        subscriptionPrice: 3500,
+        subscriptionDuration: '6 Months',
+        coveredServices: [],
+        stats: { uploads: 0 }
+    } as any : null);
 
     const [price, setPrice] = useState(tutor?.subscriptionPrice || 3500);
     const [duration, setDuration] = useState(tutor?.subscriptionDuration || '6 Months');

@@ -9,14 +9,19 @@ export default function TutorDashboard() {
     const mySettings = tutorSettings.find(s => s.tutorId === tutorProfile?.id) || tutorSettings[0];
 
     const stats = useMemo(() => {
-        const activeSubs = tutorSubscriptions.filter(s => s.status === 'Active').length;
-        const totalContent = tutorContents.length;
-        const notes = tutorContents.filter(c => c.type === 'Note').length;
-        const videos = tutorContents.filter(c => c.type === 'Video').length;
-        const earnings = tutorSubscriptions.reduce((sum, sub) => sum + sub.amount, 0);
+        const myContents = tutorContents.filter(c => c.tutorId === tutorProfile?.id);
+        const mySubscriptions = tutorSubscriptions.filter(s => s.tutorId === tutorProfile?.id);
 
-        return { activeSubs, totalContent, notes, videos, earnings };
-    }, [tutorContents, tutorSubscriptions]);
+        const activeSubs = mySubscriptions.filter(s => s.status === 'Active').length;
+        const totalContent = myContents.length;
+        const notes = myContents.filter(c => c.type === 'Note').length;
+        const videos = myContents.filter(c => c.type === 'Video').length;
+        const earnings = mySubscriptions.reduce((sum, sub) => sum + sub.amount, 0);
+
+        return { activeSubs, totalContent, notes, videos, earnings, myContents };
+    }, [tutorContents, tutorSubscriptions, tutorProfile]);
+
+    const myContents = stats.myContents;
 
     return (
         <div className="space-y-6">
@@ -76,9 +81,9 @@ export default function TutorDashboard() {
             {/* Recent Activity */}
             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-sm">
                 <h2 className="text-lg font-bold text-white mb-6">Recent Activity</h2>
-                {tutorContents.length > 0 ? (
+                {myContents.length > 0 ? (
                     <div className="space-y-4">
-                        {tutorContents.slice(-5).reverse().map(content => (
+                        {myContents.slice(-5).reverse().map(content => (
                             <div key={content.id} className="flex items-center gap-4 py-3 border-b border-gray-800 last:border-0 hover:bg-white/5 rounded-lg px-2 -mx-2 transition-colors">
                                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${content.type === 'Video' ? 'bg-red-500/10 text-red-500' :
                                     content.type === 'Question' ? 'bg-amber-500/10 text-amber-500' :

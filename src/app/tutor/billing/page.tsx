@@ -19,7 +19,12 @@ export default function TutorBillingPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    const tutor = tutors.find(t => t.id === tutorProfile?.id);
+    const tutor = tutors.find(t => t.id === tutorProfile?.id) || (tutorProfile?.id ? {
+        id: tutorProfile.id,
+        name: tutorProfile.name || 'Tutor',
+        walletBalance: 0,
+        payoutRequests: []
+    } as any : null);
 
     if (!tutor) return <div className="p-8 text-gray-400">Loading billing data...</div>;
 
@@ -115,7 +120,7 @@ export default function TutorBillingPage() {
                                     <td colSpan={4} className="p-10 text-center text-gray-600 italic text-sm">No payout requests found.</td>
                                 </tr>
                             ) : (
-                                tutor.payoutRequests.map(req => (
+                                tutor.payoutRequests.map((req: PayoutRequest) => (
                                     <tr key={req.id} className="hover:bg-white/5 transition-colors">
                                         <td className="p-6 text-sm font-medium text-gray-300">
                                             {new Date(req.requestedAt).toLocaleDateString()}

@@ -10,19 +10,23 @@ import {
     CreditCard,
     Library,
     ArrowUpRight,
-    Loader2
+    Loader2,
+    Search,
+    Filter,
+    Phone
 } from 'lucide-react';
 
 export default function TutorManagementPage() {
     const [tutors, setTutors] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         const fetchTutors = async () => {
             const { data } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('role', 'Tutor')
+                .in('role', ['Tutor', 'tutor'])
                 .order('created_at', { ascending: false });
             setTutors(data || []);
             setLoading(false);
@@ -30,70 +34,122 @@ export default function TutorManagementPage() {
         fetchTutors();
     }, []);
 
+    const filteredTutors = tutors.filter(t =>
+        (t.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
-        <div style={{ padding: '1rem' }}>
-            <div style={{ marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Tutor Ecosystem</h1>
-                <p style={{ color: '#64748b' }}>Approve applications and manage content creator accounts.</p>
+        <div className="max-w-7xl mx-auto">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div>
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="bg-red-500/10 p-2 rounded-xl">
+                            <Users className="text-red-500" size={20} />
+                        </div>
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tutor Registrar</h1>
+                    </div>
+                    <p className="text-slate-500 font-medium">Monitor active content creators and ecosystem health.</p>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <div className="relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search by name or email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-12 pr-6 py-3 bg-white border border-slate-200 rounded-2xl w-full md:w-[300px] outline-none focus:border-red-500/50 focus:ring-4 focus:ring-red-500/5 transition-all text-sm font-medium"
+                        />
+                    </div>
+                    <button className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-red-500 transition-colors">
+                        <Filter size={20} />
+                    </button>
+                </div>
             </div>
 
             {loading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '5rem' }}>
-                    <Loader2 className="animate-spin text-blue-500" size={40} />
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <Loader2 className="animate-spin text-red-500" size={40} />
+                    <p className="text-slate-400 font-black text-xs uppercase tracking-widest">Loading Ecosystem...</p>
                 </div>
-            ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
-                    {tutors.map((tutor) => (
-                        <div key={tutor.id} style={{
-                            background: 'white',
-                            padding: '1.5rem',
-                            borderRadius: '24px',
-                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
-                            border: '1px solid #f1f5f9',
-                            position: 'relative',
-                            overflow: 'hidden'
-                        }}>
-                            {/* Watermark Icon */}
-                            <Library size={80} style={{ position: 'absolute', right: '-10px', bottom: '-10px', opacity: 0.03, color: '#3b82f6' }} />
+            ) : filteredTutors.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredTutors.map((tutor) => (
+                        <div
+                            key={tutor.id}
+                            className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl shadow-slate-200/40 hover:shadow-2xl hover:shadow-slate-300/50 transition-all group relative overflow-hidden"
+                        >
+                            {/* Decorative Background Elements */}
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-red-50/50 rounded-bl-full -mr-16 -mt-16 transition-transform group-hover:scale-110" />
+                            <Library size={120} className="absolute -right-8 -bottom-8 opacity-[0.02] text-slate-900 -rotate-12" />
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                                <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: '#3b82f615', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', fontWeight: 800 }}>
-                                    {tutor.name?.[0]}
+                            <div className="relative z-10">
+                                <div className="flex items-start justify-between mb-6">
+                                    <div className="w-16 h-16 rounded-[1.5rem] bg-gradient-to-br from-red-500 to-red-600 p-[2px] shadow-lg shadow-red-200">
+                                        <div className="w-full h-full bg-white rounded-[1.4rem] flex items-center justify-center text-red-600 text-2xl font-black">
+                                            {tutor.full_name?.[0] || 'T'}
+                                        </div>
+                                    </div>
+                                    <span className="px-4 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest border border-emerald-100">
+                                        Active
+                                    </span>
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>{tutor.name}</h3>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#64748b', fontSize: '0.8rem' }}>
-                                        <Mail size={12} /> {tutor.email}
+
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-bold text-slate-900 mb-2 truncate group-hover:text-red-500 transition-colors">
+                                        {tutor.full_name || 'Anonymous Tutor'}
+                                    </h3>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-3 text-slate-500 text-xs font-semibold">
+                                            <Mail size={14} className="text-slate-300" />
+                                            <span className="truncate">{tutor.email || 'No email registered'}</span>
+                                        </div>
+                                        {tutor.phone && (
+                                            <div className="flex items-center gap-3 text-slate-500 text-xs font-semibold">
+                                                <Phone size={14} className="text-slate-300" />
+                                                <span>{tutor.phone}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: tutor.status === 'Active' ? '#10b981' : '#f59e0b', background: tutor.status === 'Active' ? '#10b98115' : '#f59e0b15', padding: '0.25rem 0.5rem', borderRadius: '6px' }}>
-                                        {tutor.status || 'Active'}
+
+                                <div className="grid grid-cols-2 gap-4 mb-8">
+                                    <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Content</div>
+                                        <div className="text-lg font-bold text-slate-800">
+                                            {tutor.resources_count || 0} <span className="text-[10px] text-slate-400 font-normal ml-1">Items</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Impact</div>
+                                        <div className="text-lg font-bold text-slate-800">
+                                            {tutor.subscribers_count || 0} <span className="text-[10px] text-slate-400 font-normal ml-1">Subs</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                                <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '12px' }}>
-                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.05em' }}>RESOURCES</div>
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#334155' }}>24</div>
+                                <div className="flex items-center gap-3">
+                                    <button className="flex-1 py-4 bg-slate-900 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-slate-200 hover:shadow-red-200">
+                                        View Dashboard
+                                    </button>
+                                    <button className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-2xl transition-all">
+                                        <ArrowUpRight size={18} />
+                                    </button>
                                 </div>
-                                <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '12px' }}>
-                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.05em' }}>EARNINGS</div>
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#10b981' }}>UGX 0</div>
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                <button style={{ flex: 1, padding: '0.6rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                                    View Dashboard <ArrowUpRight size={14} />
-                                </button>
-                                <button style={{ padding: '0.6rem', background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
-                                    <XCircle size={18} />
-                                </button>
                             </div>
                         </div>
                     ))}
+                </div>
+            ) : (
+                <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-100">
+                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Users className="text-slate-300" size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">No Tutors Found</h2>
+                    <p className="text-slate-500 max-w-sm mx-auto">When tutors sign up join the ecosystem, their profiles will automatically appear here for your oversight.</p>
                 </div>
             )}
         </div>

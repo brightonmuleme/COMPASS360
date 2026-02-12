@@ -20,11 +20,11 @@ const LINKS = [
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const { developerProfile, hydrated, logout } = useSchoolData();
+    const { developerProfile, hydrated, checkingAccess, logout } = useSchoolData();
     const [isAuthorized, setIsAuthorized] = useState(false);
 
     useEffect(() => {
-        if (hydrated) {
+        if (hydrated && !checkingAccess) {
             if (!developerProfile) {
                 // Not a developer, redirect to developer login
                 if (pathname !== '/developer/login') {
@@ -34,11 +34,11 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                 setIsAuthorized(true);
             }
         }
-    }, [hydrated, developerProfile, router]);
+    }, [hydrated, checkingAccess, developerProfile, router, pathname]);
 
     const isLoginPage = pathname === '/developer/login';
 
-    if (!hydrated || (!isAuthorized && !isLoginPage)) {
+    if (!hydrated || checkingAccess || (!isAuthorized && !isLoginPage)) {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', color: 'white' }}>
                 <div style={{ textAlign: 'center' }}>

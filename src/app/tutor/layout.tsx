@@ -7,7 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 
 function TutorLayoutContent({ children }: { children: React.ReactNode }) {
-    const { hydrated, tutorProfile } = useSchoolData();
+    const { hydrated, tutorProfile, checkingAccess } = useSchoolData();
     const [isClient, setIsClient] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const router = useRouter();
@@ -19,7 +19,7 @@ function TutorLayoutContent({ children }: { children: React.ReactNode }) {
 
     // Access Control & Subscription Guard
     useEffect(() => {
-        if (!isClient || !hydrated) return;
+        if (!isClient || !hydrated || checkingAccess) return;
 
         if (!tutorProfile) {
             router.replace('/');
@@ -40,7 +40,7 @@ function TutorLayoutContent({ children }: { children: React.ReactNode }) {
     }, [pathname]);
 
     // Prevent hydration mismatch
-    if (!isClient || !hydrated) {
+    if (!isClient || !hydrated || checkingAccess) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-gray-50">
                 <div className="animate-pulse flex flex-col items-center">

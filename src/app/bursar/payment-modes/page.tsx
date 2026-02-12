@@ -16,7 +16,8 @@ export default function PaymentModesPage() {
         students, payments, generalTransactions, addPayment, deletePayment, // Restored
         deletedPayments, unclaimedPayments, // Get deleted and unclaimed payments
         documentTemplates, programmes, // Added for receipt printing
-        activeRole, updatePayment, developerSettings, schoolProfile
+        activeRole, updatePayment, developerSettings, schoolProfile,
+        linkPayment
     } = useSchoolData();
 
     // --- STATE MANAGEMENT ---
@@ -152,15 +153,15 @@ export default function PaymentModesPage() {
                     date: tx.paymentDateAndTime,
                     method: 'SchoolPay', // FIXED: store.ts Payment interface uses 'method'
                     reference: tx.schoolpayReceiptNumber,
-                    particulars: `Sync: ${tx.sourcePaymentChannel}`,
-                    description: tx.supplementaryFeeDescription || 'School Fees',
+                    receiptNumber: tx.schoolpayReceiptNumber,
+                    description: (tx.supplementaryFeeDescription || 'School Fees') + (tx.sourcePaymentChannel ? ` [${tx.sourcePaymentChannel}]` : ''),
                     term: student ? student.semester : 'Unknown',
                     status: 'approved', // FIXED: store.ts uses 'approved' | 'pending' | 'rejected'
                     recordedBy: 'SchoolPay System',
                     metadata: {
                         syncSource: 'Manual Range Sync',
                         payCode: tx.studentPaymentCode,
-                        bankName: tx.settlementBank // Adding bank from SchoolPay for better tracking
+                        bankName: (tx as any).settlementBank || (tx as any).settlementBankCode // Use casting to handle API variations
                     },
                     history: [{
                         id: `sp_hist_${tx.schoolpayReceiptNumber}`,
@@ -456,16 +457,14 @@ export default function PaymentModesPage() {
 
         // Filter for Trash
         if (filter === 'trash') {
-            // Use Real Deleted Payments from Store
             const deletedTxs = deletedPayments.map(p => {
-                // Find delete log for details
                 const deleteLog = p.history?.slice().reverse().find(h => h.action === 'Deleted');
                 return {
                     id: p.id,
                     date: p.date,
                     amount: p.amount,
                     description: p.description || `Student Payment (${p.studentId})`,
-                    mode: p.method, // Important for matching source
+                    mode: p.method,
                     method: p.method,
                     type: 'Income',
                     source: 'Student',
@@ -474,11 +473,11 @@ export default function PaymentModesPage() {
                     status: (p.status || 'void') as any,
                     deletedAt: deleteLog?.timestamp || new Date().toISOString(),
                     deletedBy: deleteLog?.user || 'Unknown',
-                    deleteReason: (p as any).deleteReason || deleteLog?.details || 'Unknown'
+                    deleteReason: (p as any).deleteReason || deleteLog?.details || 'Unknown',
+                    metadata: p.metadata || {}
                 };
             });
 
-            // ADD REAL UNCLAIMED STORE PAYMENTS (From Deletions)
             const realUnclaimed = unclaimedPayments.map(p => ({
                 id: p.id,
                 date: p.date,
@@ -488,35 +487,26 @@ export default function PaymentModesPage() {
                 method: p.method,
                 type: 'Income',
                 source: 'Unclaimed Store',
-                studentId: 0, // Use 0 for unclaimed payments
+                studentId: 0,
                 reference: p.reference,
-                status: 'pending_sync' as any, // Treat as unsynced
-                possiblePayCode: (p as any).metadata?.payCode || (p as any).payCode || null
+                status: 'approved' as any,
+                possiblePayCode: (p as any).metadata?.payCode || (p as any).payCode || null,
+                metadata: p.metadata || {}
             }));
 
-            txs = [...deletedTxs, ...realUnclaimed]; // Combine deleted and unclaimed
+            txs = [...deletedTxs, ...realUnclaimed];
 
-            // Apply Source Filter (Same logic as active txs)
-            txs = txs.filter(tx => { // Filter the combined list
+            txs = txs.filter(tx => {
                 const search = name.toLowerCase();
                 const mode = String(tx.mode || '').toLowerCase();
                 const desc = String(tx.description || '').toLowerCase();
                 const method = String(tx.method || '').toLowerCase();
-
-                // Strict checking for Banks
-                if (type === 'bank') {
-                    return mode.includes(search) || method.includes(search);
-                }
+                if (type === 'bank') return mode.includes(search) || method.includes(search);
                 return mode.includes(search) || desc.includes(search) || method.includes(search);
             });
         } else if (filter === 'unsynced') {
-            // ... (Existing Unsynced Logic)
-            // Mock 1: Simulated "Unsynced" payment (e.g. valid paycode but not auto-linked)
-            // Only show this if we haven't already linked it (check payments)
             const demoRef1 = 'UNCLAIMED-001';
-            const exists1 = payments.some((p: any) => p.reference === demoRef1);
-
-            if (!exists1) {
+            if (!payments.some((p: any) => p.reference === demoRef1)) {
                 txs.push({
                     id: 'unsync_demo_1',
                     date: new Date(Date.now() - 86400000 * 4).toISOString(),
@@ -526,14 +516,14 @@ export default function PaymentModesPage() {
                     method: name,
                     type: 'Income',
                     source: 'Unknown',
-                    studentId: 0, // FIXED: use 0 instead of null
-                    reference: 'UNCLAIMED-001',
-                    status: 'pending_sync' as any,
-                    possiblePayCode: '1000000111' // Example valid paycode for testing (matches Hamis)
-                });
+                    studentId: 0,
+                    reference: demoRef1,
+                    status: 'approved' as any,
+                    possiblePayCode: '1000000111',
+                    metadata: { payCode: '1000000111' }
+                } as any);
             }
 
-            // Mock 2: New simulated failed sync
             if (!payments.some((p: any) => p.reference === 'UNCLAIMED-002')) {
                 txs.push({
                     id: 'unsync_demo_2',
@@ -544,28 +534,20 @@ export default function PaymentModesPage() {
                     method: name,
                     type: 'Income',
                     source: 'Unknown',
-                    studentId: 0, // FIXED
+                    studentId: 0,
                     reference: 'UNCLAIMED-002',
-                    status: 'pending_sync' as any,
-                    possiblePayCode: '2000000222' // New Test Code
-                });
+                    status: 'approved' as any,
+                    possiblePayCode: '2000000222',
+                    metadata: { payCode: '2000000222' }
+                } as any);
             }
-            // Mock 3: Duplicate / Conflict Scenario
-            // Simulate a manual payment that already exists with this reference
+
             const conflictRef = 'REF-MANUAL-EXISTING';
-            // Only show this unsynced item if the "Manual" payment exists AND the "Digital" one hasn't been created/synced yet.
-            // If we replaced it, the manual payment is gone, but the Digital one (same ref) exists.
-            // So if ANY payment with this ref exists and it's NOT the manual one, we hide it? 
-            // Or better: If we successfully synced, we used the SAME reference for the new digital payment.
-            // So if payments has this reference and recordedBy is 'System Replace' (or just verified digital), it's done.
-            // But wait, the Mock 3 IS the "Duplicate". It exists BECAUSE there is a conflict.
-            // We show it if there is a conflict. We HIDE it if we resolved it (by replacing).
-            // If we replaced it, the reference still exists (on the new digital payment).
-            // We can check if the payment with this ref has `recordedBy === 'System Replace'`.
             const checkRes = payments.find((p: any) => p.reference === conflictRef);
-            const isResolved = checkRes && checkRes.recordedBy === 'System Replace';
+            const isResolved = checkRes && (checkRes.recordedBy?.includes('System') || checkRes.recordedBy?.includes('Replace'));
 
             if (!isResolved) {
+                const hasConflict = payments.find((p: any) => p.reference === conflictRef);
                 txs.push({
                     id: 'unsync_demo_3',
                     date: new Date().toISOString(),
@@ -575,105 +557,44 @@ export default function PaymentModesPage() {
                     method: name,
                     type: 'Income',
                     source: 'Conflict',
-                    studentId: 0, // FIXED
-                    reference: 'REF-MANUAL-EXISTING',
-                    status: 'pending_sync' as any,
-                    possiblePayCode: '5000000555'
-                });
+                    studentId: 0,
+                    reference: conflictRef,
+                    status: 'approved' as any,
+                    possiblePayCode: '5000000555',
+                    metadata: { payCode: '5000000555' },
+                    isDuplicate: !!hasConflict,
+                    conflictingPaymentId: hasConflict?.id
+                } as any);
             }
 
-            if (developerSettings?.showMockData) {
-                // Mock 4: Duplicate B
-                if (!payments.some((p: any) => p.reference === 'REF-DUP-004')) {
-                    txs.push({
-                        id: 'unsync_demo_4',
-                        date: new Date().toISOString(),
-                        amount: 60000,
-                        description: 'SchoolPay - Conflict B',
-                        mode: name,
-                        method: name,
-                        type: 'Income',
-                        source: 'Conflict',
-                        studentId: 0, // FIXED
-                        reference: 'REF-DUP-004',
-                        status: 'pending_sync' as any,
-                        possiblePayCode: '4000000444'
-                    });
-                }
+            const newMocks = [
+                { id: '1212', code: '2000000222', amount: 55000 },
+                { id: '1313', code: '300000', amount: 75000 },
+                { id: '1414', code: '10000000111', amount: 150000 },
+                { id: '1515', code: '10000000', amount: 200000 },
+                { id: '1616', code: '1000000111', amount: 80000 },
+                { id: '1717', code: '077999888', amount: 20000 }
+            ];
 
-                // Mock 5: Manual Entry Existing
-                if (!payments.some((p: any) => p.reference === 'REF-MANUAL-EXISTING-2')) {
+            newMocks.forEach(m => {
+                if (!payments.some((p: any) => p.reference === m.id)) {
                     txs.push({
-                        id: 'unsync_demo_5',
+                        id: `unsync_mock_${m.id}`,
                         date: new Date().toISOString(),
-                        amount: 50000,
-                        description: 'SchoolPay - Manual Exists',
-                        mode: name,
-                        method: name,
-                        type: 'Income',
-                        source: 'Conflict',
-                        studentId: 0, // FIXED
-                        reference: 'REF-MANUAL-EXISTING-2',
-                        status: 'pending_sync' as any,
-                        possiblePayCode: '3000000333'
-                    });
-                }
-
-                // Mock 6: User Requested Conflict (Ref 999)
-                const conflictRef6 = '999';
-                // Check if resolved
-                const res6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy === 'System Replace');
-                // Check if conflict exists (Manual payment with ref 999)
-                const hasConflict6 = payments.find((p: any) => p.reference === conflictRef6 && p.recordedBy !== 'System Replace');
-
-                if (!res6) {
-                    txs.push({
-                        id: 'unsync_demo_6',
-                        date: new Date().toISOString(),
-                        amount: 500000, // Matching the manual amount from screenshot
-                        description: 'SchoolPay - Conflict DR DR',
+                        amount: m.amount,
+                        description: `Payment Ref: ${m.id}`,
                         mode: name,
                         method: name,
                         type: 'Income',
                         source: 'Unknown',
                         studentId: 0,
-                        reference: conflictRef6,
-                        status: 'pending_sync',
-                        possiblePayCode: '10000000',
-                        isDuplicate: !!hasConflict6, // Only duplicate if the manual one exists
-                        conflictingPaymentId: hasConflict6 ? hasConflict6.id : undefined
-                    });
+                        reference: m.id,
+                        status: 'approved' as any,
+                        possiblePayCode: m.code,
+                        metadata: { payCode: m.code }
+                    } as any);
                 }
-
-                // --- NEW REQUESTED MOCKS ---
-                const newMocks = [
-                    { id: '1212', code: '2000000222', amount: 55000 },
-                    { id: '1313', code: '300000', amount: 75000 },
-                    { id: '1414', code: '10000000111', amount: 150000 },
-                    { id: '1515', code: '10000000', amount: 200000 },
-                    { id: '1616', code: '1000000111', amount: 80000 }, // Claimable (Hamis)
-                    { id: '1717', code: '077999888', amount: 20000 } // Unsynced/Unknown
-                ];
-                newMocks.forEach(m => {
-                    if (!payments.some((p: any) => p.reference === m.id)) {
-                        txs.push({
-                            id: `unsync_mock_${m.id}`,
-                            date: new Date().toISOString(),
-                            amount: m.amount,
-                            description: `Payment ${m.id}`,
-                            mode: name,
-                            method: name,
-                            type: 'Income',
-                            source: 'Unknown',
-                            studentId: 0,
-                            reference: m.id,
-                            status: 'pending_sync',
-                            possiblePayCode: m.code,
-                            isDuplicate: false
-                        });
-                    }
-                });
-            }
+            });
         }
 
         // Sort by date desc
@@ -683,6 +604,7 @@ export default function PaymentModesPage() {
             if (dateA !== dateB) return dateB - dateA;
             return String(b.id).localeCompare(String(a.id));
         });
+
         setViewTxs({ open: true, sourceName: name, sourceType: type, transactions: txs, filter });
     };
 
@@ -701,53 +623,22 @@ export default function PaymentModesPage() {
         setIsSyncing(true);
 
         try {
-            // Check if payment already exists
+            // Check if payment already exists in primary history
             const existingPayment = payments.find(p => p.reference === tx.reference);
 
             if (existingPayment) {
                 // Case 1: Payment exists but is unlinked (student: 0 or null)
                 if (!existingPayment.studentId || existingPayment.studentId === 0) {
-                    console.log('📌 Updating unlinked payment to link to student:', student.name);
+                    linkPayment(existingPayment.id, student.id);
 
-                    // Update the existing payment to link to this student
-                    const updatedPayment: Payment = {
-                        ...existingPayment,
-                        studentId: student.id,
-                        recordedBy: 'SchoolPay System (Auto-Linked)',
-                        history: [
-                            ...(existingPayment.history || []),
-                            {
-                                id: generateId(),
-                                action: 'Linked',
-                                details: `Automatically linked to ${student.name} (${student.payCode})`,
-                                user: 'System',
-                                timestamp: new Date().toISOString()
-                            }
-                        ]
-                    };
-
-                    updatePayment(updatedPayment);
-
-                    // Remove from unsynced list
+                    // Update UI transactions list
                     setViewTxs(prev => ({
                         ...prev,
                         transactions: prev.transactions.filter(t => t.id !== tx.id)
                     }));
 
                     setLinkConfirm({ open: false, tx: null, student: null });
-
-                    // FORCE CLOUD SYNC
-                    try {
-                        await databaseService.saveSchoolCloudState(schoolProfile.id, {
-                            payments: [...payments.filter(p => p.id !== updatedPayment.id), updatedPayment],
-                            students: students // Includes updated balances if handled by the store
-                        });
-                        console.log('☁️ CLOUD SYNC: Successfully pushed linked payment to cloud');
-                    } catch (syncErr) {
-                        console.error('☁️ CLOUD SYNC ERROR after linking:', syncErr);
-                    }
-
-                    alert(`✅ Payment successfully linked to ${student.name}!`);
+                    alert(`✅ Payment successfully linked to ${student.name}! Arrears have been updated.`);
                     return;
                 }
 
@@ -757,48 +648,39 @@ export default function PaymentModesPage() {
                     existingPayment.id?.includes('manual');
 
                 if (isManualPayment) {
-                    // Offer to replace manual payment with verified SchoolPay data
                     const confirmReplace = confirm(
                         `⚠️ REPLACE MANUAL PAYMENT?\n\n` +
                         `A manual payment with reference "${tx.reference}" already exists for:\n` +
                         `${linkedStudent?.name || 'Unknown Student'}\n\n` +
-                        `Amount: USh ${existingPayment.amount.toLocaleString()}\n` +
-                        `Recorded by: ${existingPayment.recordedBy}\n\n` +
-                        `Do you want to REPLACE it with this verified SchoolPay transaction for ${student.name}?`
+                        `Amount: USh ${existingPayment.amount.toLocaleString()}\n\n` +
+                        `Do you want to REPLACE it with this verified digital transaction for ${student.name}?`
                     );
 
                     if (confirmReplace) {
-                        deletePayment(existingPayment.id, 'Replaced by verified SchoolPay transaction');
+                        deletePayment(existingPayment.id, 'Replaced by verified digital transaction');
                         // Continue to create new payment below
                     } else {
-                        setIsSyncing(false);
                         setLinkConfirm({ open: false, tx: null, student: null });
                         return;
                     }
                 } else {
-                    // Already a SchoolPay payment - skip
-                    alert(
-                        `ℹ️ This SchoolPay transaction has already been processed.\n\n` +
-                        `Reference: ${tx.reference}\n` +
-                        `Student: ${linkedStudent?.name || 'Unknown'}\n` +
-                        `Amount: USh ${existingPayment.amount.toLocaleString()}`
-                    );
-                    setIsSyncing(false);
+                    alert(`ℹ️ This transaction has already been linked to ${linkedStudent?.name || 'Unknown'}.`);
                     setLinkConfirm({ open: false, tx: null, student: null });
                     return;
                 }
             }
 
-            // Case 3: Payment doesn't exist - create new
+            // Case 3: Payment doesn't exist or was just deleted for replacement
+            // We use addPayment for brand new records
             const newPayment: Payment = {
-                id: `sp_manual_${tx.reference}`,
+                id: tx.id.startsWith('unsync') ? `sp_${Date.now()}` : tx.id,
                 studentId: student.id,
                 amount: tx.amount,
                 date: tx.date || new Date().toISOString(),
                 method: tx.method || 'SchoolPay',
                 reference: tx.reference,
-                receiptNumber: tx.reference,
-                recordedBy: 'SchoolPay System (Linked)',
+                receiptNumber: tx.receiptNumber || tx.reference,
+                recordedBy: 'System (Linked)',
                 description: tx.description || 'School Fees',
                 term: student.semester || 'Unknown',
                 status: 'approved',
@@ -806,8 +688,8 @@ export default function PaymentModesPage() {
                 history: [{
                     id: generateId(),
                     action: 'Created',
-                    details: 'Linked SchoolPay transaction to student account',
-                    user: 'Bursar',
+                    details: 'Manually linked from unsynced digital records',
+                    user: activeRole || 'Bursar',
                     timestamp: new Date().toISOString()
                 }]
             };
@@ -821,19 +703,10 @@ export default function PaymentModesPage() {
             }));
 
             setLinkConfirm({ open: false, tx: null, student: null });
-
-            // FORCE CLOUD SYNC
-            try {
-                await databaseService.saveSchoolCloudState(schoolProfile.id, {
-                    payments: [...payments, newPayment],
-                    students: students
-                });
-                console.log('☁️ CLOUD SYNC: Successfully pushed new payment to cloud');
-            } catch (syncErr) {
-                console.error('☁️ CLOUD SYNC ERROR after adding:', syncErr);
-            }
-
-            alert(`✅ Payment successfully linked to ${student.name}!`);
+            alert(`✅ Transaction successfully processed and linked to ${student.name}.`);
+        } catch (err) {
+            console.error("Linking Error:", err);
+            alert("❌ An error occurred while linking the payment.");
         } finally {
             setIsSyncing(false);
         }
@@ -1886,3 +1759,5 @@ export default function PaymentModesPage() {
         </div>
     );
 }
+   
+ 

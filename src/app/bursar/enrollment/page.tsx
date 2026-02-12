@@ -13,7 +13,7 @@ function EnrollmentContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    const { filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials, registrarStudents, activeRole } = useSchoolData(); // Use global data
+    const { filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials, registrarStudents, activeRole, unclaimedPayments } = useSchoolData(); // Use global data
     const isDirector = activeRole === 'Director';
 
     // Marketing Agent Autocompletion
@@ -608,7 +608,7 @@ function EnrollmentContent() {
             const nextCompassNumber = String(maxCompass + 1).padStart(3, '0');
 
             // 1. Add Student to State
-            const newStudent = {
+            const newStudent: EnrolledStudent = {
                 id: newStudentId,
                 name: studentInfo.name.toUpperCase(),
                 payCode: studentInfo.payCode,
@@ -624,7 +624,10 @@ function EnrollmentContent() {
                 level: enrollmentData.entryLevel, // Added required field
                 origin: 'bursar' as const, // Tag as Bursar Enrollment
                 compassNumber: nextCompassNumber, // Auto-generated Compass Number
-                marketingAgent: studentInfo.marketingAgent // Persist marketing agent
+                marketingAgent: studentInfo.marketingAgent, // Persist marketing agent
+                walletBalance: 0,
+                paymentRequests: [],
+                tutorSubscriptions: []
             };
 
             setEnrolledStudents(prev => [newStudent, ...prev]);
@@ -639,72 +642,21 @@ function EnrollmentContent() {
                 console.error("Auto-billing failed:", err);
             }
 
-            // 3. AUTO-SYNC: Check for pending/unsynced transactions for this paycode
-            // We scan generalTransactions for any income items that match the PayCode
-            const pendingMatches = generalTransactions.filter(t =>
-                t.type === 'Income' &&
-                (t.description.includes(newStudent.payCode) || (t as any).reference?.includes(newStudent.payCode))
+            // 3. AUTO-SYNC: (REPLACED BY GLOBAL BACKGROUND RECONCILIATION)
+            // The global store now automatically detects new students and links matching unclaimed payments.
+            const hasPotentialUnclaimed = unclaimedPayments.some(up =>
+                up.studentPaymentCode === newStudent.payCode ||
+                up.description.includes(newStudent.payCode)
             );
 
-            // Also check for the specific DEMO mock ID from PaymentModes if it leaked/persisted (simulated)
-            // Ideally, we'd have a 'pendingSyncs' store. For this demo, we can simulate finding one if the PayCode matches our test case.
-            const isDemoMatch = newStudent.payCode === '1000000111' || newStudent.payCode === '2000000222';
-
-            if (pendingMatches.length > 0 || isDemoMatch) {
-                const count = pendingMatches.length || 1; // Default to 1 for the demo case
-
-                // Convert matched general txs to payments
-                pendingMatches.forEach(tx => {
-                    const syncedPayment: any = {
-                        id: crypto.randomUUID(),
-                        studentId: newStudent.id,
-                        amount: tx.amount,
-                        date: tx.date,
-                        method: tx.mode || 'SchoolPay',
-                        reference: (tx as any).reference || 'REF-SYNC',
-                        receiptNumber: `RCP-SYNC-${Date.now().toString().slice(-4)}`,
-                        recordedBy: 'Auto-Sync',
-                        description: `Auto-Synced: ${tx.description}`,
-                        term: newStudent.semester,
-                        status: 'approved',
-                        allocations: { 'Tuition Fees': tx.amount },
-                        history: []
-                    };
-                    addPayment(syncedPayment);
-                    if (deleteGeneralTransaction) deleteGeneralTransaction(tx.id);
-                });
-
-                // If it was the demo case and no real generalTxs found, we simulate the add
-                if (pendingMatches.length === 0 && isDemoMatch) {
-                    // Determine amount/ref based on code
-                    const isDemo2 = newStudent.payCode === '2000000222';
-                    addPayment({
-                        id: crypto.randomUUID(),
-                        studentId: newStudent.id,
-                        amount: isDemo2 ? 250000 : 150000,
-                        date: new Date().toISOString(),
-                        method: 'SchoolPay',
-                        reference: isDemo2 ? 'UNCLAIMED-002' : 'UNCLAIMED-001',
-                        receiptNumber: `RCP-SYNC-DEMO`,
-                        recordedBy: 'Auto-Sync',
-                        description: `Auto-Synced: Payment from ${isDemo2 ? 'Unknown' : '0770000000'}`,
-                        term: newStudent.semester,
-                        status: 'approved',
-                        allocations: { 'Tuition Fees': isDemo2 ? 250000 : 150000 },
-                        history: []
-                    });
-                }
-
-                // Alert user of the convenience feature
-                setTimeout(() => alert(`ℹ️ AUTOMATIC SYNC: Found and linked ${count} pending transaction(s) to ${newStudent.name}'s history.`), 500);
+            if (hasPotentialUnclaimed) {
+                setTimeout(() => alert(`ℹ️ COMPASS SYNC: Matching payments for PayCode ${newStudent.payCode} were found and are being linked to ${newStudent.name}'s account in the background.`), 1000);
             }
 
             // Close screen immediately, then alert
             setViewMode('list');
             setTimeout(() => alert("ENROLLMENT SUCCESSFUL!"), 100);
         }
-
-
         setViewMode('list');
         router.replace('/bursar/enrollment');
     };

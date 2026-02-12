@@ -25,7 +25,7 @@ function BursarLayoutContent({
 }: {
     children: React.ReactNode;
 }) {
-    const { activeRole, hydrated, studentProfile, tutorProfile, developerProfile } = useSchoolData();
+    const { activeRole, hydrated, checkingAccess, studentProfile, tutorProfile, developerProfile } = useSchoolData();
     const [mounted, setMounted] = useState(() => (typeof window !== 'undefined' && portalAlreadyMounted));
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const pathname = usePathname();
@@ -45,7 +45,7 @@ function BursarLayoutContent({
 
     // --- ACCESS CONTROL LOGIC ---
     useEffect(() => {
-        if (!mounted || !hydrated) return;
+        if (!mounted || !hydrated || checkingAccess) return;
 
         // If no active role, send to portal selection
         if (!activeRole) {
@@ -95,7 +95,7 @@ function BursarLayoutContent({
     }, [pathname, activeRole, mounted, hydrated, router]);
 
 
-    if (!mounted || !hydrated) {
+    if (!mounted || !hydrated || checkingAccess) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-slate-950 text-slate-500">
                 <div className="animate-pulse flex flex-col items-center">
