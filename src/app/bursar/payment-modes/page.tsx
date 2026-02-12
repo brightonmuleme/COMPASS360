@@ -1759,5 +1759,3 @@ export default function PaymentModesPage() {
         </div>
     );
 }
-   
- 
