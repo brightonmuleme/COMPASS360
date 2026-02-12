@@ -4696,79 +4696,75 @@ function useSchoolDataInternal() {
     }, [hydrated, schoolProfile.id]);
 
     // 4. AGGRESSIVE PAYMENT AUTO-LINKING
-    // Automatically matches unclaimed payments (from SchoolPay or manual) with students when payCodes match.
+    const isReconciling = React.useRef(false);
     useEffect(() => {
-        if (!hydrated || unclaimedPayments.length === 0) return;
+        if (!hydrated || unclaimedPayments.length === 0 || isReconciling.current) return;
 
-        console.log("🔍 Compass Sync: Running aggressive payment reconciliation...");
+        const runReconciliation = async () => {
+            isReconciling.current = true;
+            console.log("🔍 Compass Sync: Running aggressive payment reconciliation...");
 
-        const newPayments: Payment[] = [];
-        const processedUnclaimedIds = new Set<string>();
-        const updatedStudentBalances = new Map<number, number>();
+            const newPayments: Payment[] = [];
+            const processedUnclaimedIds = new Set<string>();
+            const updatedStudentBalances = new Map<number, number>();
 
-        unclaimedPayments.forEach(up => {
-            // Try to find a student who matches this payment's code/reference
-            const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
+            unclaimedPayments.forEach(up => {
+                const upPayCode = up.metadata?.payCode || (up as any).studentPaymentCode;
+                const student = students.find(s =>
+                    (s.payCode && upPayCode === s.payCode) ||
+                    (s.payCode && up.description?.includes(s.payCode)) ||
+                    (s.payCode && up.reference?.includes(s.payCode)) ||
+                    (s.compassNumber && upPayCode === s.compassNumber) ||
+                    (s.compassNumber && up.description?.includes(s.compassNumber))
+                );
 
-            const student = students.find(s =>
-                // Primary Match: Pay Code
-                (s.payCode && upPayCode === s.payCode) ||
-                (s.payCode && up.description?.includes(s.payCode)) ||
-                (s.payCode && up.reference?.includes(s.payCode)) ||
-                // Secondary Match: Compass Number (if mapped)
-                (s.compassNumber && upPayCode === s.compassNumber) ||
-                (s.compassNumber && up.description?.includes(s.compassNumber))
-            );
-
-            if (student) {
-                console.log(`✅ Compass Sync: Automatically linked payment ${up.reference} to student ${student.name}`);
-
-                const linkedPayment: Payment = {
-                    ...up,
-                    id: up.id || crypto.randomUUID(),
-                    studentId: student.id,
-                    status: 'approved',
-                    recordedBy: 'Compass Auto-Link',
-                    term: student.semester || up.term,
-                    history: [
-                        ...(up.history || []),
-                        {
-                            id: generateId(),
-                            action: 'Auto-Linked',
-                            details: `Successfully matched with student ${student.name} (Code: ${student.payCode}) via aggressive background sync.`,
-                            user: 'System',
-                            timestamp: new Date().toISOString()
-                        }
-                    ]
-                };
-
-                newPayments.push(linkedPayment);
-                processedUnclaimedIds.add(up.id);
-
-                // Track balance update
-                const currentBal = updatedStudentBalances.get(student.id) ?? student.balance;
-                updatedStudentBalances.set(student.id, currentBal - up.amount);
-            }
-        });
-
-        if (newPayments.length > 0) {
-            // 1. Add to active payments
-            setPayments(prev => [...newPayments, ...prev]);
-
-            // 2. Remove from unclaimed
-            setUnclaimedPayments(prev => prev.filter(up => !processedUnclaimedIds.has(up.id)));
-
-            // 3. Update student balances
-            setStudents(prev => prev.map(s => {
-                if (updatedStudentBalances.has(s.id)) {
-                    return { ...s, balance: updatedStudentBalances.get(s.id)! };
+                if (student) {
+                    console.log(`✅ Compass Sync: Automatically linked payment ${up.reference} to student ${student.name}`);
+                    const linkedPayment: Payment = {
+                        ...up,
+                        id: up.id || crypto.randomUUID(),
+                        studentId: student.id,
+                        status: 'approved',
+                        recordedBy: 'Compass Auto-Link',
+                        term: student.semester || up.term,
+                        history: [
+                            ...(up.history || []),
+                            {
+                                id: generateId(),
+                                action: 'Auto-Linked',
+                                details: `Successfully matched with student ${student.name} (Code: ${student.payCode}) via aggressive background sync.`,
+                                user: 'System',
+                                timestamp: new Date().toISOString()
+                            }
+                        ]
+                    };
+                    newPayments.push(linkedPayment);
+                    processedUnclaimedIds.add(up.id);
+                    const currentBal = updatedStudentBalances.get(student.id) ?? student.balance;
+                    updatedStudentBalances.set(student.id, currentBal - up.amount);
                 }
-                return s;
-            }));
+            });
 
-            logGlobalAction('Auto-Link Success', `Linked ${newPayments.length} unclaimed payments to students via background sync.`);
-        }
-    }, [students, unclaimedPayments, hydrated]);
+            if (newPayments.length > 0) {
+                setPayments(prev => [...newPayments, ...prev]);
+                setUnclaimedPayments(prev => prev.filter(up => !processedUnclaimedIds.has(up.id)));
+                setStudents(prev => prev.map(s => {
+                    if (updatedStudentBalances.has(s.id)) {
+                        return { ...s, balance: updatedStudentBalances.get(s.id)! };
+                    }
+                    return s;
+                }));
+                logGlobalAction('Auto-Link Success', `Linked ${newPayments.length} unclaimed payments to students via background sync.`);
+            }
+
+            // Small delay before allowing next cycle
+            setTimeout(() => {
+                isReconciling.current = false;
+            }, 1000);
+        };
+
+        runReconciliation();
+    }, [unclaimedPayments, hydrated]); // REMOVED students from dependencies to stop the loop!
 
     const studentRequirements = useMemo(() => {
         const totals: Record<string, number> = {};
