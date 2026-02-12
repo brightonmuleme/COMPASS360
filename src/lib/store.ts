@@ -4624,6 +4624,9 @@ function useSchoolDataInternal() {
             manualPaymentMethods,
             financialSettings,
             unclaimedPayments,
+            budgetPeriods,
+            expenseCategories,
+            incomeCategories,
             timestamp: new Date().toISOString()
         };
 
@@ -4653,7 +4656,7 @@ function useSchoolDataInternal() {
         }, 8000); // 8 second debounce to avoid spamming Supabase
 
         return () => clearTimeout(timer);
-    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, paymentIntegrations, manualPaymentMethods, financialSettings, unclaimedPayments, documentTemplates, hydrated]);
+    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, paymentIntegrations, manualPaymentMethods, financialSettings, unclaimedPayments, documentTemplates, budgetPeriods, expenseCategories, incomeCategories, hydrated]);
 
     // 2. MANUAL PULL FUNCTION
     const pullFromCloud = async (force = false) => {
@@ -4690,6 +4693,9 @@ function useSchoolDataInternal() {
                     if (cloudState.financialSettings) setFinancialSettings(cloudState.financialSettings);
                     if (cloudState.unclaimedPayments) setUnclaimedPayments(cloudState.unclaimedPayments);
                     if (cloudState.documentTemplates) setDocumentTemplates(cloudState.documentTemplates);
+                    if (cloudState.budgetPeriods) setBudgetPeriods(cloudState.budgetPeriods);
+                    if (cloudState.expenseCategories) setExpenseCategories(cloudState.expenseCategories);
+                    if (cloudState.incomeCategories) setIncomeCategories(cloudState.incomeCategories);
 
                     setLastCloudSync(cloudState.timestamp);
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
