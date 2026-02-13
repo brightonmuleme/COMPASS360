@@ -258,48 +258,81 @@ export default function AdmissionsPage() {
             content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
-        // 5. Robust Iframe Printing (Optimized for Mobile/Safari)
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.top = '0';
-        iframe.style.width = '1px';
-        iframe.style.height = '1px';
-        iframe.style.opacity = '0.01';
-        iframe.style.pointerEvents = 'none';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+        // 5. Printing Logic (Mobile-First Switch)
+        const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-            doc.open();
-            doc.write(`
-                <html>
-                <head>
-                    <title>Admission Letter - ${student.name}</title>
-                    <style>
-                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                        body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; line-height: 1.5; }
-                    </style>
-                </head>
-                <body>
-                    ${content}
-                    <script>
-                        window.onload = function() {
-                            setTimeout(function() {
-                                window.print();
-                                setTimeout(function() { 
-                                    if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
-                                }, 1000);
-                            }, 500);
-                        }
-                    </script>
-                </body>
-                </html>
-            `);
-            doc.close();
+        if (isMobile) {
+            const win = window.open('', '_blank');
+            if (win) {
+                win.document.write(`
+                    <html>
+                    <head>
+                        <title>Admission Letter - ${student.name}</title>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; line-height: 1.5; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="print-content">${content}</div>
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { window.close(); }, 1000);
+                                }, 800);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                win.document.close();
+            } else {
+                alert("Please allow popups to print.");
+            }
         } else {
-            alert("Printing failed to initialize.");
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.top = '0';
+            iframe.style.width = '1px';
+            iframe.style.height = '1px';
+            iframe.style.opacity = '0.01';
+            iframe.style.pointerEvents = 'none';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow?.document;
+            if (doc) {
+                doc.open();
+                doc.write(`
+                    <html>
+                    <head>
+                        <title>Admission Letter - ${student.name}</title>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; line-height: 1.5; }
+                        </style>
+                    </head>
+                    <body>
+                        ${content}
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { 
+                                        if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                    }, 1000);
+                                }, 500);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                doc.close();
+            } else {
+                alert("Printing failed to initialize.");
+            }
         }
     };
 

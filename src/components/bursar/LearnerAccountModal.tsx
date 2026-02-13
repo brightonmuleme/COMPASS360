@@ -809,13 +809,19 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             p.name.toLowerCase().trim() === (selectedStudent.programme || "").toLowerCase().trim()
         );
 
-        // Template Selection
+        // Template Selection (Strict matching to avoid picking the wrong programme's template)
         let template = documentTemplates.find(t => t.type === 'CLEARANCE' && (t as any).programmeId === prog?.id);
-        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault);
-        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && (!t.programmeId || t.programmeId === ''));
-        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE');
 
-        if (!template) return alert("No Reporting/Clearance Form template found in system.");
+        // Fallback 1: Global default template for CLEARANCE
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault);
+
+        // Fallback 2: Any CLEARANCE template that isn't assigned to a specific programme
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && (!t.programmeId || t.programmeId === ''));
+
+        if (!template) {
+            console.error("No suitable template found for CLEARANCE");
+            return alert("No Reporting/Clearance Form template found in system.");
+        }
 
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
@@ -829,8 +835,10 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         const currentBillings = billings.filter(b => b.studentId === selectedStudent.id && b.term === selectedStudent.semester);
         const currentPayments = payments.filter(p => p.studentId === selectedStudent.id && (p.term === selectedStudent.semester || !p.term));
 
-        // 1. Compulsory Services List
-        const compulsoryServices = services.filter(s => s.isCompulsory);
+        // 1. Compulsory Services List (Derived from Programme Fee Structure)
+        const feeStruct = prog?.feeStructure?.find(fs => fs.level === selectedStudent.level) || prog?.feeStructure?.[0];
+        const compulsoryIds = feeStruct?.compulsoryServices || [];
+        const compulsoryServices = services.filter(s => compulsoryIds.includes(s.id));
         const compulsoryListHtml = `<ul style="margin: 0; padding: 0; list-style: none;">` +
             compulsoryServices.map(s => {
                 const totalAllocated = currentPayments.reduce((acc, p) => acc + (p.allocations?.[s.name] || 0), 0);
@@ -841,7 +849,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             }).join('') + `</ul>`;
 
         // 2. Optional Services List
-        const optionalServices = services.filter(s => !s.isCompulsory && selectedStudent.services.includes(s.id));
+        const optionalServices = services.filter(s => !compulsoryIds.includes(s.id) && selectedStudent.services.includes(s.id));
         const optionalListHtml = optionalServices.length > 0 ?
             `<ul style="margin: 0; padding: 0; list-style: none;">` +
             optionalServices.map(s => {
@@ -904,52 +912,78 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
         // Robust Replacement Logic (handles optional spaces inside braces)
         Object.entries(replacements).forEach(([key, val]) => {
-            const cleanKey = key.replace(/[{} ]/g, ''); // Get "student_name" from "{{student_name}}"
+            const cleanKey = key.replace(/[{} ]/g, '');
             const pattern = new RegExp(`\\{\\{\\s*${cleanKey}\\s*\\}\\}`, 'g');
             content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
-        // 3. Robust Iframe Printing (Optimized for Mobile/Safari)
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.top = '0';
-        iframe.style.width = '1px';
-        iframe.style.height = '1px';
-        iframe.style.opacity = '0.01'; // Not hidden, but effectively invisible
-        iframe.style.pointerEvents = 'none';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+        // 3. Printing Logic (Direct Window for Mobile Stability)
+        const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-            doc.open();
-            doc.write(`
-                <html>
-                <head>
-                    <title>Report - ${selectedStudent.name}</title>
-                    <style>
-                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                        body { padding: 15mm; font-family: sans-serif; color: #000; background: #fff; line-height: 1.4; }
-                    </style>
-                </head>
-                <body>
-                    ${content}
-                    <script>
-                        window.onload = function() {
-                            // Delay slightly for mobile rendering
-                            setTimeout(function() {
-                                window.print();
-                                setTimeout(function() { 
-                                    if (window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
-                                }, 1000);
-                            }, 500);
-                        }
-                    </script>
-                </body>
-                </html>
-            `);
-            doc.close();
+        if (isMobile) {
+            const win = window.open('', '_blank');
+            if (win) {
+                win.document.write(`
+                    <html>
+                    <head>
+                        <title>Report - ${selectedStudent.name}</title>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 15mm; font-family: sans-serif; color: #000; background: #fff; line-height: 1.4; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="print-content">${content}</div>
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { window.close(); }, 1000);
+                                }, 800);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                win.document.close();
+            } else {
+                alert("Please allow popups to print.");
+            }
+        } else {
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.top = '0';
+            iframe.style.width = '1px'; iframe.style.height = '1px';
+            iframe.style.opacity = '0.01'; iframe.style.pointerEvents = 'none'; iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow?.document;
+            if (doc) {
+                doc.open();
+                doc.write(`
+                    <html>
+                    <head>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 15mm; font-family: sans-serif; color: #000; background: #fff; line-height: 1.4; }
+                        </style>
+                    </head>
+                    <body>
+                        ${content}
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { 
+                                        if (window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                    }, 1000);
+                                }, 500);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                doc.close();
+            }
         }
     };
 
@@ -965,11 +999,10 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             p.name.toLowerCase().trim() === (selectedStudent.programme || "").toLowerCase().trim()
         );
 
-        // Template Selection
+        // Template Selection (STRICT)
         let template = documentTemplates.find(t => t.type === 'RECEIPT' && (t as any).programmeId === prog?.id);
         if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT' && t.isDefault);
         if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT' && (!t.programmeId || t.programmeId === ''));
-        if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT');
 
         if (!template) return alert("No Receipt template found in system.");
 
@@ -1019,7 +1052,6 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{institution_address}}': schoolProfile?.poBox || 'P.O. Box 000, Kampala',
             '{{institution_contact}}': schoolProfile?.phone || schoolProfile?.email || '',
             '{{institution_email}}': schoolProfile?.email || '',
-            '{{programme_logo}}': logoHtml
         };
 
         // Robust Replacement Logic (handles optional spaces inside braces)
@@ -1029,48 +1061,79 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
-        // 3. Iframe Printing (Optimized for Mobile/Safari)
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.top = '0';
-        iframe.style.width = '1px';
-        iframe.style.height = '1px';
-        iframe.style.opacity = '0.01';
-        iframe.style.pointerEvents = 'none';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+        // 3. Printing Logic (Mobile-First Switch)
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-            doc.open();
-            doc.write(`
-                <html>
-                <head>
-                    <title>Receipt - ${payment.receiptNumber}</title>
-                    <style>
-                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                        body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; }
-                    </style>
-                </head>
-                <body>
-                    ${content}
-                    <script>
-                        window.onload = function() {
-                            setTimeout(function() {
-                                window.print();
-                                setTimeout(function() { 
-                                    if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
-                                }, 1000);
-                            }, 500);
-                        }
-                    </script>
-                </body>
-                </html>
-            `);
-            doc.close();
+        if (isMobile) {
+            const win = window.open('', '_blank');
+            if (win) {
+                win.document.write(`
+                    <html>
+                    <head>
+                        <title>Receipt - ${payment.receiptNumber}</title>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; }
+                        </style>
+                    </head>
+                    <body>
+                        ${content}
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { window.close(); }, 500);
+                                }, 500);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                win.document.close();
+            } else {
+                alert("Please allow popups to print.");
+            }
         } else {
-            alert("Popup blocked. Please allow popups to print.");
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.top = '0';
+            iframe.style.width = '1px';
+            iframe.style.height = '1px';
+            iframe.style.opacity = '0.01';
+            iframe.style.pointerEvents = 'none';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow?.document;
+            if (doc) {
+                doc.open();
+                doc.write(`
+                    <html>
+                    <head>
+                        <title>Receipt - ${payment.receiptNumber}</title>
+                        <style>
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                            body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; }
+                        </style>
+                    </head>
+                    <body>
+                        ${content}
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    setTimeout(function() { 
+                                        if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                    }, 1000);
+                                }, 500);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+                doc.close();
+            }
         }
     };
 
