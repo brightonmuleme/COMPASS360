@@ -213,18 +213,18 @@ export default function AdmissionsPage() {
             return;
         }
 
-        // 1. Find Programme
-        const prog = programmes.find(p => p.name === student.course || p.id === student.course);
-        if (!prog) return alert(`Programme '${student.course}' not found. Cannot generate letter.`);
+        // 1. Find Programme (Robust case-insensitive match)
+        const progName = student.course || "";
+        const prog = programmes.find(p =>
+            p.id === progName ||
+            p.name.toLowerCase().trim() === progName.toLowerCase().trim()
+        );
 
         // 2. Find Admission Letter Template
-        let template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && (t as any).programmeId === prog.id);
-        if (!template) {
-            template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && t.isDefault);
-        }
-        if (!template) {
-            template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER');
-        }
+        let template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && (t as any).programmeId === prog?.id);
+        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && t.isDefault);
+        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && (!t.programmeId || t.programmeId === ''));
+        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER');
 
         if (!template) return alert("No Admission Letter template found in system.");
 

@@ -1234,6 +1234,7 @@ export const INITIAL_TEMPLATES: DocumentTemplate[] = [
         id: 'tmpl_admission',
         name: 'Admission Letter',
         type: 'ADMISSION_LETTER',
+        isDefault: true,
         updatedAt: new Date().toISOString(),
         sections: [
             { id: 's1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">{{programme_logo}}<h1>{{institution_name}}</h1><p>{{institution_address}}</p><p>{{institution_email}} | {{institution_contact}}</p></div>', isEditable: true },
@@ -1245,6 +1246,7 @@ export const INITIAL_TEMPLATES: DocumentTemplate[] = [
         id: 'tmpl_receipt',
         name: 'Official Receipt',
         type: 'RECEIPT',
+        isDefault: true,
         updatedAt: new Date().toISOString(),
         sections: [
             { id: 'r1', type: 'header', order: 0, content: '<div style="text-align: center;">{{programme_logo}}<h2>VALID RECEIPT</h2><h3>{{institution_name}}</h3><p>{{institution_address}}</p><p>{{institution_contact}}</p><p>{{institution_email}}</p></div>', isEditable: true },

@@ -804,11 +804,15 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
     const printReportingForm = () => {
         if (!selectedStudent || isStudentView) return;
 
-        const prog = programmes.find(p => p.name === selectedStudent.programme || p.id === selectedStudent.programme);
+        const prog = programmes.find(p =>
+            p.id === selectedStudent.programme ||
+            p.name.toLowerCase().trim() === (selectedStudent.programme || "").toLowerCase().trim()
+        );
 
         // Template Selection
         let template = documentTemplates.find(t => t.type === 'CLEARANCE' && (t as any).programmeId === prog?.id);
         if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault);
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && (!t.programmeId || t.programmeId === ''));
         if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE');
 
         if (!template) return alert("No Reporting/Clearance Form template found in system.");
@@ -956,11 +960,15 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         const payment = payments.find(p => String(p.id) === String(tx.id));
         if (!payment) return alert("Original payment record not found.");
 
-        const prog = programmes.find(p => p.name === selectedStudent.programme || p.id === selectedStudent.programme);
+        const prog = programmes.find(p =>
+            p.id === selectedStudent.programme ||
+            p.name.toLowerCase().trim() === (selectedStudent.programme || "").toLowerCase().trim()
+        );
 
         // Template Selection
         let template = documentTemplates.find(t => t.type === 'RECEIPT' && (t as any).programmeId === prog?.id);
         if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT' && t.isDefault);
+        if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT' && (!t.programmeId || t.programmeId === ''));
         if (!template) template = documentTemplates.find(t => t.type === 'RECEIPT');
 
         if (!template) return alert("No Receipt template found in system.");

@@ -71,6 +71,23 @@ export default function ProgrammeDetailPage() {
                     ]
                 });
             }
+
+            // Inject Fee Structure if missing
+            if (!myTemplates.find(t => t.type === 'FEE_STRUCTURE')) {
+                updateTemplate({
+                    id: crypto.randomUUID(),
+                    name: 'Official Fee Structure',
+                    type: 'FEE_STRUCTURE',
+                    programmeId: programme.id,
+                    updatedAt: new Date().toISOString(),
+                    sections: [
+                        { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0;">{{institution_name}}</h1><p>{{institution_address}}</p><h2>FEES STRUCTURE</h2></div>', isEditable: true },
+                        { id: 'b1', type: 'body', order: 1, content: '<p>Programme: <strong>{{programme_name}}</strong></p><p>Level: {{level}}</p>', isEditable: true },
+                        { id: 't1', type: 'table', order: 2, content: '{{fee_table}}', isEditable: false },
+                        { id: 'f1', type: 'footer', order: 3, content: '<p style="margin-top: 20px;">Issued on: {{current_date}}</p>', isEditable: true }
+                    ]
+                });
+            }
         }
     }, [programme, activeTab, documentTemplates, updateTemplate]); // Depend on activeTab to load on view logic if preferred, or just programme load. Use activeTab to avoid immediate unnecessary writes.
 
