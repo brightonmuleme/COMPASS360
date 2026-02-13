@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequirement } from '@/lib/store';
+import { useSchoolData, EnrolledStudent, Payment, formatMoney, PhysicalRequirement, generateId } from '@/lib/store';
 import { numberToWords } from '@/lib/numberToWords';
 import { Transaction, FEE_STRUCTURE, BURSARY_SCHEMES } from '@/app/bursar/sharedData';
 import { TransactionFormModal } from './TransactionFormModal';
@@ -107,7 +107,7 @@ const BillingsTrashList = ({ studentId, deletedBillings }: { studentId: number, 
 export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode = 'bursar', isPage = false }: { studentId: number, onClose?: () => void, auditingContext?: string, mode?: 'bursar' | 'student' | 'director', isPage?: boolean }) => {
     const isStudentView = mode === 'student';
     const isDirectorView = mode === 'director';
-    const { filteredStudents: students, setStudents, services, filteredProgrammes: programmes, filteredPayments: payments, filteredBillings: billings, filteredDeletedBillings: deletedBillings, bursaries, addPayment, updatePayment, deletePayment, deleteBilling, updateBilling, financialSettings, accounts, manualPaymentMethods, generateAutomaticBillings, addBilling, documentTemplates, schoolProfile, logGlobalAction, isProcessingPromotion, paymentIntegrations, activeRole } = useSchoolData();
+    const { filteredStudents: students, setStudents, services, filteredProgrammes: programmes, filteredPayments: payments, filteredBillings: billings, filteredDeletedBillings: deletedBillings, unclaimedPayments, bursaries, addPayment, updatePayment, deletePayment, deleteBilling, updateBilling, financialSettings, accounts, manualPaymentMethods, generateAutomaticBillings, addBilling, documentTemplates, schoolProfile, logGlobalAction, isProcessingPromotion, paymentIntegrations, activeRole } = useSchoolData();
     const [selectedStudent, setSelectedStudent] = useState<EnrolledStudent | null>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
 
@@ -553,12 +553,12 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             return;
         }
 
-        if (!confirm("This will perform a global sync of all SchoolPay transactions from the last 7 days for ALL students. Current records will be automatically linked. Continue?")) return;
+        if (!confirm("This will perform a global sync of all SchoolPay transactions from the last 14 days for ALL students. Current records will be automatically linked and transaction histories updated. Continue?")) return;
 
         setIsSyncing(true);
         try {
-            // Fetch last 7 days by default for quick sync
-            const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            // Fetch last 14 days to be safer against older processed payments
+            const fromDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             const toDate = new Date().toISOString().split('T')[0];
 
             const results = await schoolPayService.syncRange(
@@ -574,73 +574,97 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             }
 
             const allTxs = [...(results.transactions || []), ...(results.supplementaryFeePayments || [])];
-            let newCount = 0;
+            let newLinkedCount = 0;
+            let alreadyExistsCount = 0;
 
             allTxs.forEach(tx => {
-                // DEDUPLICATION: Check if this receipt number already exists in ANY payment record
-                const existing = payments.find(p => p.reference === tx.schoolpayReceiptNumber);
+                const receiptNo = tx.schoolpayReceiptNumber?.trim();
+                if (!receiptNo) return;
 
-                // RESILIENT MATCHING: Trim and case-insensitive Pay Code check
-                const student = students.find(s =>
-                    s.payCode?.trim().toLowerCase() === tx.studentPaymentCode?.trim().toLowerCase()
-                );
+                // 1. DEEP DEDUPLICATION: Check both existing payments and unclaimed payments
+                const existingInPayments = payments.find(p => p.reference === receiptNo);
+                const existingInUnclaimed = unclaimedPayments.find(p => p.id?.includes(receiptNo) || p.reference === receiptNo);
 
-                if (existing) {
-                    // AUTO-RELINK: If we found a match for a previously "Unlinked" (studentId 0) payment
-                    if ((!existing.studentId || existing.studentId === 0) && student) {
+                // 2. RESILIENT MATCHING: Normalized Pay Code check
+                const student = students.find(s => {
+                    const sCode = String(s.payCode || '').trim();
+                    const txCode = String(tx.studentPaymentCode || '').trim();
+                    return sCode !== '' && txCode !== '' && sCode === txCode;
+                });
+
+                // CASE A: Transaction already exists in the student's linked payments
+                if (existingInPayments) {
+                    // Update Student ID if missing for some reason (Self-Healing)
+                    if (existingInPayments.studentId === 0 && student) {
                         updatePayment({
-                            ...existing,
+                            ...existingInPayments,
                             studentId: student.id,
-                            status: 'approved',
-                            history: [...(existing.history || []), {
-                                id: `sync_link_${Date.now()}`,
-                                action: 'Linked',
-                                details: 'Automatically linked student via Pay Code during global sync',
-                                user: 'System',
-                                timestamp: new Date().toISOString()
-                            }]
+                            term: existingInPayments.term === 'Unknown' ? student.semester : existingInPayments.term,
+                            status: 'approved'
                         });
-                        newCount++;
+                        newLinkedCount++;
+                    } else {
+                        alreadyExistsCount++;
                     }
-                    return; // Skip if already exists and linked
+                    return;
                 }
 
-                // If no existing record with this receipt number, CREATE IT
+                // CASE B: Already in "Unclaimed" - Attempt to promote it to a student
+                if (existingInUnclaimed && student) {
+                    const promotedPayment: Payment = {
+                        ...existingInUnclaimed,
+                        studentId: student.id,
+                        status: 'approved',
+                        term: student.semester, // Ensure it hits the current semester history
+                        history: [...(existingInUnclaimed.history || []), {
+                            id: generateId(),
+                            action: 'Linked',
+                            details: 'Automatically linked via Pay Code match during global sync',
+                            user: 'System',
+                            timestamp: new Date().toISOString()
+                        }]
+                    };
+                    addPayment(promotedPayment); // This should move it internally
+                    newLinkedCount++;
+                    return;
+                }
+
+                // CASE C: Pure New Transaction
                 const newPayment: Payment = {
-                    id: `sp_sync_${tx.schoolpayReceiptNumber}`,
+                    id: `sp_sync_${receiptNo}`,
                     studentId: student ? student.id : 0, // 0 means unlinked but recorded
                     amount: parseFloat(tx.amount),
                     date: tx.paymentDateAndTime,
                     method: 'SchoolPay',
-                    reference: tx.schoolpayReceiptNumber,
-                    particulars: `Sync: ${tx.sourcePaymentChannel}`,
+                    reference: receiptNo,
+                    particulars: `Sync: ${tx.sourcePaymentChannel || 'Channel'}`,
                     description: tx.supplementaryFeeDescription || 'School Fees',
                     term: student ? student.semester : 'Unknown',
                     status: 'approved',
                     recordedBy: 'SchoolPay System',
                     metadata: {
-                        syncSource: 'Student Modal Quick Sync',
+                        syncSource: 'Global Sync (Automatic)',
                         payCode: tx.studentPaymentCode,
                         bankName: tx.settlementBank
                     },
                     history: [{
-                        id: `sp_hist_${tx.schoolpayReceiptNumber}`,
+                        id: generateId(),
                         action: 'Created',
-                        details: 'Automatically synced from SchoolPay API via Quick Sync',
-                        user: activeRole || 'Bursar',
+                        details: student ? `Auto-linked to ${student.name} via sync.` : 'Added to unclaimed during sync.',
+                        user: 'System',
                         timestamp: new Date().toISOString()
                     }]
                 };
 
                 addPayment(newPayment);
-                newCount++;
+                if (student) newLinkedCount++;
             });
 
-            alert(`Sync Successful!\n\nFound: ${allTxs.length} transactions.\nNew/Linked: ${newCount} records added to system.`);
-            logGlobalAction('Global Sync Triggered', `Bursar triggered a fresh SchoolPay sync. ${newCount} records processed.`);
+            alert(`Sync Successful!\n\nFound: ${allTxs.length} records.\nAutomatically Linked/Updated: ${newLinkedCount} payments.\nDuplicate Skips: ${alreadyExistsCount}`);
+            logGlobalAction('Global Sync Completed', `SchoolPay sync processed ${allTxs.length} records. ${newLinkedCount} payments were successfully linked to students.`);
         } catch (error) {
-            console.error('Quick Sync Error:', error);
-            alert("Sync Failed: Check your internet connection. If the issue persists, verify API credentials in Payment Modes.");
+            console.error('Core Sync Error:', error);
+            alert("Sync Failed: The connection to SchoolPay was interrupted. Check your API settings and retry.");
         } finally {
             setIsSyncing(false);
         }
@@ -792,8 +816,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
         // Logo Logic
-        const specificLogo = localStorage.getItem(`logo_${template.id}`);
-        const globalLogo = localStorage.getItem('school_logo');
+        const specificLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${template.id}`) : null;
+        const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
         const activeLogo = specificLogo || globalLogo;
         const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 80px; width: auto; display: block; margin: 0 auto 10px auto;" />` : '';
 
@@ -925,8 +949,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
         // Logo Logic
-        const specificLogo = localStorage.getItem(`logo_${template.id}`);
-        const globalLogo = localStorage.getItem('school_logo');
+        const specificLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${template.id}`) : null;
+        const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
         const activeLogo = specificLogo || globalLogo;
         const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 100px; width: auto; display: block; margin: 0 auto;" />` : '';
 

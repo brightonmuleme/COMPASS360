@@ -1252,10 +1252,36 @@ export const INITIAL_TEMPLATES: DocumentTemplate[] = [
             { id: 'r3', type: 'table', order: 2, content: '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;" border="1"><thead><tr><th style="padding: 8px;">Particulars</th><th style="padding: 8px;">Amount</th></tr></thead><tbody><tr><td style="padding: 8px;">{{transaction_particulars}}</td><td style="padding: 8px;">{{transaction_amount}}</td></tr></tbody><tfoot><tr><td style="padding: 8px; font-weight: bold;">TOTAL PAID</td><td style="padding: 8px; font-weight: bold;">{{transaction_amount}}</td></tr></tfoot></table>', isEditable: false },
             { id: 'r4', type: 'footer', order: 3, content: '<p>Amount in words: {{amount_in_words}}</p><p style="margin-top: 20px;">Received By: {{user_name}}</p>', isEditable: true }
         ]
+    },
+    {
+        id: 'tmpl_clearance_global',
+        name: 'Official Reporting/Clearance Form',
+        type: 'CLEARANCE',
+        isDefault: true,
+        updatedAt: new Date().toISOString(),
+        sections: [
+            { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0; font-family: sans-serif; font-size: 20px;">{{institution_name}}</h1><p style="margin: 2px 0; font-size: 12px;">{{institution_address}} | {{institution_contact}}</p><h2 style="text-decoration: underline; margin-top: 8px; font-size: 15px; font-weight: bold;">OFFICIAL REPORTING & CLEARANCE RECORD</h2></div>', isEditable: true },
+            { id: 'b1', type: 'body', order: 1, content: '<div style="display: flex; justify-content: space-between; margin-top: 15px; font-family: sans-serif; font-size: 12px;"><div><p style="margin: 2px 0;"><strong>STUDENT NAME:</strong> {{student_name}}</p><p style="margin: 2px 0;"><strong>PROGRAMME:</strong> {{programme_name}}</p></div><div style="text-align: right;"><p style="margin: 2px 0;"><strong>PAY CODE:</strong> {{pay_code}}</p><p style="margin: 2px 0;"><strong>LEVEL/YEAR:</strong> {{current_level}}</p></div></div>', isEditable: true },
+            { id: 's1', type: 'body', order: 2, content: '<div style="padding: 10px; border: 2px solid #000; margin: 15px 0; text-align: center; background: #fdfdfd; font-family: sans-serif;"><p style="margin: 0; font-size: 10px; font-weight: bold; text-transform: uppercase; color: #666;">Official Standing</p><h1 style="margin: 5px 0; font-size: 28px; letter-spacing: 2px; font-weight: 900;">{{clearance_status}}</h1><div style="margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 10px;"><p style="margin:0; font-size: 11px;">Financial Progress:</p><div style="width: 150px; height: 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; position: relative;"><div style="width: {{financial_percentage}}; height: 100%; background: #000;"></div></div><p style="margin:0; font-size: 11px; font-weight: bold;">{{financial_percentage}}</p></div></div>', isEditable: true },
+            { id: 't1', type: 'table', order: 3, content: '<div style="margin-top: 15px; font-family: sans-serif;"><h3 style="font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px;">I. FINANCIAL LEDGER (CORE & OPTIONAL)</h3><table style="width: 100%; border-collapse: collapse; font-size: 11px;"><thead><tr style="background: #f5f5f5;"><th style="padding: 6px; text-align: left; border: 1px solid #ddd;">Particulars</th><th style="padding: 6px; text-align: right; border: 1px solid #ddd;">Subscription Status</th></tr></thead><tbody><tr><td style="padding: 6px; border: 1px solid #ddd;">Compulsory Faculty Fees</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">{{compulsory_services_list}}</td></tr><tr><td style="padding: 6px; border: 1px solid #ddd;">Optional Subscribed Services</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">{{optional_services_list}}</td></tr><tr><td style="padding: 6px; border: 1px solid #ddd; font-weight: bold;">Arrears Settlement (B/F)</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">{{bf_clearance_rate}}</td></tr></tbody></table></div>', isEditable: true },
+            { id: 't2', type: 'table', order: 4, content: '<div style="margin-top: 15px; font-family: sans-serif;"><h3 style="font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px;">II. LOGISTICS & PHYSICAL REQUIREMENTS</h3><div style="font-size: 11px; line-height: 1.4;">{{requirements_summary}}</div></div>', isEditable: true },
+            { id: 'f1', type: 'footer', order: 5, content: '<div style="margin-top: 30px; font-family: sans-serif; border-top: 1px solid #eee; padding-top: 15px;"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px;"><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">OFFICE OF THE BURSAR</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">OFFICE OF THE DIRECTOR</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">REGISTRAR / ADMISSIONS</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">MATRON / WARDEN</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">ESTATE MANAGER</p></div><div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end;"><div style="width: 40px; height: 40px; background: #f0f0f0; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; font-size: 6px; color: #999; margin-bottom: 3px;">QR VERIFY</div><p style="font-size: 8px; color: #999; margin: 0;">{{current_date}} | COMPASS 360 Verified</p></div></div></div>', isEditable: true }
+        ]
+    },
+    {
+        id: 'tmpl_fee_global',
+        name: 'Official Fee Structure',
+        type: 'FEE_STRUCTURE',
+        isDefault: true,
+        updatedAt: new Date().toISOString(),
+        sections: [
+            { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0;">{{institution_name}}</h1><p>{{institution_address}}</p><h2>FEES STRUCTURE</h2></div>', isEditable: true },
+            { id: 'b1', type: 'body', order: 1, content: '<p>Programme: <strong>{{programme_name}}</strong></p><p>Level: {{level}}</p>', isEditable: true },
+            { id: 't1', type: 'table', order: 2, content: '{{fee_table}}', isEditable: false },
+            { id: 'f1', type: 'footer', order: 3, content: '<p style="margin-top: 20px;">Issued on: {{current_date}}</p>', isEditable: true }
+        ]
     }
 ];
-
-
 
 export const INITIAL_COURSE_UNITS: CourseUnit[] = [
     // Year 1 Semester 1 Common
@@ -4540,22 +4566,19 @@ function useSchoolDataInternal() {
     const deleteAdvert = (id: string) => setAdverts(prev => prev.filter(a => a.id !== id));
 
     const filteredRegistrarStudents = useMemo(() => {
-        if (isBursarPortal) return registrarStudents.filter(s => s.origin === 'bursar');
-        if (isRegistrarPortal) return registrarStudents.filter(s => s.origin === 'registrar' || !s.origin);
+        // Admissions / Leads should be shared between both Registrar and Bursar
         return registrarStudents;
-    }, [registrarStudents, isBursarPortal, isRegistrarPortal]);
+    }, [registrarStudents]);
 
     const filteredStudents = useMemo(() => {
-        if (isBursarPortal) return students.filter(s => s.origin === 'bursar' || !s.origin);
-        if (isRegistrarPortal) return students; // Bug Fix: Registrar sees all students in Enrollments
+        // Students should be visible across all portals for consistent business logic
         return students;
-    }, [students, isBursarPortal, isRegistrarPortal]);
+    }, [students]);
 
     const filteredProgrammes = useMemo(() => {
-        if (isBursarPortal) return programmes.filter(p => p.origin === 'bursar' || !p.origin);
-        if (isRegistrarPortal) return programmes.filter(p => p.origin === 'registrar' || !p.origin); // Show all programmes including those without origin
+        // Programmes should be global across all portals
         return programmes;
-    }, [programmes, isBursarPortal, isRegistrarPortal]);
+    }, [programmes]);
 
     const filteredBillings = useMemo(() => {
         if (!isBursarPortal && !isRegistrarPortal) return billings;
@@ -4680,9 +4703,11 @@ function useSchoolDataInternal() {
             try {
                 // Only push if we are currently logged in as a valid school schoolProfile
                 if (schoolProfile.status === 'Active' && schoolProfile.id !== 'vine_intl') {
-                    // SAFEGUARD: Don't push if students array is empty but we haven't synced with cloud yet
-                    // To avoid overwriting existing cloud data with local mock initial state
-                    if (students.length === 0 && !localStorage.getItem('school_last_cloud_sync')) {
+                    // SAFEGUARD: Don't push if both students and programmes are empty but we haven't synced with cloud yet
+                    // This prevents a fresh device with no data from accidentally overwriting a populated cloud state
+                    // during the initial connection phase.
+                    const isLocalStateEmpty = students.length === 0 && programmes.length === 0;
+                    if (isLocalStateEmpty && !localStorage.getItem('school_last_cloud_sync')) {
                         console.log("☁️ Compass Cloud: Skipping initial empty sync to prevent data loss");
                         return;
                     }
@@ -4715,7 +4740,7 @@ function useSchoolDataInternal() {
         setIsCloudSyncing(true);
         try {
             const cloudState = await databaseService.getSchoolCloudState(schoolProfile.id);
-            if (cloudState && cloudState.students) {
+            if (cloudState) {
                 // If cloud is newer OR forced, apply it
                 const cloudTime = new Date(cloudState.timestamp || 0).getTime();
                 const localTime = new Date(lastCloudSync || 0).getTime();

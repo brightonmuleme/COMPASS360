@@ -5,12 +5,17 @@ import { useRouter } from 'next/navigation';
 
 export default function FeesStructurePage() {
     const router = useRouter(); // Initialize router inside component
-    const { filteredStudents: students, filteredProgrammes: programmes, addProgramme, updateProgramme, deleteProgramme } = useSchoolData();
+    const { filteredStudents: students, filteredProgrammes: allProgrammes, addProgramme, updateProgramme, deleteProgramme, schoolProfile } = useSchoolData();
     const [createModal, setCreateModal] = useState<{ open: boolean, isEdit: boolean, id: string, name: string, code: string, type: Programme['type'], duration: string }>({
         open: false, isEdit: false, id: '', name: '', code: '', type: 'Degree', duration: ''
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+
+    // Filter to only show school programmes (internal)
+    const programmes = React.useMemo(() => {
+        return allProgrammes.filter(p => !p.isTutorContent || p.ownerId === schoolProfile.id);
+    }, [allProgrammes, schoolProfile.id]);
 
     // Close menu when clicking outside
     React.useEffect(() => {
@@ -19,12 +24,7 @@ export default function FeesStructurePage() {
         return () => document.removeEventListener('click', handleClickOutside);
     }, []);
 
-
-
     const handleEdit = (prog: Programme) => {
-        // Debug
-        // alert('Editing ' + prog.name); 
-
         setCreateModal({
             open: true,
             isEdit: true,
@@ -46,7 +46,9 @@ export default function FeesStructurePage() {
             code: createModal.code,
             type: createModal.type,
             duration: createModal.duration,
-            origin: 'bursar'
+            origin: 'bursar',
+            ownerId: schoolProfile.id,
+            isTutorContent: false // Explicitly school content
         };
 
         if (createModal.isEdit) {

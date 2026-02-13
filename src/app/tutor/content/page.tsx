@@ -278,7 +278,7 @@ import { databaseService } from "@/services/databaseService";
 
 export default function TutorContentLibrary() {
     const {
-        programmes,
+        programmes: allProgrammes,
         courseUnits,
         tutorContents,
         addTutorContent,
@@ -298,6 +298,11 @@ export default function TutorContentLibrary() {
 
     // SECURITY FIX: Remove hardcoded ID, use session
     const currentTutorId = globalSchoolProfile?.id;
+
+    // Filter to only show tutor's own programmes
+    const programmes = useMemo(() => {
+        return allProgrammes.filter(p => p.ownerId === currentTutorId && p.isTutorContent);
+    }, [allProgrammes, currentTutorId]);
 
     // --- STATES ---
     const [viewingContent, setViewingContent] = useState<TutorContent | null>(null);
@@ -571,10 +576,18 @@ export default function TutorContentLibrary() {
     const handleSaveProgramme = () => {
         if (!progForm.name) return;
         if (editingProgId) {
-            const existing = programmes.find(p => p.id === editingProgId);
+            const existing = allProgrammes.find(p => p.id === editingProgId);
             if (existing) updateProgramme({ ...existing, ...progForm });
         } else {
-            addProgramme({ id: Date.now().toString(), ...progForm, levels: ['Year 1', 'Year 2', 'Year 3'], feeStructure: [], documents: {} });
+            addProgramme({
+                id: Date.now().toString(),
+                ...progForm,
+                levels: ['Year 1', 'Year 2', 'Year 3'],
+                feeStructure: [],
+                documents: {},
+                ownerId: currentTutorId,
+                isTutorContent: true // Mark as tutor-created
+            });
         }
         setIsProgModalOpen(false);
     };

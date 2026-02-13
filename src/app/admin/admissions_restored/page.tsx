@@ -232,8 +232,8 @@ export default function AdmissionsPage() {
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
         // 4. Substitutions
-        const specificLogo = localStorage.getItem(`logo_${template.id}`);
-        const globalLogo = localStorage.getItem('school_logo');
+        const specificLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${template.id}`) : null;
+        const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
         const activeLogo = specificLogo || globalLogo;
 
         const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 100px; width: auto; display: block; margin: 0 auto;" />` : '';
