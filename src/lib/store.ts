@@ -133,6 +133,8 @@ export interface Programme {
     documents?: ProgrammeDocuments;
     levels?: string[]; // Custom ordered levels
     origin?: 'bursar' | 'registrar'; // Isolated origin
+    ownerId?: string; // New: Unique ID of the Tutor or School that owns this
+    isTutorContent?: boolean; // New: Explicit flag for Tutor Portal filtering
 }
 
 export interface ServiceMetadata {
@@ -3643,10 +3645,16 @@ function useSchoolDataInternal() {
             return;
         }
 
+        // --- NEW: Atomic Promotion Logic ---
+        // If it was in unclaimed, remove it first.
+        setUnclaimedPayments(prev => prev.filter(item => item.id !== p.id && item.reference !== p.reference));
+
         setPayments(prev => {
             if (prev.some(item => item.id === p.id)) return prev;
             return [...prev, p];
         });
+
+        // Update Student Balance
         setStudents(prev => prev.map(s => {
             if (s.id === p.studentId) {
                 return { ...s, balance: (s.balance || 0) - p.amount };
@@ -3655,7 +3663,24 @@ function useSchoolDataInternal() {
         }));
     };
 
-    const updatePayment = (p: Payment) => setPayments(prev => prev.map(old => old.id === p.id ? p : old));
+    const updatePayment = (p: Payment) => {
+        const oldPayment = payments.find(o => o.id === p.id);
+
+        // 1. Update the payments list
+        setPayments(prev => prev.map(old => old.id === p.id ? p : old));
+
+        // 2. Adjust Student Balance if necessary
+        if (oldPayment) {
+            // Revert old student balance if it was linked
+            if (oldPayment.studentId) {
+                setStudents(prev => prev.map(s => s.id === oldPayment.studentId ? { ...s, balance: (s.balance || 0) + oldPayment.amount } : s));
+            }
+            // Apply new student balance
+            if (p.studentId) {
+                setStudents(prev => prev.map(s => s.id === p.studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s));
+            }
+        }
+    };
 
     const linkPayment = async (paymentId: string, studentId: number) => {
         const p = payments.find(pay => pay.id === paymentId) || unclaimedPayments.find(pay => pay.id === paymentId);
@@ -3665,13 +3690,13 @@ function useSchoolDataInternal() {
         if (!student) return;
 
         // SAFEGUARD: Lock the cloud pull for 15 seconds to allow the push to finish
-        // and prevent the cloud from overwriting our local link.
         localStorage.setItem('school_manual_action_lock', Date.now().toString());
 
         const updatedPayment: Payment = {
             ...p,
-            studentId,
+            studentId, // Ensure it's assigned to the specific student
             status: 'approved',
+            term: student.semester, // Assign to student's current semester so it shows in history
             recordedBy: p.recordedBy?.includes('Auto-Sync') ? p.recordedBy : 'System (Linked)',
             history: [
                 ...(p.history || []),
@@ -3685,30 +3710,26 @@ function useSchoolDataInternal() {
             ]
         };
 
-        // BATCH ALL UPDATES TO PREVENT FLICKER
-        setStudents(prevStudents => {
-            const nextStudents = prevStudents.map(s => s.id === studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s);
+        // 1. Update Students Balance
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s));
 
-            setPayments(prevPayments => {
-                const exists = prevPayments.some(item => item.id === p.id);
-                const nextPayments = exists ? prevPayments.map(item => item.id === p.id ? updatedPayment : item) : [updatedPayment, ...prevPayments];
-
-                setUnclaimedPayments(prevUnclaimed => prevUnclaimed.filter(item => item.id !== p.id));
-
-                return nextPayments;
-            });
-
-            return nextStudents;
+        // 2. Move from Unclaimed to Payments (Non-Nested)
+        setPayments(prev => {
+            const exists = prev.some(item => item.id === p.id);
+            if (exists) {
+                return prev.map(item => item.id === p.id ? updatedPayment : item);
+            }
+            return [updatedPayment, ...prev];
         });
+
+        // 3. Remove from Unclaimed
+        setUnclaimedPayments(prev => prev.filter(item => item.id !== p.id));
 
         logGlobalAction('Payment Linked', `Linked payment ${p.reference} of ${p.amount} to ${student.name}. Arrears updated instantly.`);
 
         // Force an immediate push instead of waiting 8 seconds
         setTimeout(() => {
-            const forcePushId = `push_${Date.now()}`;
             console.log("☁️ Compass Sync: Forcing immediate cloud push after manual link...");
-            // The existing cloud sync useEffect watching 'students' will pick this up
-            // but we've locked the 'pull' so it won't revert.
         }, 100);
     };
 

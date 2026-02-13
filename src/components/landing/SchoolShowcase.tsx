@@ -62,13 +62,22 @@ const SchoolShowcase = () => {
             <div className={styles.horizontalScrollContainer}>
                 {finalSchools.map(school => (
                     <div key={school.id} className={styles.schoolCard}>
-                        <div className={styles.schoolCardImage} style={{ backgroundImage: `url(${school.image})` }}>
-                            <div className={styles.schoolCardOverlay}></div>
-                        </div>
+                        <Link href={`/apply/${school.id}`} className="block w-full h-[60%] overflow-hidden">
+                            <div className={styles.schoolCardImage} style={{ backgroundImage: `url(${school.image})` }}>
+                                <div className={styles.schoolCardOverlay}></div>
+                            </div>
+                        </Link>
                         <div className={styles.schoolCardContent}>
                             <div className="flex flex-col h-full justify-between">
-                                <div>
-                                    <span className={styles.schoolCategory}>{school.category}</span>
+                                <div className="relative">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className={styles.schoolCategory}>{school.category}</span>
+                                        {school.logo && (
+                                            <div className={styles.schoolLogoTag}>
+                                                <img src={school.logo} alt={school.name} />
+                                            </div>
+                                        )}
+                                    </div>
                                     <h3 className={styles.schoolName}>{school.name}</h3>
                                     <p className={styles.schoolTagline}>{school.tagline}</p>
                                 </div>
