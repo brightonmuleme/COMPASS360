@@ -261,6 +261,27 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
         setItems(newItems);
     };
 
+    // --- MASTER SORTING RULE ---
+    const sortRequisitionItems = (itemsList: RequisitionItem[]) => {
+        return [...itemsList].sort((a, b) => {
+            // 1. Priority Items first
+            const pA = a.isPriority === true;
+            const pB = b.isPriority === true;
+            if (pA && !pB) return -1;
+            if (!pA && pB) return 1;
+
+            // 2. Then group by Category
+            const catA = a.category || "zzz"; // Put empty categories at the end
+            const catB = b.category || "zzz";
+            const catCompare = catA.localeCompare(catB);
+
+            if (catCompare !== 0) return catCompare;
+
+            // 3. Finally by Name (or ID to stay stable)
+            return (a.name || "").localeCompare(b.name || "") || a.id.localeCompare(b.id);
+        });
+    };
+
     const handleChange = (index: number, field: keyof RequisitionItem, value: any) => {
         const newItems = [...items];
         const item = { ...newItems[index], [field]: value };
@@ -295,7 +316,13 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
         }
 
         newItems[index] = item;
-        setItems(newItems);
+
+        // If category or priority changed, we re-sort immediately to keep the UI organized
+        if (field === 'category') {
+            setItems(sortRequisitionItems(newItems));
+        } else {
+            setItems(newItems);
+        }
     };
 
     const handleCategorySelect = (category: string) => {
@@ -303,14 +330,6 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
             handleChange(activeRowForSelection, 'category', category);
             setActiveRowForSelection(null);
             setIsSelectorOpen(false);
-
-            // STICKY CATEGORIES: Auto-sort items by category to keep them grouped
-            setTimeout(() => {
-                setItems(prevItems => {
-                    const sorted = [...prevItems].sort((a, b) => (a.category || "zzz").localeCompare(b.category || "zzz"));
-                    return sorted;
-                });
-            }, 100);
         }
     };
 
@@ -318,24 +337,9 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
         e.preventDefault();
         e.stopPropagation(); // Critical for button inside row
 
-        setItems(prevItems => {
-            const newItems = [...prevItems];
-            const item = { ...newItems[index] };
-            item.isPriority = !item.isPriority; // Toggle
-
-            newItems[index] = item;
-
-            // Sort immediately
-            return newItems.sort((a, b) => {
-                // 1. Priority
-                const pA = a.isPriority === true;
-                const pB = b.isPriority === true;
-                if (pA && !pB) return -1;
-                if (!pA && pB) return 1;
-                // 2. Category
-                return (a.category || "").localeCompare(b.category || "");
-            });
-        });
+        const newItems = [...items];
+        newItems[index] = { ...newItems[index], isPriority: !newItems[index].isPriority };
+        setItems(sortRequisitionItems(newItems));
     };
 
     const totalAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
