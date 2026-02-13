@@ -4614,6 +4614,7 @@ function useSchoolDataInternal() {
             billings,
             generalTransactions,
             requisitions,
+            requisitionQueue, // Sync In-Queue items
             bursaries,
             programmes,
             services,
@@ -4627,6 +4628,26 @@ function useSchoolDataInternal() {
             budgetPeriods,
             expenseCategories,
             incomeCategories,
+            // Academic Data
+            courseUnits,
+            resultPageConfigs,
+            studentResults,
+            studentPageSummaries,
+            resultArchives,
+            promotionBatches,
+            // Inventory Data
+            inventoryItems,
+            inventoryLists,
+            inventoryGroups,
+            inventoryLogs,
+            inventoryTransfers,
+            inventoryLocations,
+            // Financial Structure
+            accounts,
+            accountGroups,
+            // Misc
+            calendarEvents,
+            suggestions,
             timestamp: new Date().toISOString()
         };
 
@@ -4656,7 +4677,16 @@ function useSchoolDataInternal() {
         }, 8000); // 8 second debounce to avoid spamming Supabase
 
         return () => clearTimeout(timer);
-    }, [students, registrarStudents, payments, billings, generalTransactions, requisitions, bursaries, programmes, services, staffAccounts, schoolProfile.id, paymentIntegrations, manualPaymentMethods, financialSettings, unclaimedPayments, documentTemplates, budgetPeriods, expenseCategories, incomeCategories, hydrated]);
+    }, [
+        students, registrarStudents, payments, billings, generalTransactions, requisitions,
+        requisitionQueue, bursaries, programmes, services, staffAccounts, schoolProfile.id,
+        paymentIntegrations, manualPaymentMethods, financialSettings, unclaimedPayments,
+        documentTemplates, budgetPeriods, expenseCategories, incomeCategories,
+        courseUnits, resultPageConfigs, studentResults, studentPageSummaries, resultArchives,
+        promotionBatches, inventoryItems, inventoryLists, inventoryGroups, inventoryLogs,
+        inventoryTransfers, inventoryLocations, accounts, accountGroups, calendarEvents,
+        suggestions, hydrated
+    ]);
 
     // 2. MANUAL PULL FUNCTION
     const pullFromCloud = async (force = false) => {
@@ -4684,6 +4714,7 @@ function useSchoolDataInternal() {
                     if (cloudState.billings) setBillings(cloudState.billings);
                     if (cloudState.generalTransactions) setGeneralTransactions(cloudState.generalTransactions);
                     if (cloudState.requisitions) setRequisitions(cloudState.requisitions);
+                    if (cloudState.requisitionQueue) setRequisitionQueue(cloudState.requisitionQueue);
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
                     if (cloudState.programmes) setProgrammes(cloudState.programmes);
                     if (cloudState.services) setServices(cloudState.services);
@@ -4696,6 +4727,30 @@ function useSchoolDataInternal() {
                     if (cloudState.budgetPeriods) setBudgetPeriods(cloudState.budgetPeriods);
                     if (cloudState.expenseCategories) setExpenseCategories(cloudState.expenseCategories);
                     if (cloudState.incomeCategories) setIncomeCategories(cloudState.incomeCategories);
+
+                    // Academic Data
+                    if (cloudState.courseUnits) setCourseUnits(cloudState.courseUnits);
+                    if (cloudState.resultPageConfigs) setResultPageConfigs(cloudState.resultPageConfigs);
+                    if (cloudState.studentResults) setStudentResults(cloudState.studentResults);
+                    if (cloudState.studentPageSummaries) setStudentPageSummaries(cloudState.studentPageSummaries);
+                    if (cloudState.resultArchives) setResultArchives(cloudState.resultArchives);
+                    if (cloudState.promotionBatches) setPromotionBatches(cloudState.promotionBatches);
+
+                    // Inventory Data
+                    if (cloudState.inventoryItems) setInventoryItems(cloudState.inventoryItems);
+                    if (cloudState.inventoryLists) setInventoryLists(cloudState.inventoryLists);
+                    if (cloudState.inventoryGroups) setInventoryGroups(cloudState.inventoryGroups);
+                    if (cloudState.inventoryLogs) setInventoryLogs(cloudState.inventoryLogs);
+                    if (cloudState.inventoryTransfers) setInventoryTransfers(cloudState.inventoryTransfers);
+                    if (cloudState.inventoryLocations) setInventoryLocations(cloudState.inventoryLocations);
+
+                    // Financial Structure
+                    if (cloudState.accounts) setAccounts(cloudState.accounts);
+                    if (cloudState.accountGroups) setAccountGroups(cloudState.accountGroups);
+
+                    // Misc
+                    if (cloudState.calendarEvents) setCalendarEvents(cloudState.calendarEvents);
+                    if (cloudState.suggestions) setSuggestions(cloudState.suggestions);
 
                     setLastCloudSync(cloudState.timestamp);
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
