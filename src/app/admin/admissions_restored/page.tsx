@@ -251,21 +251,55 @@ export default function AdmissionsPage() {
             '{{programme_logo}}': logoHtml
         };
 
+        // Robust Replacement Logic (handles optional spaces inside braces)
         Object.entries(replacements).forEach(([key, val]) => {
-            content = content.replace(new RegExp(key, 'g'), val);
+            const cleanKey = key.replace(/[{} ]/g, '');
+            const pattern = new RegExp(`\\{\\{\\s*${cleanKey}\\s*\\}\\}`, 'g');
+            content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
-        // 5. Open Window
-        const win = window.open('', '_blank');
-        if (win) {
-            win.document.write(`<html><head><title>Admission Letter - ${student.name}</title></head><body style="padding: 40px; font-family: sans-serif;">${content}</body></html>`);
-            win.document.close();
-            win.onload = () => {
-                win.print();
-                win.close();
-            };
+        // 5. Robust Iframe Printing (Optimized for Mobile/Safari)
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.top = '0';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0.01';
+        iframe.style.pointerEvents = 'none';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+            doc.open();
+            doc.write(`
+                <html>
+                <head>
+                    <title>Admission Letter - ${student.name}</title>
+                    <style>
+                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                        body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; line-height: 1.5; }
+                    </style>
+                </head>
+                <body>
+                    ${content}
+                    <script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                                setTimeout(function() { 
+                                    if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                }, 1000);
+                            }, 500);
+                        }
+                    </script>
+                </body>
+                </html>
+            `);
+            doc.close();
         } else {
-            alert("Popup blocked. Please allow popups to print.");
+            alert("Printing failed to initialize.");
         }
     };
 

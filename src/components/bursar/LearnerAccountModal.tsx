@@ -898,14 +898,23 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{bursar_name}}': activeRole === 'Director' ? 'The Director' : 'The Institute Bursar'
         };
 
-        const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
+        // Robust Replacement Logic (handles optional spaces inside braces)
         Object.entries(replacements).forEach(([key, val]) => {
-            content = content.replace(new RegExp(escapeRegExp(key), 'g'), val);
+            const cleanKey = key.replace(/[{} ]/g, ''); // Get "student_name" from "{{student_name}}"
+            const pattern = new RegExp(`\\{\\{\\s*${cleanKey}\\s*\\}\\}`, 'g');
+            content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
+        // 3. Robust Iframe Printing (Optimized for Mobile/Safari)
         const iframe = document.createElement('iframe');
-        iframe.style.position = 'absolute'; iframe.style.width = '0px'; iframe.style.height = '0px'; iframe.style.border = 'none';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.top = '0';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0.01'; // Not hidden, but effectively invisible
+        iframe.style.pointerEvents = 'none';
+        iframe.style.border = 'none';
         document.body.appendChild(iframe);
 
         const doc = iframe.contentWindow?.document;
@@ -915,15 +924,25 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                 <html>
                 <head>
                     <title>Report - ${selectedStudent.name}</title>
-                    <style>@media print { body { -webkit-print-color-adjust: exact; } }</style>
+                    <style>
+                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                        body { padding: 15mm; font-family: sans-serif; color: #000; background: #fff; line-height: 1.4; }
+                    </style>
                 </head>
-                <body style="padding: 20mm; font-family: sans-serif; color: #000 !important; background: #fff !important;">${content}</body>
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.frameElement.parentNode.removeChild(window.frameElement); }, 1000);
-                    }
-                </script>
+                <body>
+                    ${content}
+                    <script>
+                        window.onload = function() {
+                            // Delay slightly for mobile rendering
+                            setTimeout(function() {
+                                window.print();
+                                setTimeout(function() { 
+                                    if (window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                }, 1000);
+                            }, 500);
+                        }
+                    </script>
+                </body>
                 </html>
             `);
             doc.close();
@@ -995,17 +1014,22 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{programme_logo}}': logoHtml
         };
 
-        const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
+        // Robust Replacement Logic (handles optional spaces inside braces)
         Object.entries(replacements).forEach(([key, val]) => {
-            content = content.replace(new RegExp(escapeRegExp(key), 'g'), val);
+            const cleanKey = key.replace(/[{} ]/g, '');
+            const pattern = new RegExp(`\\{\\{\\s*${cleanKey}\\s*\\}\\}`, 'g');
+            content = content.replace(pattern, val === undefined ? '' : String(val));
         });
 
-        // 3. Iframe Printing (Better UX than window.open)
+        // 3. Iframe Printing (Optimized for Mobile/Safari)
         const iframe = document.createElement('iframe');
-        iframe.style.position = 'absolute';
-        iframe.style.width = '0px';
-        iframe.style.height = '0px';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.top = '0';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0.01';
+        iframe.style.pointerEvents = 'none';
         iframe.style.border = 'none';
         document.body.appendChild(iframe);
 
@@ -1017,18 +1041,23 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                 <head>
                     <title>Receipt - ${payment.receiptNumber}</title>
                     <style>
-                        @media print {
-                            body { -webkit-print-color-adjust: exact; }
-                        }
+                        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                        body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; }
                     </style>
                 </head>
-                <body style="padding: 40px; font-family: sans-serif;">${content}</body>
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.frameElement.parentNode.removeChild(window.frameElement); }, 1000);
-                    }
-                </script>
+                <body>
+                    ${content}
+                    <script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                                setTimeout(function() { 
+                                    if(window.frameElement) window.frameElement.parentNode.removeChild(window.frameElement); 
+                                }, 1000);
+                            }, 500);
+                        }
+                    </script>
+                </body>
                 </html>
             `);
             doc.close();
