@@ -810,13 +810,17 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         );
 
         // Template Selection (Strict matching to avoid picking the wrong programme's template)
+        // 1. Try to find a template specifically assigned to this programme ID
         let template = documentTemplates.find(t => t.type === 'CLEARANCE' && (t as any).programmeId === prog?.id);
 
-        // Fallback 1: Global default template for CLEARANCE
-        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault);
+        // 2. If not found, try to find a GLOBAL template marked as default (no programmeId)
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && t.isDefault && (!t.programmeId || t.programmeId === ''));
 
-        // Fallback 2: Any CLEARANCE template that isn't assigned to a specific programme
+        // 3. If still not found, try any GLOBAL template (no programmeId)
         if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE' && (!t.programmeId || t.programmeId === ''));
+
+        // 4. Final desperate fallback: first available CLEARANCE template (might be wrong, but better than nothing)
+        if (!template) template = documentTemplates.find(t => t.type === 'CLEARANCE');
 
         if (!template) {
             console.error("No suitable template found for CLEARANCE");
@@ -928,18 +932,32 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                     <head>
                         <title>Report - ${selectedStudent.name}</title>
                         <style>
-                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                            body { padding: 15mm; font-family: sans-serif; color: #000; background: #fff; line-height: 1.4; }
+                            @media print { 
+                                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
+                                .no-print { display: none; }
+                            }
+                            body { 
+                                padding: 15mm; 
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                                color: #000; 
+                                background: #fff; 
+                                line-height: 1.4; 
+                                -webkit-font-smoothing: antialiased;
+                            }
+                            img { max-width: 100%; height: auto; }
+                            table { width: 100%; border-collapse: collapse; }
                         </style>
                     </head>
                     <body>
-                        <div id="print-content">${content}</div>
+                        <div id="print-content" style="visibility: visible; opacity: 1;">${content}</div>
                         <script>
                             window.onload = function() {
+                                // Increased timeout for images and font rendering on mobile
                                 setTimeout(function() {
                                     window.print();
-                                    setTimeout(function() { window.close(); }, 1000);
-                                }, 800);
+                                    // Keep window open for a short while after print dialog closes
+                                    setTimeout(function() { window.close(); }, 1500);
+                                }, 1200);
                             }
                         </script>
                     </body>
@@ -947,7 +965,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                 `);
                 win.document.close();
             } else {
-                alert("Please allow popups to print.");
+                alert("Please allow popups to print. Tap the 'Options' icon if printing is blocked.");
             }
         } else {
             const iframe = document.createElement('iframe');
@@ -1062,7 +1080,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
         });
 
         // 3. Printing Logic (Mobile-First Switch)
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
         if (isMobile) {
             const win = window.open('', '_blank');
@@ -1082,8 +1100,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                             window.onload = function() {
                                 setTimeout(function() {
                                     window.print();
-                                    setTimeout(function() { window.close(); }, 500);
-                                }, 500);
+                                    setTimeout(function() { window.close(); }, 1500);
+                                }, 1200);
                             }
                         </script>
                     </body>

@@ -220,11 +220,15 @@ export default function AdmissionsPage() {
             p.name.toLowerCase().trim() === progName.toLowerCase().trim()
         );
 
-        // 2. Find Admission Letter Template
+        // 2. Find Admission Letter Template (STRICT)
+        // 1. Try specific programme template
         let template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && (t as any).programmeId === prog?.id);
-        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && t.isDefault);
+
+        // 2. Try Global Default (no programmeId)
+        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && t.isDefault && (!t.programmeId || t.programmeId === ''));
+
+        // 3. Try any Global Template (no programmeId)
         if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER' && (!t.programmeId || t.programmeId === ''));
-        if (!template) template = documentTemplates.find(t => t.type === 'ADMISSION_LETTER');
 
         if (!template) return alert("No Admission Letter template found in system.");
 
@@ -241,7 +245,7 @@ export default function AdmissionsPage() {
         const replacements: Record<string, string> = {
             '{{student_name}}': student.name,
             '{{student_code}}': student.id,
-            '{{programme_name}}': prog.name,
+            '{{programme_name}}': prog?.name || student.course || '',
             '{{institution_name}}': schoolProfile.name,
             '{{current_date}}': new Date().toLocaleDateString(),
             '{{reporting_date}}': student.admissionDate,
@@ -251,7 +255,7 @@ export default function AdmissionsPage() {
             '{{programme_logo}}': logoHtml
         };
 
-        // Robust Replacement Logic (handles optional spaces inside braces)
+        // 4. Substitutions
         Object.entries(replacements).forEach(([key, val]) => {
             const cleanKey = key.replace(/[{} ]/g, '');
             const pattern = new RegExp(`\\{\\{\\s*${cleanKey}\\s*\\}\\}`, 'g');
@@ -269,8 +273,17 @@ export default function AdmissionsPage() {
                     <head>
                         <title>Admission Letter - ${student.name}</title>
                         <style>
-                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                            body { padding: 40px; font-family: sans-serif; color: #000; background: #fff; line-height: 1.5; }
+                            @media print {
+                                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                            }
+                            body {
+                                padding: 40px;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                color: #000;
+                                background: #fff;
+                                line-height: 1.5;
+                            }
+                            img { max-width: 100%; height: auto; }
                         </style>
                     </head>
                     <body>
@@ -279,8 +292,8 @@ export default function AdmissionsPage() {
                             window.onload = function() {
                                 setTimeout(function() {
                                     window.print();
-                                    setTimeout(function() { window.close(); }, 1000);
-                                }, 800);
+                                    setTimeout(function() { window.close(); }, 1500);
+                                }, 1200);
                             }
                         </script>
                     </body>
