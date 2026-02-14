@@ -3505,6 +3505,10 @@ function useSchoolDataInternal() {
         }
     };
 
+    const updateSchoolApplicationStatus = (id: string, status: SchoolApplication['status']) => {
+        setSchoolApplications(prev => prev.map(app => app.id === id ? { ...app, status } : app));
+    };
+
     const [postHistory, setPostHistory] = useState<PostHistoryItem[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_post_history_v1');
