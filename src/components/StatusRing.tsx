@@ -2,7 +2,7 @@
 import React from 'react';
 import { EnrolledStudent, useSchoolData, determineStudentStatus, calculateClearancePercentage } from '@/lib/store';
 
-export const StatusRing = ({ student, size = 60, percentage: propPercentage }: { student: EnrolledStudent, size?: number, percentage?: number }) => {
+export const StatusRing = ({ student, size = 60, percentage: propPercentage, onClick }: { student: EnrolledStudent, size?: number, percentage?: number, onClick?: () => void }) => {
     const { financialSettings, students, billings, payments, bursaries } = useSchoolData();
 
     // Bug Fix: Real-Time Financial Mirroring (Pay Code Sync)
@@ -56,7 +56,16 @@ export const StatusRing = ({ student, size = 60, percentage: propPercentage }: {
     return (
         <div
             title={tooltip}
-            style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={onClick}
+            style={{
+                position: 'relative',
+                width: size,
+                height: size,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: onClick ? 'pointer' : 'default'
+            }}
         >
             <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
                 {/* Background Track */}

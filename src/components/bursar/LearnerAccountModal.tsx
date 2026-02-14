@@ -1186,6 +1186,19 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                             50% { transform: scale(1.2); opacity: 0.3; }
                             100% { transform: scale(0.8); opacity: 0.5; }
                         }
+
+                        @keyframes fade-in {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                        }
+
+                        @keyframes scale-up {
+                            from { opacity: 0; transform: scale(0.95); }
+                            to { opacity: 1; transform: scale(1); }
+                        }
+
+                        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+                        .animate-scale-up { animation: scale-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
                     `}</style>
 
                 {/* Audit Context Header */}
@@ -1203,9 +1216,14 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                 )}
 
                 {/* --- HEADER --- */}
-                <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-white/5">
+                <div className="flex flex-col md:flex-row items-center gap-6 pb-8 border-b border-white/5">
                     <div className="flex items-center gap-6">
-                        <StatusRing student={selectedStudent} size={72} percentage={clearancePercentage} />
+                        <StatusRing
+                            student={selectedStudent}
+                            size={72}
+                            percentage={clearancePercentage}
+                            onClick={() => setShowClearanceHistory(true)}
+                        />
                         <div>
                             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight uppercase m-0 leading-none">
                                 {selectedStudent.name}
@@ -1218,7 +1236,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                     {['clearance', 'defaulter', 'probation'].map(s => (
                                         <button
                                             key={s}
-                                            onClick={() => !isStudentView && !isDirectorView && !isProcessingPromotion && handleUpdateStatus(s as any)}
+                                            onClick={() => !isStudentView && !isDirectorView && !isProcessingPromotion && handleStatusChangeWithReason(s as any)}
                                             className="px-2 py-0.5 rounded text-[0.6rem] font-black uppercase tracking-tighter transition-all"
                                             style={{
                                                 background: selectedStudent.accountStatus === s
@@ -1768,21 +1786,65 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
                 {
                     showClearanceHistory && (
-                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2200, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                            <div className="card" style={{ width: 500, padding: '2rem', background: '#111', border: '1px solid #333' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                    <h3 style={{ margin: 0 }}>Clearance History</h3>
-                                    <button onClick={() => setShowClearanceHistory(false)} style={{ background: 'none', border: 'none', color: 'white' }}>✕</button>
+                        <div
+                            className="fixed inset-0 z-[3000] flex items-center justify-center p-4 backdrop-blur-md bg-black/80 animate-fade-in"
+                            onClick={() => setShowClearanceHistory(false)}
+                        >
+                            <div
+                                className="w-full max-w-lg bg-[#0a0c10] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl animate-scale-up"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-8 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-blue-600/10 to-transparent">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-white tracking-tight m-0">Clearance History</h3>
+                                        <p className="text-[0.65rem] font-bold text-slate-500 uppercase tracking-widest mt-1">Status Audit Trail</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowClearanceHistory(false)}
+                                        className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all"
+                                    >✕</button>
                                 </div>
-                                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                                    {selectedStudent.clearanceHistory?.map((h, i) => (
-                                        <div key={i} style={{ marginBottom: '1rem', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', textTransform: 'uppercase', color: h.status === 'cleared' ? '#10b981' : h.status === 'defaulter' ? '#ef4444' : '#8b5cf6' }}>
-                                                <span>{h.date}</span><span>{h.status}</span>
-                                            </div>
-                                            <div style={{ fontSize: '0.9rem', marginTop: '0.3rem' }}>{h.reason}</div>
+
+                                <div className="p-8 max-h-[500px] overflow-y-auto scrollbar-premium space-y-4">
+                                    {!selectedStudent.clearanceHistory || selectedStudent.clearanceHistory.length === 0 ? (
+                                        <div className="py-12 text-center opacity-30">
+                                            <p className="text-sm font-medium">No history recorded for this student yet.</p>
                                         </div>
-                                    ))}
+                                    ) : (
+                                        selectedStudent.clearanceHistory.map((h, i) => (
+                                            <div key={i} className="group relative pl-6 border-l border-white/10 py-2">
+                                                {/* Timeline Dot */}
+                                                <div className={`absolute left-[-5px] top-3 w-2 h-2 rounded-full border-2 border-[#0a0c10] ${h.status === 'cleared' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' :
+                                                    h.status === 'defaulter' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' :
+                                                        'bg-purple-500 shadow-[0_0_10px_rgba(139,92,246,0.5)]'
+                                                    }`}></div>
+
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className={`text-[0.6rem] font-black uppercase tracking-widest px-2 py-0.5 rounded ${h.status === 'cleared' ? 'bg-emerald-500/10 text-emerald-500' :
+                                                        h.status === 'defaulter' ? 'bg-red-500/10 text-red-500' :
+                                                            'bg-purple-500/10 text-purple-500'
+                                                        }`}>
+                                                        {h.status}
+                                                    </span>
+                                                    <span className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest">{h.date}</span>
+                                                </div>
+                                                <p className="text-sm text-slate-300 m-0 font-medium leading-relaxed">{h.reason}</p>
+                                                <div className="mt-2 text-[0.6rem] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1">
+                                                    <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                                    Updated By: {h.user || 'System'}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <div className="p-6 bg-white/[0.02] border-t border-white/5 flex justify-center">
+                                    <button
+                                        onClick={() => setShowClearanceHistory(false)}
+                                        className="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-[0.65rem] font-black uppercase tracking-widest transition-all active:scale-95"
+                                    >
+                                        Close History
+                                    </button>
                                 </div>
                             </div>
                         </div>
