@@ -1713,22 +1713,42 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                                 borderRadius: '24px',
                                                 padding: '1.25rem',
                                                 transition: 'all 0.3s ease'
-                                            }} className="group-hover:bg-white/5 group-hover:border-white/10">
+                                            }} className="group-hover:bg-white/5 group-hover:border-white/10 relative overflow-hidden">
                                                 <div className="flex justify-between items-start mb-3">
-                                                    <div>
+                                                    <div className="relative z-10">
                                                         <span className="text-[0.55rem] font-black uppercase tracking-widest text-slate-400">{req.name}</span>
-                                                        <div className="text-lg font-black mt-1">{req.brought}<span className="text-xs opacity-30 mx-1">/</span>{req.required}</div>
+                                                        <div className="text-lg font-black mt-1 text-white">{req.brought}<span className="text-xs opacity-30 mx-1">/</span>{req.required}</div>
                                                     </div>
-                                                    <div style={{ color: req.color }} className="opacity-80">
-                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" /></svg>
-                                                    </div>
+
+                                                    {/* Speed-Add Tap Button */}
+                                                    {!isStudentView && !isDirectorView && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                updateReq(req.name, 1);
+                                                            }}
+                                                            style={{ background: `${req.color}20`, color: req.color }}
+                                                            className="p-2 rounded-xl hover:scale-110 active:scale-90 transition-all z-20"
+                                                        >
+                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className="h-1 bg-white/5 rounded-full overflow-hidden">
                                                     <div
                                                         style={{ width: `${pct}%`, background: req.color }}
-                                                        className="h-full transition-all duration-700"
+                                                        className="h-full transition-all duration-700 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
                                                     ></div>
                                                 </div>
+
+                                                {/* Sparkle effect when complete */}
+                                                {pct >= 100 && (
+                                                    <div className="absolute -right-2 -top-2 opacity-10">
+                                                        <svg className="w-20 h-20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -1758,6 +1778,71 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
                 {/* --- MODALS --- */}
                 <TransactionFormModal isOpen={showTransModal} onClose={() => setShowTransModal(false)} student={selectedStudent} existingPayment={editingPayment} />
+
+                {/* Requirement Action Menu */}
+                {openReqMenu && (
+                    <div
+                        className="fixed inset-0 z-[4000] flex items-center justify-center p-4 backdrop-blur-sm bg-black/60 animate-fade-in"
+                        onClick={() => setOpenReqMenu(null)}
+                    >
+                        <div
+                            className="w-full max-w-xs bg-[#111] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl animate-scale-up"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-6 text-center border-b border-white/5">
+                                <span className="text-[0.6rem] font-black text-blue-400 uppercase tracking-[0.2em] mb-2 block">Quick Action</span>
+                                <h3 className="text-xl font-bold text-white m-0">{openReqMenu}</h3>
+                            </div>
+
+                            <div className="p-4 grid grid-cols-1 gap-2">
+                                <button
+                                    onClick={() => { updateReq(openReqMenu, 1); setOpenReqMenu(null); }}
+                                    className="flex items-center justify-between p-4 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-2xl transition-all group"
+                                >
+                                    <span className="font-bold">Add One Item</span>
+                                    <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">+1</span>
+                                </button>
+
+                                <button
+                                    onClick={() => { updateReq(openReqMenu, -1); setOpenReqMenu(null); }}
+                                    className="flex items-center justify-between p-4 bg-slate-800/50 hover:bg-slate-800 text-slate-400 rounded-2xl transition-all"
+                                >
+                                    <span className="font-bold">Remove One Item</span>
+                                    <span className="bg-slate-700 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">-1</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`Reset ${openReqMenu} to 0?`)) {
+                                            const req = selectedStudent.physicalRequirements?.find(r => r.name === openReqMenu);
+                                            if (req) updateReq(openReqMenu, -req.brought);
+                                            setOpenReqMenu(null);
+                                        }
+                                    }}
+                                    className="flex items-center justify-between p-4 bg-red-500/5 hover:bg-red-500/10 text-red-500/60 rounded-2xl transition-all"
+                                >
+                                    <span className="font-bold">Reset to Zero</span>
+                                    <span className="text-lg">↺</span>
+                                </button>
+                            </div>
+
+                            <div className="p-4 bg-white/[0.02] flex gap-2">
+                                <button
+                                    onClick={() => { setShowReqHistory(true); setOpenReqMenu(null); }}
+                                    className="flex-1 py-3 text-[0.6rem] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
+                                >
+                                    View Logs
+                                </button>
+                                <button
+                                    onClick={() => setOpenReqMenu(null)}
+                                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl text-[0.6rem] font-black uppercase tracking-widest transition-all"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {reviewTx && (
                     <ReviewModal

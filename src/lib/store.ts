@@ -5206,6 +5206,9 @@ export const calculateClearancePercentage = (
 ): number => {
     if (!student) return 0;
 
+    // Strong Detection for Arrears (typographical resistance)
+    const isArrears = (str: string) => /brought\s*forward|bf|arrears|prev|balance\s*b\/f/i.test(str);
+
     // FINANCIAL MIRRORING: If this is a Registrar student, find the Bursar's financial record
     let financialAuthority = student;
     if (student.origin === 'registrar' && student.payCode && allStudents) {
@@ -5234,34 +5237,46 @@ export const calculateClearancePercentage = (
     );
     const totalTuitionBilled = tuitionBillings.reduce((sum, b) => sum + b.amount, 0);
 
-    // 2. Bursaries (using financial authority's bursary)
+    // 2. Arrears Bills (Expanded Scope to detect "Arrears from previous semester (Prev)")
+    const arrearsBillings = billings.filter(b =>
+        b.studentId === financialAuthority.id &&
+        b.term === term &&
+        isArrears(b.description)
+    );
+    const totalArrearsBilled = arrearsBillings.reduce((sum, b) => sum + b.amount, 0);
+
+    // 3. Bursaries (using financial authority's bursary)
     const bursaryValue = financialAuthority.bursary && financialAuthority.bursary !== 'none'
         ? (bursaries.find(b => b.id === financialAuthority.bursary)?.value || 0)
         : 0;
 
-    // 3. Tuition Payments (using financial authority's ID)
+    // 4. Payments (Tuition + Arrears)
     const studentPayments = payments.filter(p =>
         p.studentId === financialAuthority.id &&
         (p.term === term || (!p.term && isCurrent))
     );
 
-    const totalTuitionPaid = studentPayments.reduce((acc, p) => {
+    const totalClearingPaid = studentPayments.reduce((acc, p) => {
         if (p.allocations) {
             const tuitionKey = Object.keys(p.allocations).find(k => k.toLowerCase().includes('tuition'));
-            return acc + (tuitionKey ? (p.allocations[tuitionKey] || 0) : 0);
+            const arrearsKey = Object.keys(p.allocations).find(k => isArrears(k));
+            let amount = 0;
+            if (tuitionKey) amount += (p.allocations[tuitionKey] || 0);
+            if (arrearsKey) amount += (p.allocations[arrearsKey] || 0);
+            return acc + amount;
         } else {
             return acc + p.amount;
         }
     }, 0);
 
-    // 4. Previous Balance (using financial authority's balance)
-    const hasBFBill = billings.some(b => b.studentId === financialAuthority.id && b.term === term && b.description.includes('Balance Brought Forward'));
+    // 5. Previous Balance (Safety check for unbilled debt)
+    const hasArrearsBill = arrearsBillings.length > 0;
     const startPrevBal = overridePrevBal !== undefined ? overridePrevBal : (financialAuthority.previousBalance || 0);
-    const effectivePrev = hasBFBill ? 0 : startPrevBal;
+    const effectivePrev = hasArrearsBill ? 0 : startPrevBal;
 
-    const denominator = totalTuitionBilled + effectivePrev - bursaryValue;
+    const denominator = totalTuitionBilled + totalArrearsBilled + effectivePrev - bursaryValue;
     if (denominator <= 0) return 100;
 
-    const pct = (totalTuitionPaid / denominator) * 100;
+    const pct = (totalClearingPaid / denominator) * 100;
     return Math.max(0, Math.min(100, pct));
 };
