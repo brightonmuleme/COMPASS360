@@ -10,7 +10,7 @@ export default function SchoolApplicationPage() {
     const params = useParams();
     const schoolId = params?.schoolId as string;
 
-    const { featuredSchools, addSchoolApplication } = useSchoolData();
+    const { featuredSchools, addSchoolApplication, submitSchoolApplication } = useSchoolData();
     const [school, setSchool] = useState<FeaturedSchool | null>(null);
     const [notFound, setNotFound] = useState(false);
 
@@ -101,7 +101,8 @@ export default function SchoolApplicationPage() {
         if (!formData.agreed) return alert("Please agree to the declaration.");
         setSubmitting(true);
 
-        addSchoolApplication({
+        // Use the new Cloud-First submission
+        await (submitSchoolApplication as any)({
             schoolId: school!.id,
             schoolName: school!.name,
             applicantName: `${formData.firstName} ${formData.lastName}`,

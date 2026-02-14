@@ -379,7 +379,8 @@
   gap: 1.5rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 5vw 2rem 5vw;
+  padding: 0 5vw 4rem 5vw;
+  /* Increased bottom padding for card breathing room */
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -394,16 +395,19 @@
 .schoolCard {
   flex: 0 0 auto;
   width: 300px;
-  height: 450px;
+  height: 520px;
+  /* Increased from 450px to prevent button cutoff */
   scroll-snap-align: center;
   position: relative;
-  border-radius: 18px;
+  border-radius: 24px;
+  /* More premium rounding */
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   background: #1c1c1e;
   display: flex;
   flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .schoolCard:hover {
@@ -471,8 +475,8 @@
 @media (min-width: 768px) {
   .schoolCard {
     width: 400px;
-    /* Wider cards on desktop */
-    height: 500px;
+    height: 580px;
+    /* Increased for desktop premium feel */
   }
 
   .sectionTitle {

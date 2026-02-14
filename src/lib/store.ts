@@ -3015,8 +3015,8 @@ function useSchoolDataInternal() {
             if (e instanceof Error && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
                 console.error(`❌ STORAGE QUOTA EXCEEDED for ${key}!`);
 
-                // Show user-visible alert
-                alert(`⚠️ STORAGE FULL!\n\nYour browser storage is full. Recent changes to "${key}" may not be saved.\n\nPlease contact the Director to run a storage cleanup, or clear old data manually.`);
+                // Silent log instead of alert for better UX
+                console.warn(`⚠️ STORAGE FULL! Pruning old data for ${key}...`);
 
                 try {
                     // Emergency purge of heavy, non-critical data
@@ -3472,10 +3472,37 @@ function useSchoolDataInternal() {
             submittedAt: new Date().toISOString()
         };
         setSchoolApplications(prev => [newApp, ...prev]);
+        return newApp;
     };
 
-    const updateSchoolApplicationStatus = (id: string, status: SchoolApplication['status']) => {
-        setSchoolApplications(prev => prev.map(app => app.id === id ? { ...app, status } : app));
+    // CLOUD-FIRST APPLICATION SYNC
+    const submitSchoolApplication = async (appData: any) => {
+        try {
+            // 1. Local Backup (First Response)
+            const localApp = addSchoolApplication(appData);
+
+            // 2. Cloud Sync (Infinite Storage)
+            const { error } = await supabase
+                .from('school_applications')
+                .insert([{
+                    id: localApp.id,
+                    school_id: appData.schoolId,
+                    school_name: appData.schoolName,
+                    applicant_name: appData.applicantName,
+                    email: appData.applicantEmail,
+                    phone: appData.applicantPhone,
+                    status: 'pending',
+                    full_data: appData, // Store detailed blob in cloud
+                    created_at: new Date().toISOString()
+                }]);
+
+            if (error) throw error;
+            console.log("🚀 Application Synced to Cloud Successfully.");
+            return true;
+        } catch (err) {
+            console.error("Cloud Sync Failed, application remains local:", err);
+            return false;
+        }
     };
 
     const [postHistory, setPostHistory] = useState<PostHistoryItem[]>(() => {
@@ -5019,6 +5046,7 @@ function useSchoolDataInternal() {
         deleteFeaturedSchool,
         schoolApplications,
         addSchoolApplication,
+        submitSchoolApplication,
         updateSchoolApplicationStatus,
         addStudent,
         addStaffAccount,
