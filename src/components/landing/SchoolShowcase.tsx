@@ -62,7 +62,7 @@ const SchoolShowcase = () => {
             <div className={styles.horizontalScrollContainer}>
                 {finalSchools.map(school => (
                     <div key={school.id} className={styles.schoolCard}>
-                        <Link href={`/apply/${school.id}`} className="block w-full h-[60%] overflow-hidden">
+                        <Link href={`/apply/${school.id}`} className="block w-full overflow-hidden shrink-0">
                             <div className={styles.schoolCardImage} style={{ backgroundImage: `url(${school.image})` }}>
                                 <div className={styles.schoolCardOverlay}></div>
                             </div>
@@ -81,21 +81,31 @@ const SchoolShowcase = () => {
                                     <h3 className={styles.schoolName}>{school.name}</h3>
                                     <p className={styles.schoolTagline}>{school.tagline}</p>
                                 </div>
-                                <div className="flex gap-2 mt-4">
+                                <div className="flex gap-3 mt-4">
                                     <Link href={`/apply/${school.id}`} className="flex-1">
-                                        <button className={styles.btnSecondary} style={{ width: '100%', background: 'white', color: 'black', border: 'none', padding: '0.6rem 1rem', fontSize: '13px', fontWeight: '800' }}>
+                                        <button className={styles.btnSecondary} style={{
+                                            width: '100%',
+                                            background: 'white',
+                                            color: 'black',
+                                            border: 'none',
+                                            padding: '0.8rem 1.2rem',
+                                            fontSize: '14px',
+                                            fontWeight: '800',
+                                            boxShadow: '0 4px 15px rgba(255,255,255,0.15)',
+                                            borderRadius: '12px'
+                                        }}>
                                             Visit School
                                         </button>
                                     </Link>
                                     <button
                                         onClick={(e) => handleShare(e, school.id, school.name)}
-                                        className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all group flex items-center justify-center min-w-[48px]"
+                                        className="p-3 bg-white/10 hover:bg-white/20 border-2 border-white/20 rounded-xl transition-all group flex items-center justify-center min-w-[54px] shadow-lg"
                                         title="Share Application Form"
                                     >
                                         {copiedId === school.id ? (
-                                            <Check className="w-4 h-4 text-emerald-400 animate-in zoom-in duration-300" />
+                                            <Check className="w-5 h-5 text-emerald-400 animate-in zoom-in duration-300" />
                                         ) : (
-                                            <Share2 className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
+                                            <Share2 className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
                                         )}
                                     </button>
                                 </div>

@@ -138,8 +138,12 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
         }));
     };
 
+    const totalAllocated = Object.values(form.distributions).reduce((a, b) => a + Number(b), 0);
+    const isAllocationInvalid = totalAllocated > Number(form.amount);
+
     const handleSubmit = () => {
         if (!form.amount) return alert("Enter amount");
+        if (isAllocationInvalid) return alert("Allocation Error: You cannot allocate more than the student has deposited.");
         if ((paymentCategory === 'bank' || paymentCategory === 'digital_fallback' || paymentCategory === 'digital_integration') && !form.transactionId) {
             return alert("Transaction ID is required for this payment method.");
         }
@@ -409,9 +413,14 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
                             {form.particulars.length > 0 && (
                                 <div className="md:col-span-2 p-8 rounded-[2.5rem] bg-blue-500/[0.06] border border-blue-500/20 space-y-8 shadow-2xl shadow-blue-500/5">
                                     <div className="flex justify-between items-center mb-2 px-1">
-                                        <span className="text-[0.8rem] font-black uppercase tracking-[3px] text-blue-400">Distribution Matrix</span>
-                                        <div className={`px-5 py-2 rounded-full text-[0.75rem] font-black tracking-[2px] shadow-lg ${Math.abs(Object.values(form.distributions).reduce((a, b) => a + Number(b), 0) - Number(form.amount)) < 1 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
-                                            ∑ {Object.values(form.distributions).reduce((a, b) => a + Number(b), 0).toLocaleString()}
+                                        <div className="flex flex-col">
+                                            <span className="text-[0.8rem] font-black uppercase tracking-[3px] text-blue-400">Distribution Matrix</span>
+                                            {isAllocationInvalid && (
+                                                <span className="text-[0.6rem] font-bold text-red-500 uppercase tracking-widest mt-1 animate-pulse">⚠️ Allocation Overload: Reduce amounts</span>
+                                            )}
+                                        </div>
+                                        <div className={`px-5 py-2 rounded-full text-[0.75rem] font-black tracking-[2px] shadow-lg ${isAllocationInvalid ? 'bg-red-500 text-white animate-bounce' : Math.abs(totalAllocated - Number(form.amount)) < 1 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                                            ∑ {totalAllocated.toLocaleString()}
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
@@ -445,7 +454,7 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
                                                     : manualPaymentMethods.filter(m => m.category === 'digital_fallback' && m.status === 'active').map(m => m.name);
                                             setForm(f => ({ ...f, type: uOptions[0] || '' }));
                                         }}
-                                        disabled={!!existingPayment || isBalanceFix || !!isExternalIntegration || isApproved}
+                                        disabled={isApproved || !!isExternalIntegration || isBalanceFix}
                                     >
                                         <option value="cash">Cash Collection</option>
                                         <option value="bank">Bank Accounts</option>
@@ -464,7 +473,7 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
                                         className="form-glass-input w-full p-5 font-black text-lg appearance-none cursor-pointer bg-white/[0.08]"
                                         value={form.type}
                                         onChange={e => setForm({ ...form, type: e.target.value })}
-                                        disabled={!!existingPayment || isBalanceFix || !!isExternalIntegration || isApproved}
+                                        disabled={isApproved || !!isExternalIntegration || isBalanceFix}
                                     >
                                         {paymentCategory === 'digital_integration' ? (
                                             <>
@@ -525,9 +534,13 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
 
                     {/* Actions Fixed at bottom */}
                     <div className="p-8 md:p-10 bg-[#0A0A0A] border-t border-white/10 flex gap-5 shadow-2xl">
-                        <button onClick={handleSubmit} className="flex-1 p-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-[3px] text-sm md:text-base transition-all shadow-xl shadow-blue-500/30 active:scale-95 flex items-center justify-center gap-3">
-                            <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                            {existingPayment ? 'Update Ledger Entry' : 'Post Transaction'}
+                        <button
+                            onClick={handleSubmit}
+                            disabled={isAllocationInvalid}
+                            className={`flex-1 p-5 rounded-2xl text-white font-black uppercase tracking-[3px] text-sm md:text-base transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 ${isAllocationInvalid ? 'bg-slate-800 cursor-not-allowed grayscale' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/30'}`}
+                        >
+                            {!isAllocationInvalid && <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>}
+                            {isAllocationInvalid ? 'Invalid Allocation' : existingPayment ? 'Update Ledger Entry' : 'Post Transaction'}
                         </button>
                         <button onClick={onClose} className="px-12 p-5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-[3px] text-sm md:text-base transition-all border border-white/20 active:scale-95">
                             Dismiss

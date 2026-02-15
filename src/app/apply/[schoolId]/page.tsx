@@ -97,27 +97,65 @@ export default function SchoolApplicationPage() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = base64Str;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.7)); // 70% quality jpeg
+            };
+        });
+    };
+
     const handleSubmit = async () => {
         if (!formData.agreed) return alert("Please agree to the declaration.");
         setSubmitting(true);
 
-        // Use the new Cloud-First submission
-        await (submitSchoolApplication as any)({
-            schoolId: school!.id,
-            schoolName: school!.name,
-            applicantName: `${formData.firstName} ${formData.lastName}`,
-            applicantEmail: formData.email,
-            applicantPhone: formData.phone,
-            profilePhoto: profilePhoto || undefined,
-            academicResults: academicResults || undefined,
-            ...formData
-        });
+        try {
+            // Compress images before sending to save storage
+            const optimizedPhoto = profilePhoto ? await compressImage(profilePhoto, 400, 400) : undefined;
+            const optimizedResults = academicResults ? await compressImage(academicResults, 1000, 1000) : undefined;
 
-        setTimeout(() => {
+            // Use the new Cloud-First submission
+            await (submitSchoolApplication as any)({
+                schoolId: school!.id,
+                schoolName: school!.name,
+                applicantName: `${formData.firstName} ${formData.lastName}`,
+                applicantEmail: formData.email,
+                applicantPhone: formData.phone,
+                profilePhoto: optimizedPhoto,
+                academicResults: optimizedResults,
+                ...formData
+            });
+
             setSubmitting(false);
             setSubmitted(true);
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 1500);
+        } catch (err) {
+            console.error("Submission failed:", err);
+            setSubmitting(false);
+            alert("External Sync Failed. Please check your internet and try again.");
+        }
     };
 
     if (notFound) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-center p-8">School Not Found <Link href="/" className="text-blue-600 block mt-4">Go Home</Link></div></div>;

@@ -902,7 +902,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{student_name}}': selectedStudent.name,
             '{{pay_code}}': selectedStudent.payCode || 'N/A',
             '{{programme_name}}': prog?.name || selectedStudent.programme || '',
-            '{{current_level}}': selectedStudent.semester,
+            '{{current_level}}': selectedStudent.level === selectedStudent.semester ? (selectedStudent.level || 'N/A') : `${selectedStudent.level || ''} ${selectedStudent.semester || ''}`.trim() || 'N/A',
             '{{clearance_status}}': selectedStudent.accountStatus?.toUpperCase() || 'UNKNOWN',
             '{{financial_percentage}}': clearancePercentage.toFixed(1) + '%',
             '{{compulsory_services_list}}': compulsoryListHtml,
@@ -1070,6 +1070,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             '{{institution_address}}': schoolProfile?.poBox || 'P.O. Box 000, Kampala',
             '{{institution_contact}}': schoolProfile?.phone || schoolProfile?.email || '',
             '{{institution_email}}': schoolProfile?.email || '',
+            '{{programme_logo}}': logoHtml, // Programme-specific logo
+            '{{current_level}}': selectedStudent.level === selectedStudent.semester ? (selectedStudent.level || 'N/A') : `${selectedStudent.level || ''} ${selectedStudent.semester || ''}`.trim() || 'N/A', // Dynamic Level/Semester
         };
 
         // Robust Replacement Logic (handles optional spaces inside braces)

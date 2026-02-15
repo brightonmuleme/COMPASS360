@@ -26,8 +26,6 @@ const PortalShowcase: React.FC<PortalShowcaseProps> = ({ title, tagline, imageSr
                             backgroundImage: `linear-gradient(180deg, ${themeColor} 0%, rgba(255, 255, 255, 0.7) 100%)`,
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
-                            fontSize: '5rem', // Make it really pop
-                            lineHeight: 1.1
                         } : {}}
                     >
                         {title}
@@ -45,16 +43,8 @@ const PortalShowcase: React.FC<PortalShowcaseProps> = ({ title, tagline, imageSr
                             Learn more
                         </button>
                         <button
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: themeColor || '#fff',
-                                padding: '10px 20px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '1rem',
-                                textDecoration: 'underline'
-                            }}
+                            className={styles.btnText}
+                            style={themeColor ? { color: themeColor } : {}}
                             onClick={onSignIn}
                         >
                             Sign In

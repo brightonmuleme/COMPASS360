@@ -3002,6 +3002,16 @@ function useSchoolDataInternal() {
                 }));
             }
 
+            // STRIP BULKY DATA FROM APPLICATIONS LOCALLY (Keep only text)
+            if (key === 'app_school_applications_v1') {
+                valueToSave = (value as any[]).slice(-50).map(app => ({
+                    ...app,
+                    profilePhoto: undefined, // Only keep images in the Cloud, not local storage
+                    academicResults: undefined,
+                    full_data: undefined
+                }));
+            }
+
             // PRUNE DELETED ITEMS: Keep only last 100 deleted billings/payments
             if (key === 'school_deleted_billings_v1') {
                 valueToSave = (value as any[]).slice(-100);
