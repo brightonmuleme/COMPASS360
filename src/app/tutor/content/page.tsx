@@ -309,6 +309,7 @@ export default function TutorContentLibrary() {
     const [minimizedContent, setMinimizedContent] = useState<TutorContent | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>('content');
     const [activeTab, setActiveTab] = useState<'Home' | 'Note' | 'Video' | 'Question'>('Home');
+    const [isFocusMode, setIsFocusMode] = useState(false); // NEW: Focus Mode State
     const [selectedProg, setSelectedProg] = useState<string>('');
     const [selectedLevel, setSelectedLevel] = useState<string>('All Levels');
     const [selectedCU, setSelectedCU] = useState<string | null>(null);
@@ -656,7 +657,21 @@ export default function TutorContentLibrary() {
                     thumbnailUrl: finalThumbnailUrl || existing.thumbnailUrl,
                 };
                 updateTutorContent(updatedContent);
-                // TODO: Update in DB
+
+                // Update in DB
+                await databaseService.updateTutorContent(editingId, {
+                    title: uploadForm.title,
+                    description: uploadForm.description,
+                    type: uploadForm.fileType,
+                    file_url: finalUrl || existing.url,
+                    thumbnail_url: finalThumbnailUrl || existing.thumbnailUrl,
+                    status: uploadForm.status,
+                    metadata: {
+                        programmeIds,
+                        levels,
+                        courseUnitIds: uploadForm.selectedCUIds
+                    }
+                });
             } else {
                 const dbContent = {
                     tutor_id: currentTutorId,
@@ -744,9 +759,14 @@ export default function TutorContentLibrary() {
         setIsUploadModalOpen(true);
     };
 
-    const deleteContent = (id: string) => {
+    const deleteContent = async (id: string) => {
         if (confirm("Are you sure you want to delete this content?")) {
-            deleteTutorContent(id);
+            try {
+                await databaseService.deleteTutorContent(id);
+                deleteTutorContent(id);
+            } catch (error: any) {
+                alert("Failed to delete from cloud: " + error.message);
+            }
         }
     }
 
@@ -822,7 +842,7 @@ export default function TutorContentLibrary() {
     return (
         <div className="min-h-screen pb-20 bg-[#050505] text-gray-100">
             {/* Header / Profile Section */}
-            <div className="relative h-64 md:h-80 w-full overflow-hidden">
+            <div className="relative min-h-[400px] md:h-80 w-full overflow-hidden">
                 {/* Cover Image */}
                 <div className="absolute inset-0 bg-gray-900">
                     {tutorProfile.coverImage ? (
@@ -830,70 +850,82 @@ export default function TutorContentLibrary() {
                     ) : (
                         <div className="w-full h-full bg-gradient-to-r from-blue-900/40 to-purple-900/40" />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-[#050505]/40 md:via-[#050505]/60 md:to-transparent" />
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-8">
-                    <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-end gap-6">
+                <div className="relative h-full max-w-7xl mx-auto px-4 md:px-8 pt-20 pb-6 md:pb-8 flex flex-col justify-end">
+                    <div className="flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6">
                         {/* Profile Image */}
-                        <div className="relative group">
-                            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-[#050505] overflow-hidden bg-gray-800 shadow-2xl relative z-10">
+                        <div className="relative group shrink-0">
+                            <div className="w-28 h-28 md:w-40 md:h-40 rounded-full border-4 border-[#050505] overflow-hidden bg-gray-800 shadow-2xl relative z-10">
                                 {tutorProfile.profileImage ? (
                                     <img src={tutorProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-gray-600 bg-gray-900">
+                                    <div className="w-full h-full flex items-center justify-center text-3xl md:text-4xl font-bold text-gray-600 bg-gray-900">
                                         {tutorProfile.name.charAt(0)}
                                     </div>
                                 )}
                             </div>
                             <button
                                 onClick={() => setIsProfileModalOpen(true)}
-                                className="absolute bottom-2 right-2 z-20 bg-blue-600 p-2 rounded-full text-white shadow-lg hover:bg-blue-500 transition-colors opacity-0 group-hover:opacity-100"
+                                className="absolute bottom-1 right-1 md:bottom-2 md:right-2 z-20 bg-blue-600 p-2 rounded-full text-white shadow-lg hover:bg-blue-500 transition-colors"
                                 title="Edit Profile"
                             >
-                                <Pencil size={16} />
+                                <Pencil size={14} />
                             </button>
                         </div>
 
-                        <div className="flex-1 mb-2">
-                            <h1 className="text-4xl font-bold text-white mb-2">{tutorProfile.name}</h1>
-                            <p className="text-gray-400 max-w-2xl text-lg">{tutorProfile.bio}</p>
+                        <div className="flex-1 text-center md:text-left">
+                            <h1 className="text-2xl md:text-4xl font-bold text-white mb-1">{tutorProfile.name}</h1>
+                            <p className="text-gray-400 max-w-2xl text-sm md:text-lg line-clamp-2 md:line-clamp-none">{tutorProfile.bio}</p>
                         </div>
 
-                        <div className="flex gap-3 mb-4 items-center">
-                            <div className="relative group">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-400" size={20} />
+                        <div className="flex flex-row flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto mt-4 md:mt-0">
+                            <div className="relative group flex-1 md:flex-none min-w-[120px]">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
                                 <input
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search library..."
-                                    className="pl-10 pr-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all w-64 shadow-inner"
+                                    placeholder="Search..."
+                                    className="pl-8 pr-3 py-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-all w-full md:w-40 text-[10px] md:text-sm"
                                 />
                             </div>
                             <button
                                 onClick={() => setIsDraftsModalOpen(true)}
-                                className="px-5 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl font-bold border border-gray-700 transition-all flex items-center gap-2 hover:border-gray-500"
+                                className="px-3 py-2 bg-gray-800/50 text-gray-400 rounded-xl font-bold border border-gray-800 transition-all flex items-center gap-1.5 text-[10px] md:text-sm"
                             >
-                                <FileText size={20} />
-                                <span>Drafts {drafts.length > 0 && `(${drafts.length})`}</span>
+                                <FileText size={14} />
+                                <span className="hidden sm:inline">Drafts</span>
+                                {drafts.length > 0 && `(${drafts.length})`}
                             </button>
                             <button
                                 onClick={openUploadModal}
-                                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2"
+                                className="px-3 py-2 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/10 transition-all flex items-center gap-1.5 text-[10px] md:text-sm"
                             >
-                                <Plus size={20} />
-                                <span>Upload Content</span>
+                                <Plus size={14} />
+                                <span>Upload</span>
+                            </button>
+                            <button
+                                onClick={() => setIsFocusMode(!isFocusMode)}
+                                className={`px-3 py-2 rounded-xl font-bold border transition-all flex items-center gap-1.5 text-[10px] md:text-sm ${isFocusMode
+                                    ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-lg shadow-amber-500/10'
+                                    : 'bg-gray-800/50 border-gray-700 text-gray-400'
+                                    }`}
+                                title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+                            >
+                                <Eye size={14} className={isFocusMode ? "animate-pulse" : ""} />
+                                <span>{isFocusMode ? "Focused" : "Focus"}</span>
                             </button>
                             <button
                                 onClick={() => setViewMode(viewMode === 'content' ? 'programme-config' : 'content')}
-                                className={`px-6 py-3 rounded-xl font-bold border transition-all flex items-center gap-2 ${viewMode === 'programme-config'
+                                className={`px-3 py-2 rounded-xl font-bold border transition-all flex items-center gap-1.5 text-[10px] md:text-sm ${viewMode === 'programme-config'
                                     ? 'bg-blue-500/10 border-blue-500 text-blue-400'
-                                    : 'bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-gray-500'
+                                    : 'bg-gray-800/50 border-gray-700 text-gray-400'
                                     }`}
                             >
-                                <Settings size={20} />
-                                <span>{viewMode === 'content' ? 'Configure Programmes' : 'Back to Content'}</span>
+                                <Settings size={14} />
+                                <span>{viewMode === 'content' ? 'Config' : 'Repo'}</span>
                             </button>
                         </div>
                     </div>
@@ -1034,57 +1066,59 @@ export default function TutorContentLibrary() {
                     // CONTENT VIEW
                     <div className="animate-fade-in space-y-6">
                         {/* Filters & Search */}
-                        <div className={`transition-all duration-300 ${activeTab === 'Home' ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
-                            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                                <div className="relative group">
-                                    <select
-                                        className="appearance-none bg-gray-900 border border-gray-700 text-gray-200 pl-4 pr-10 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-500/50 outline-none text-sm font-medium min-w-[200px] hover:border-gray-600 transition-colors cursor-pointer"
-                                        value={selectedProg}
-                                        onChange={e => { setSelectedProg(e.target.value); setSelectedLevel('All Levels'); setSelectedCU(null); }}
-                                    >
-                                        <option value="">All Programmes</option>
-                                        {programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-gray-200" />
-                                </div>
-
-                                <div className="h-8 w-px bg-gray-700 hidden md:block" />
-
-                                <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-                                    <button
-                                        onClick={() => { setSelectedLevel('All Levels'); setSelectedCU(null); }}
-                                        className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === 'All Levels' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
-                                    >
-                                        All Levels
-                                    </button>
-                                    {repoLevels.map(lvl => (
-                                        <button
-                                            key={lvl}
-                                            onClick={() => { setSelectedLevel(lvl); setSelectedCU(null); }}
-                                            className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === lvl ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                        {!isFocusMode && (
+                            <div className={`transition-all duration-300 ${activeTab === 'Home' ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
+                                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                                    <div className="relative group">
+                                        <select
+                                            className="appearance-none bg-gray-900 border border-gray-700 text-gray-200 pl-4 pr-10 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-500/50 outline-none text-sm font-medium min-w-[200px] hover:border-gray-600 transition-colors cursor-pointer"
+                                            value={selectedProg}
+                                            onChange={e => { setSelectedProg(e.target.value); setSelectedLevel('All Levels'); setSelectedCU(null); }}
                                         >
-                                            {lvl}
+                                            <option value="">All Programmes</option>
+                                            {programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-gray-200" />
+                                    </div>
+
+                                    <div className="h-8 w-px bg-gray-700 hidden md:block" />
+
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+                                        <button
+                                            onClick={() => { setSelectedLevel('All Levels'); setSelectedCU(null); }}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === 'All Levels' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                                        >
+                                            All Levels
                                         </button>
-                                    ))}
+                                        {repoLevels.map(lvl => (
+                                            <button
+                                                key={lvl}
+                                                onClick={() => { setSelectedLevel(lvl); setSelectedCU(null); }}
+                                                className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === lvl ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                                            >
+                                                {lvl}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Tabs */}
-                        <div className="flex gap-1 mb-6 border-b border-gray-800 pb-1">
+                        <div className="flex gap-1 mb-6 border-b border-gray-800 pb-1 overflow-x-auto custom-scrollbar no-scrollbar-on-mobile">
                             {(['Home', 'Note', 'Video', 'Question'] as ContentType[]).map(type => (
                                 <button
                                     key={type}
                                     onClick={() => { setActiveTab(type); setSelectedCU(null); }}
-                                    className={`flex-1 md:flex-none px-2 py-2 md:px-6 md:py-3 rounded-t-xl font-bold text-[10px] md:text-sm transition-all flex items-center justify-center gap-1 md:gap-2 whitespace-nowrap ${activeTab === type
+                                    className={`flex-1 md:flex-none px-3 py-2 md:px-6 md:py-3 rounded-t-xl font-bold text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap ${activeTab === type
                                         ? 'text-blue-400 border-b-2 border-blue-500 bg-gradient-to-t from-blue-500/10 to-transparent'
                                         : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                                         }`}
                                 >
-                                    {type === 'Home' && <div className="hidden md:block">🏠</div>}
-                                    {type === 'Note' && <FileText className="w-3 h-3 md:w-4 md:h-4" />}
-                                    {type === 'Video' && <Play className="w-3 h-3 md:w-4 md:h-4" />}
-                                    {type === 'Question' && <HelpCircle className="w-3 h-3 md:w-4 md:h-4" />}
+                                    {type === 'Home' && <span>🏠</span>}
+                                    {type === 'Note' && <FileText className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                                    {type === 'Video' && <Play className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-500 fill-red-500" />}
+                                    {type === 'Question' && <HelpCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                                     <span>
                                         {type === 'Home' && 'HOME'}
                                         {type === 'Note' && 'NOTES'}
@@ -1161,7 +1195,7 @@ export default function TutorContentLibrary() {
                                             <div className="w-1 h-6 bg-blue-500 rounded-full" />
                                             Recent Uploads
                                         </h3>
-                                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-6">
+                                        <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
                                             {homeContent.slice(0, 8).map(c => (
                                                 <div key={c.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all group relative cursor-pointer" onClick={() => handleViewContent(c)}>
                                                     <div className="aspect-video bg-gray-950 relative">
@@ -1232,29 +1266,34 @@ export default function TutorContentLibrary() {
                             ) : (
                                 // LIST VIEW (With Filter Logic)
                                 <div className="flex flex-col md:flex-row gap-6">
-                                    <div className="w-full md:w-64 shrink-0 space-y-2">
-                                        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
-                                            <h3 className="font-bold text-gray-300 mb-4 px-2">Course Units</h3>
-                                            <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                                                <button
-                                                    onClick={() => setSelectedCU(null)}
-                                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!selectedCU ? 'bg-blue-600 text-white font-medium' : 'text-gray-400 hover:bg-white/5'}`}
-                                                >
-                                                    All Units
-                                                </button>
-                                                {availableCourseUnits.map(cu => (
+                                    {!isFocusMode && (
+                                        <div className="w-full md:w-64 shrink-0 space-y-2 animate-in slide-in-from-left duration-300">
+                                            <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl sticky top-4">
+                                                <h3 className="font-bold text-gray-300 mb-4 px-2 flex items-center gap-2">
+                                                    <BookOpen size={16} className="text-blue-500" />
+                                                    Course Units
+                                                </h3>
+                                                <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                                                     <button
-                                                        key={cu.id}
-                                                        onClick={() => setSelectedCU(cu.id)}
-                                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors line-clamp-1 ${selectedCU === cu.id ? 'bg-blue-600 text-white font-medium' : 'text-gray-400 hover:bg-white/5'}`}
-                                                        title={cu.name}
+                                                        onClick={() => setSelectedCU(null)}
+                                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!selectedCU ? 'bg-blue-600 text-white font-medium shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:bg-white/5'}`}
                                                     >
-                                                        {cu.code} - {cu.name}
+                                                        All Units
                                                     </button>
-                                                ))}
+                                                    {availableCourseUnits.map(cu => (
+                                                        <button
+                                                            key={cu.id}
+                                                            onClick={() => setSelectedCU(cu.id)}
+                                                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors line-clamp-1 ${selectedCU === cu.id ? 'bg-blue-600 text-white font-medium shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:bg-white/5'}`}
+                                                            title={cu.name}
+                                                        >
+                                                            {cu.code} - {cu.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div className="flex-1">
                                         {/* Content Grid */}
@@ -1385,13 +1424,13 @@ export default function TutorContentLibrary() {
                     <div className="bg-[#0A0A0A] border border-gray-800 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
 
                         {/* Modal Header */}
-                        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-[#0F0F0F]">
+                        <div className="p-4 md:p-6 border-b border-gray-800 flex justify-between items-center bg-[#0F0F0F] shrink-0">
                             <div>
-                                <h2 className="text-xl font-bold text-gray-100 flex items-center gap-2">
+                                <h2 className="text-lg md:text-xl font-bold text-gray-100 flex items-center gap-2">
                                     {uploadStep === 'file' ? 'Upload Content' : 'Content Details'}
                                 </h2>
-                                <p className="text-gray-400 text-sm mt-1">
-                                    {uploadStep === 'file' ? 'Select a file to begin' : 'Add metadata and target audience'}
+                                <p className="text-gray-400 text-[10px] md:text-sm mt-0.5 md:mt-1">
+                                    {uploadStep === 'file' ? 'Select a file to begin' : 'Add metadata and target'}
                                 </p>
                             </div>
                             <button onClick={() => setIsUploadModalOpen(false)} className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition-colors">
@@ -1404,10 +1443,11 @@ export default function TutorContentLibrary() {
                             {uploadStep === 'file' ? (
                                 <div className="space-y-8 max-w-2xl mx-auto py-8">
                                     {/* Drag & Drop Area */}
-                                    <div className="border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-3xl p-12 text-center group hover:border-blue-500 hover:bg-gray-900 transition-all cursor-pointer relative">
+                                    <div className="border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-2xl md:rounded-3xl p-8 md:p-12 text-center group hover:border-blue-500 hover:bg-gray-900 transition-all cursor-pointer relative">
                                         <input
                                             type="file"
                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            accept="video/*,application/pdf,image/*"
                                             onChange={async e => {
                                                 if (e.target.files?.[0]) {
                                                     const file = e.target.files[0];
@@ -1434,12 +1474,12 @@ export default function TutorContentLibrary() {
                                                 }
                                             }}
                                         />
-                                        <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                                            <Upload size={32} className="text-blue-500" />
+                                        <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 md:mb-6 group-hover:scale-110 transition-transform">
+                                            <Upload className="w-6 h-6 md:w-8 md:h-8 text-blue-500" />
                                         </div>
-                                        <h3 className="text-2xl font-bold text-white mb-2">Drag & Drop file here</h3>
-                                        <p className="text-gray-400 mb-6">or click to browse your computer</p>
-                                        <div className="flex gap-4 justify-center text-sm text-gray-500 font-mono">
+                                        <h3 className="text-xl md:text-2xl font-bold text-white mb-2">Tap to select file</h3>
+                                        <p className="text-xs md:text-sm text-gray-400 mb-4 md:mb-6">Upload notes, videos or images</p>
+                                        <div className="flex gap-4 justify-center text-[10px] md:text-sm text-gray-500 font-mono">
                                             <span>PDF</span>
                                             <span>MP4</span>
                                             <span>PNG</span>

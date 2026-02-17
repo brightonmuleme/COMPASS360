@@ -484,7 +484,9 @@ export interface TutorProfile {
     name: string;
     email: string;
     role: 'Tutor';
+    schoolId?: string; // Add schoolId link
     subscriptionDaysLeft?: number;
+    pinnedContentId?: string | null;
 }
 
 export interface DeveloperProfile {
@@ -2345,6 +2347,47 @@ function useSchoolDataInternal() {
 
     // --- TUTOR LIST SYNC ---
     // Ensure the logged-in tutor is always in the master list so pages that use tutors.find() don't break
+
+    const loadTutorContentFromCloud = async (tutorId?: string) => {
+        try {
+            console.log('☁️ CLOUD: Loading tutor content...');
+            const data = await databaseService.getTutorContents(tutorId);
+
+            if (data) {
+                const mapped: TutorContent[] = data.map((d: any) => ({
+                    id: d.id,
+                    tutorId: d.tutor_id,
+                    type: d.type,
+                    title: d.title,
+                    description: d.description,
+                    url: d.file_url,
+                    thumbnailUrl: d.thumbnail_url,
+                    status: d.status,
+                    uploadDate: d.created_at,
+                    programmeIds: d.metadata?.programmeIds || [],
+                    levels: d.metadata?.levels || [],
+                    courseUnitIds: d.metadata?.courseUnitIds || [],
+                    likes: d.likes || 0,
+                    views: d.views || 0,
+                    isFeatured: d.is_featured || false
+                }));
+
+                setTutorContents(mapped);
+                safeSetItem('school_tutor_contents_v1', mapped);
+            }
+        } catch (error) {
+            console.error('☁️ CLOUD ERROR: Failed to load tutor content:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (hydrated) {
+            // Tutors see their own content for management, students see global library
+            const tid = tutorProfile?.id;
+            loadTutorContentFromCloud(tid);
+        }
+    }, [hydrated, tutorProfile?.id]);
+
     useEffect(() => {
         if (hydrated && tutorProfile && !tutors.find(t => t.id === tutorProfile.id)) {
             setTutors(prev => [...prev, {
@@ -5214,6 +5257,9 @@ function useSchoolDataInternal() {
         portalData,
         updatePortalData,
         verifySensitiveAction,
+
+        // Cloud Actions
+        loadTutorContentFromCloud,
 
         // Time Utilities
         getSyncedDate,

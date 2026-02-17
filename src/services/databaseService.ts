@@ -27,9 +27,9 @@ export const databaseService = {
 
     // --- CONTENT ---
 
-    getTutorContents: async (schoolId?: string) => {
+    getTutorContents: async (tutorId?: string) => {
         let query = supabase.from('tutor_contents').select('*');
-        if (schoolId) query = query.eq('school_id', schoolId);
+        if (tutorId) query = query.eq('tutor_id', tutorId);
 
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
@@ -44,6 +44,27 @@ export const databaseService = {
 
         if (error) throw error;
         return data[0];
+    },
+
+    updateTutorContent: async (id: string, content: any) => {
+        const { data, error } = await supabase
+            .from('tutor_contents')
+            .update(content)
+            .eq('id', id)
+            .select();
+
+        if (error) throw error;
+        return data[0];
+    },
+
+    deleteTutorContent: async (id: string) => {
+        const { error } = await supabase
+            .from('tutor_contents')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
     },
 
     submitSchoolApplication: async (application: any) => {

@@ -179,80 +179,74 @@ export default function TutorSettingsPage() {
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6 block text-center">Student-Facing Pass Preview</label>
                     <div className="relative group">
                         {/* THE CARD */}
-                        <div className="aspect-[1.58/1] w-full max-w-lg mx-auto bg-[#050505] rounded-[2.5rem] border border-white/10 p-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden transition-all group-hover:shadow-blue-500/10 group-hover:border-white/20">
+                        <div className="aspect-[1.58/1] w-full max-w-lg mx-auto bg-[#050505] rounded-[2rem] md:rounded-[2.5rem] border border-white/10 p-5 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden transition-all group-hover:shadow-blue-500/10 group-hover:border-white/20">
                             {/* Improved Decorative Blobs */}
-                            <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full animate-pulse" />
-                            <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-purple-600/15 blur-[100px] rounded-full" />
+                            <div className="absolute top-[-20%] right-[-10%] w-32 md:w-64 h-32 md:h-64 bg-blue-600/20 blur-[60px] md:blur-[100px] rounded-full animate-pulse" />
+                            <div className="absolute bottom-[-20%] left-[-10%] w-32 md:w-64 h-32 md:h-64 bg-purple-600/15 blur-[60px] md:blur-[100px] rounded-full" />
 
                             {/* Subtle Glassmorphism Inner Border */}
-                            <div className="absolute inset-2 rounded-[2rem] border border-white/5 pointer-events-none" />
+                            <div className="absolute inset-1.5 md:inset-2 rounded-[1.5rem] md:rounded-[2rem] border border-white/5 pointer-events-none" />
 
                             <div className="relative h-full flex flex-col justify-between z-10">
                                 <div className="flex justify-between items-start">
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-sm font-black text-white shadow-lg shadow-blue-500/20">
+                                    <div className="space-y-1 md:space-y-1.5">
+                                        <div className="flex items-center gap-2 md:gap-3">
+                                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[10px] md:text-sm font-black text-white shadow-lg shadow-blue-500/20">
                                                 {tutor.name[0]}
                                             </div>
                                             <div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-white font-black text-base tracking-tight">{tutor.name}</span>
-                                                    <ShieldCheck size={16} className="text-blue-500" />
+                                                <div className="flex items-center gap-1 md:gap-1.5">
+                                                    <span className="text-white font-black text-xs md:text-base tracking-tight truncate max-w-[80px] md:max-w-none">{tutor.name}</span>
+                                                    <ShieldCheck size={14} className="text-blue-500 shrink-0" />
                                                 </div>
-                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{tutor.department || 'Independent Creator'}</p>
+                                                <p className="text-[8px] md:text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate max-w-[80px] md:max-w-none">{tutor.department || 'Independent'}</p>
                                             </div>
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-2xl font-black text-white">{formatMoney(price)}</div>
-                                        <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest">{duration} ACCESS</div>
+                                        <div className="text-base md:text-2xl font-black text-white">{formatMoney(price)}</div>
+                                        <div className="text-[8px] md:text-[10px] text-blue-500 font-black uppercase tracking-widest">{duration}</div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-2">
+                                <div className="space-y-2 md:space-y-4">
+                                    <div className="text-[8px] md:text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-2">
                                         <div className="h-[1px] flex-1 bg-gray-800" />
-                                        <span>Pass Coverage</span>
+                                        <span>Coverage</span>
                                         <div className="h-[1px] flex-1 bg-gray-800" />
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {coveredServices.slice(0, 4).map(s => (
-                                            <span key={s} className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-[10px] font-bold text-gray-300 backdrop-blur-md">
+                                    <div className="flex flex-wrap gap-1 md:gap-2 max-h-[40px] md:max-h-none overflow-hidden">
+                                        {coveredServices.slice(0, 3).map(s => (
+                                            <span key={s} className="bg-white/5 border border-white/10 px-2 md:px-3 py-1 md:py-1.5 rounded-md md:rounded-lg text-[8px] md:text-[10px] font-bold text-gray-300 backdrop-blur-md">
                                                 {s}
                                             </span>
                                         ))}
-                                        {coveredServices.length > 4 && (
-                                            <span className="text-[10px] font-bold text-blue-500 bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20">+{coveredServices.length - 4} more</span>
+                                        {coveredServices.length > 3 && (
+                                            <span className="text-[8px] md:text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-1 md:py-1.5 rounded-md md:rounded-lg border border-blue-500/20">+{coveredServices.length - 3}</span>
                                         )}
                                         {coveredServices.length === 0 && (
-                                            <span className="text-[10px] text-gray-600 font-medium italic">Full Content Library Access</span>
+                                            <span className="text-[8px] md:text-[10px] text-gray-600 font-medium italic">Full Content Access</span>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="flex justify-between items-end pt-6 border-t border-white/5 mt-4">
-                                    <div className="flex gap-6">
-                                        <div className="flex items-center gap-2 text-gray-400 group-hover:text-blue-400 transition-colors">
-                                            <Video size={14} />
-                                            <span className="text-[11px] font-black uppercase tracking-tighter">{tutor.stats?.uploads || 0} Lessons</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-gray-400">
-                                            <FileText size={14} />
-                                            <span className="text-[11px] font-black uppercase tracking-tighter">Resources</span>
-                                        </div>
+                                <div className="flex justify-between items-end pt-3 md:pt-6 border-t border-white/5 mt-2 md:mt-4">
+                                    <div className="flex items-center gap-1 md:gap-2 text-gray-400">
+                                        <Video className="w-3 h-3 md:w-4 md:h-4" />
+                                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-tighter">{tutor.stats?.uploads || 0} Lessons</span>
                                     </div>
-                                    <button className="bg-blue-600 hover:bg-blue-500 hover:scale-105 active:scale-95 text-white text-[10px] font-black uppercase tracking-[0.15em] px-8 py-3.5 rounded-2xl transition-all shadow-[0_10px_25px_rgba(37,99,235,0.3)]">
+                                    <button className="bg-blue-600 hover:bg-blue-500 hover:scale-105 active:scale-95 text-white text-[8px] md:text-[10px] font-black uppercase tracking-widest px-4 md:px-8 py-2 md:py-3.5 rounded-xl md:rounded-2xl transition-all shadow-[0_10px_25px_rgba(37,99,235,0.3)]">
                                         Buy Pass
                                     </button>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Floating Tooltip */}
-                        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-black border border-gray-800 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md">
-                            <Users size={14} className="text-green-500" />
-                            <span className="text-[9px] font-black text-white uppercase tracking-widest">2.4k Students Active</span>
-                        </div>
+                    {/* Floating Tooltip */}
+                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-black border border-gray-800 px-4 py-2 rounded-full flex items-center gap-3 shadow-xl backdrop-blur-md">
+                        <Users size={14} className="text-green-500" />
+                        <span className="text-[9px] font-black text-white uppercase tracking-widest">2.4k Students Active</span>
                     </div>
                 </div>
             </div>
