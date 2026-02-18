@@ -5,6 +5,24 @@ import { databaseService } from '@/services/databaseService';
 import { Menu, X, List, History, Settings, Plus, Edit, Trash2, AlertCircle, MoreVertical, Lock } from 'lucide-react';
 
 const SUGGESTED_UNITS = ['pcs', 'kgs', 'ltrs', 'metres', 'pairs', 'bags', 'boxes', 'tins'];
+const SUGGESTED_CATEGORIES = [
+    'Stationery', 'Cleaning Materials', 'Science Lab', 'Sports & Games',
+    'Food & Kitchen', 'Staff Room', 'Maintenance', 'Uniforms',
+    'Textbooks', 'Medical Supplies', 'ICT Equipment', 'Estate Furniture'
+];
+
+const SUGGESTED_ITEMS_BY_CATEGORY: Record<string, string[]> = {
+    'Stationery': ['Pens', 'Pencils', 'Markers', 'Chalk', 'A4 Reams', 'Exercise Books', 'Erasers', 'Rulers'],
+    'Cleaning Materials': ['Soap', 'Disinfectant', 'Mops', 'Brooms', 'Toilet Paper', 'Detergent', 'Scrubbing Brush'],
+    'Science Lab': ['Test Tubes', 'Beakers', 'Gloves', 'Spirit Lamps', 'Potassium', 'Sulphuric Acid'],
+    'Sports & Games': ['Footballs', 'Netballs', 'Jerseys', 'Cones', 'Whistles', 'Stopwatches'],
+    'Food & Kitchen': ['Sugar', 'Milk', 'Tea Leaves', 'Bread', 'Cooking Oil', 'Salt'],
+    'ICT Equipment': ['Mouse', 'Keyboard', 'VGA Cable', 'HDMI Cable', 'Power Cable', 'USB Drive'],
+    'Medical Supplies': ['Panadol', 'Bandages', 'Surgical Spirits', 'Cotton Wool', 'Gloves', 'Syringes'],
+    'Uniforms': ['Shirts', 'Trousers', 'Dresses', 'Sweaters', 'Belts', 'Socks'],
+    'General': ['Sugar', 'Milk', 'Tea Leaves', 'Drinking Water', 'Bulbs', 'Padlocks']
+};
+
 const LOG_LIMIT = 50;
 
 export default function InventoryPage() {
@@ -60,6 +78,13 @@ export default function InventoryPage() {
     const [editingLogId, setEditingLogId] = useState<string | null>(null);
     const [editLogQty, setEditLogQty] = useState('');
     const [editLogComment, setEditLogComment] = useState('');
+
+    // CATEGORY MANAGEMENT STATE
+    const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+    const [editGroupValue, setEditGroupValue] = useState('');
+    const [isAddingGroup, setIsAddingGroup] = useState(false);
+    const [newGroupValue, setNewGroupValue] = useState('');
+    const [confirmDeleteGroupId, setConfirmDeleteGroupId] = useState<string | null>(null);
 
     // COMBO ANIMATION STATE
     const [combo, setCombo] = useState<{ itemId: string; count: number; x: number; y: number; key: number } | null>(null);
@@ -271,8 +296,10 @@ export default function InventoryPage() {
         const qty = 1;
 
         // Check if reduction would result in negative quantity
-        if (action === 'reduce' && item.quantity < qty) {
-            // Don't perform action if insufficient stock
+        // CRITICAL FIX: Bypass this for Requirements as it tracks consumption (Used) 
+        // which should always be recordable even if it goes into the negatives.
+        if (action === 'reduce' && item.quantity < qty && !isRequirementsList) {
+            // Don't perform action if insufficient stock for normal lists
             return;
         }
 
@@ -467,33 +494,24 @@ export default function InventoryPage() {
 
                             {!isEditing && (
                                 <div className="flex flex-col gap-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {(log.action === 'add' || log.action === 'reduce') && !log.comment?.toLowerCase().includes('transfer') && log.comment !== 'Stock added' && (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    setEditingLogId(log.id);
-                                                    setEditLogQty(log.quantityChange.toString());
-                                                    setEditLogComment(log.comment || '');
-                                                }}
-                                                className="p-1.5 text-neutral-600 hover:text-blue-500 hover:bg-neutral-800 rounded-lg transition-all"
-                                                title="Edit Entry"
-                                            >
-                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteLog(log)}
-                                                className="p-1.5 text-neutral-600 hover:text-red-500 hover:bg-neutral-800 rounded-lg transition-all"
-                                                title="Delete Entry"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </>
-                                    )}
-                                    {(log.comment?.toLowerCase().includes('transfer') || log.action === 'transfer_in' || log.action === 'transfer_out' || log.comment === 'Stock added') && (
-                                        <div className="p-1.5 text-neutral-700" title="System Locked Entry">
-                                            <Lock className="w-3 h-3" />
-                                        </div>
-                                    )}
+                                    <button
+                                        onClick={() => {
+                                            setEditingLogId(log.id);
+                                            setEditLogQty(log.quantityChange.toString());
+                                            setEditLogComment(log.comment || '');
+                                        }}
+                                        className="p-1.5 text-neutral-600 hover:text-blue-500 hover:bg-neutral-800 rounded-lg transition-all"
+                                        title="Edit Entry"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteLog(log)}
+                                        className="p-1.5 text-neutral-600 hover:text-red-500 hover:bg-neutral-800 rounded-lg transition-all"
+                                        title="Delete Entry"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -622,13 +640,33 @@ export default function InventoryPage() {
 
             {/* MAIN CONTENT AREA */}
             <div className="flex-1 flex flex-col bg-neutral-900 overflow-hidden relative">
-                {/* Mobile Navigation Persistence: Ensures Hamburger is always available */}
-                <div className="md:hidden h-16 flex items-center px-4 shrink-0 bg-black/40 backdrop-blur-md border-b border-neutral-800 z-[40]">
-                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-400 hover:text-white">
-                        <Menu className="w-6 h-6" />
-                    </button>
-                    {!selectedListId && <span className="ml-3 text-xs font-black text-white uppercase tracking-[0.2em]">Inventory Hub</span>}
-                </div>
+                {/* Mobile Header Title (Layout handles hamburger) */}
+                {selectedListId && (
+                    <div className="md:hidden px-6 py-4 border-b border-neutral-800 flex justify-between items-center bg-black/40 backdrop-blur-md sticky top-0 z-[40]">
+                        <h2 className="text-sm font-black text-white uppercase tracking-wider truncate mr-4">
+                            {activeList?.name}
+                        </h2>
+                        <div className="flex items-center gap-1">
+                            {!isReadOnly && (
+                                <button
+                                    onClick={() => setIsManageGroupsOpen(true)}
+                                    className="p-2.5 bg-blue-600/10 text-blue-400 rounded-xl border border-blue-500/20 active:scale-90 transition-all"
+                                >
+                                    <List className="w-4 h-4" />
+                                </button>
+                            )}
+                            <button
+                                onClick={() => {
+                                    setVisibleLogsCount(LOG_LIMIT);
+                                    setIsHistoryOpen(true);
+                                }}
+                                className="p-2.5 bg-neutral-800 text-neutral-400 rounded-xl border border-neutral-700 active:scale-90 transition-all"
+                            >
+                                <History className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {!selectedListId ? (
                     <div className="h-full flex flex-col items-center justify-center text-neutral-500">
@@ -933,6 +971,25 @@ export default function InventoryPage() {
                                     value={newItemName}
                                     onChange={e => setNewItemName(e.target.value)}
                                 />
+
+                                {/* Item Suggestions */}
+                                {(() => {
+                                    const selectedGroup = listGroups.find(g => g.id === newItemGroupId);
+                                    const suggestions = SUGGESTED_ITEMS_BY_CATEGORY[selectedGroup?.name || ''] || SUGGESTED_ITEMS_BY_CATEGORY['General'];
+                                    return (
+                                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                                            {suggestions.map(s => (
+                                                <button
+                                                    key={s}
+                                                    onClick={() => setNewItemName(s)}
+                                                    className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase transition-all ${newItemName === s ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'}`}
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             <div>
@@ -1151,34 +1208,194 @@ export default function InventoryPage() {
             )}
 
 
-            {/* --- MODAL: MANAGE GROUPS (Premium Dark) --- */}
+            {/* --- MODAL: MANAGE GROUPS (Premium Dark Mobile-Optimized) --- */}
             {isManageGroupsOpen && (
                 <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-xl animate-in fade-in duration-300">
                     <div className="bg-neutral-900 border border-neutral-800 rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-500">
 
                         <div className="p-8 border-b border-neutral-800 bg-black/40 flex justify-between items-center">
                             <div>
-                                <h2 className="text-2xl font-black text-white tracking-tighter">Categories</h2>
+                                <div className="flex items-center gap-3">
+                                    <h2 className="text-2xl font-black text-white tracking-tighter">Categories</h2>
+                                    {!isAddingGroup && (
+                                        <button
+                                            onClick={() => setIsAddingGroup(true)}
+                                            className="p-1.5 px-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest animate-in fade-in zoom-in duration-300 shadow-lg shadow-blue-500/20"
+                                        >
+                                            + Add
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-[9px] text-neutral-500 font-black uppercase tracking-[0.3em] mt-2">Logical Groupings</p>
                             </div>
-                            <button onClick={() => setIsManageGroupsOpen(false)} className="bg-neutral-800 p-2.5 rounded-2xl hover:bg-neutral-700 transition-colors">
+                            <button onClick={() => {
+                                setIsManageGroupsOpen(false);
+                                setEditingGroupId(null);
+                                setIsAddingGroup(false);
+                                setConfirmDeleteGroupId(null);
+                            }} className="bg-neutral-800 p-2.5 rounded-2xl hover:bg-neutral-700 transition-colors">
                                 <X className="w-6 h-6 text-neutral-400" />
                             </button>
                         </div>
-                        <div className="p-8 max-h-[50vh] overflow-y-auto no-scrollbar space-y-3">
+
+                        <div className="p-6 max-h-[50vh] overflow-y-auto no-scrollbar space-y-3">
+                            {/* Input Form at the TOP for better mobile visibility */}
+                            {isAddingGroup && (
+                                <div className="p-4 bg-blue-600/5 rounded-[2rem] border border-blue-500/20 animate-in slide-in-from-top-4 duration-500 mb-6">
+                                    <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 px-1">Create New Category</h4>
+                                    <input
+                                        autoFocus
+                                        placeholder="Category Name..."
+                                        value={newGroupValue}
+                                        onChange={e => setNewGroupValue(e.target.value)}
+                                        className="w-full bg-black border border-blue-500/50 rounded-2xl px-5 py-4 text-sm text-white outline-none mb-4 focus:ring-2 focus:ring-blue-500/20 transition-all font-bold"
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                if (newGroupValue.trim() && selectedListId) {
+                                                    addInventoryGroup({ id: crypto.randomUUID(), listId: selectedListId, name: newGroupValue.trim() });
+                                                    setNewGroupValue('');
+                                                    setIsAddingGroup(false);
+                                                }
+                                            }
+                                            if (e.key === 'Escape') setIsAddingGroup(false);
+                                        }}
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                if (newGroupValue.trim() && selectedListId) {
+                                                    addInventoryGroup({ id: crypto.randomUUID(), listId: selectedListId, name: newGroupValue.trim() });
+                                                    setNewGroupValue('');
+                                                    setIsAddingGroup(false);
+                                                }
+                                            }}
+                                            className="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/30"
+                                        >Create</button>
+                                        <button
+                                            onClick={() => setIsAddingGroup(false)}
+                                            className="px-6 py-3.5 text-neutral-500 text-xs font-black uppercase tracking-widest hover:text-white transition-colors"
+                                        >Cancel</button>
+                                    </div>
+
+                                    {/* Smart Suggestions */}
+                                    <div className="mt-6 pt-4 border-t border-white/5">
+                                        <p className="text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-3 px-1">Quick Suggestions</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {SUGGESTED_CATEGORIES.filter(cat => !listGroups.some(g => g.name.toLowerCase() === cat.toLowerCase())).slice(0, 8).map(cat => (
+                                                <button
+                                                    key={cat}
+                                                    onClick={() => {
+                                                        if (selectedListId) {
+                                                            addInventoryGroup({ id: crypto.randomUUID(), listId: selectedListId, name: cat });
+                                                            setIsAddingGroup(false);
+                                                        }
+                                                    }}
+                                                    className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-[9px] font-extrabold text-neutral-400 hover:text-blue-400 hover:border-blue-500/30 transition-all uppercase tracking-tight"
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {listGroups.map(g => (
-                                <div key={g.id} className="flex justify-between items-center p-4 bg-neutral-950/30 rounded-2xl border border-neutral-800 transition-all hover:bg-neutral-800/50">
-                                    <span className="font-black text-neutral-300 text-sm tracking-tight">{g.name}</span>
-                                    <button onClick={() => { if (confirm(`Purge category "${g.name}" and all contents?`)) deleteInventoryGroup(g.id); }} className="text-neutral-700 hover:text-red-500 p-2 transition-colors">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                <div key={g.id} className="flex flex-col gap-2 p-3 bg-neutral-950/30 rounded-2xl border border-neutral-800 transition-all hover:border-neutral-700">
+                                    {editingGroupId === g.id ? (
+                                        <div className="flex gap-2 w-full animate-in slide-in-from-left-2 duration-200">
+                                            <input
+                                                autoFocus
+                                                value={editGroupValue}
+                                                onChange={e => setEditGroupValue(e.target.value)}
+                                                className="flex-1 bg-black border border-blue-500/50 rounded-xl px-4 py-2 text-sm text-white outline-none"
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        if (editGroupValue.trim()) {
+                                                            updateInventoryGroup({ ...g, name: editGroupValue.trim() });
+                                                            setEditingGroupId(null);
+                                                        }
+                                                    }
+                                                    if (e.key === 'Escape') setEditingGroupId(null);
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    if (editGroupValue.trim()) {
+                                                        updateInventoryGroup({ ...g, name: editGroupValue.trim() });
+                                                        setEditingGroupId(null);
+                                                    }
+                                                }}
+                                                className="bg-blue-600 text-white p-2 rounded-xl text-xs font-bold"
+                                            >Save</button>
+                                        </div>
+                                    ) : confirmDeleteGroupId === g.id ? (
+                                        <div className="flex flex-col gap-3 py-1 animate-in zoom-in-95 duration-200">
+                                            <div className="text-[10px] font-black uppercase text-red-500 tracking-widest text-center px-2">Purge all items in "{g.name}"?</div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        deleteInventoryGroup(g.id);
+                                                        setConfirmDeleteGroupId(null);
+                                                    }}
+                                                    className="flex-1 bg-red-600/20 text-red-500 border border-red-500/30 py-2.5 rounded-xl text-[10px] font-black uppercase"
+                                                >Yes, Delete</button>
+                                                <button
+                                                    onClick={() => setConfirmDeleteGroupId(null)}
+                                                    className="flex-1 bg-neutral-800 text-white py-2.5 rounded-xl text-[10px] font-black uppercase"
+                                                >Cancel</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-between items-center px-2">
+                                            <span className="font-black text-neutral-300 text-sm tracking-tight">{g.name}</span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingGroupId(g.id);
+                                                        setEditGroupValue(g.name);
+                                                    }}
+                                                    className="text-neutral-600 hover:text-blue-500 p-2 transition-colors"
+                                                >
+                                                    <Edit className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfirmDeleteGroupId(g.id)}
+                                                    className="text-neutral-700 hover:text-red-400 p-2 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
+
+                            {!isAddingGroup && listGroups.length > 0 && (
+                                <button
+                                    onClick={() => setIsAddingGroup(true)}
+                                    className="w-full py-4 border-2 border-dashed border-neutral-800 rounded-2xl text-neutral-600 font-black text-[10px] uppercase tracking-widest hover:border-blue-500/30 hover:text-blue-500 transition-all mt-4"
+                                >
+                                    + Add Another Category
+                                </button>
+                            )}
+
+                            {listGroups.length === 0 && !isAddingGroup && (
+                                <div className="py-10 flex flex-col items-center justify-center text-neutral-600">
+                                    <List className="w-10 h-10 mb-4 opacity-20" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest">No categories yet</p>
+                                    <button
+                                        onClick={() => setIsAddingGroup(true)}
+                                        className="mt-4 px-6 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest"
+                                    >
+                                        Create First Category
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <div className="p-8 bg-black/20">
-                            <button onClick={() => { const name = prompt("New Group Name:"); if (name && selectedListId) addInventoryGroup({ id: crypto.randomUUID(), listId: selectedListId, name }); }} className="w-full py-5 bg-white text-black font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-2xl hover:bg-neutral-200 transition-all">
-                                + New Category
-                            </button>
+
+                        <div className="p-8 bg-black/20 flex justify-center border-t border-neutral-800">
+                            <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest italic opacity-50">Manage grouping for "{activeList?.name}"</p>
                         </div>
                     </div>
                 </div>
@@ -1206,4 +1423,4 @@ export default function InventoryPage() {
             )}
         </div>
     );
-}
+};

@@ -5290,7 +5290,8 @@ export const calculateClearancePercentage = (
     bursaries: Bursary[],
     targetTerm?: string,
     overridePrevBal?: number,
-    allStudents?: EnrolledStudent[] // NEW: Pass all students for Pay Code lookup
+    allStudents?: EnrolledStudent[], // NEW: Pass all students for Pay Code lookup
+    programmes: any[] = [] // Optional programmes for tuition fallback
 ): number => {
     if (!student) return 0;
 
@@ -5305,11 +5306,9 @@ export const calculateClearancePercentage = (
             s.payCode === student.payCode
         );
 
-        // If Bursar record exists, use it as the financial authority
         if (bursarRecord) {
             financialAuthority = bursarRecord;
         } else {
-            // No Bursar record = No financial setup yet
             return 0;
         }
     }
@@ -5317,42 +5316,66 @@ export const calculateClearancePercentage = (
     const term = targetTerm || financialAuthority.semester;
     const isCurrent = term === financialAuthority.semester;
 
-    // 1. Tuition Bill (using financial authority's ID)
-    const tuitionBillings = billings.filter(b =>
-        b.studentId === financialAuthority.id &&
-        b.type === 'Tuition' &&
-        b.term === term
-    );
-    const totalTuitionBilled = tuitionBillings.reduce((sum, b) => sum + b.amount, 0);
+    // 1. Tuition Bill
+    let totalTuitionBilled = billings.filter(b => {
+        if (b.studentId !== financialAuthority.id || b.term !== term) return false;
+        const isTuition = /tuition/i.test(b.description || "") || /tuition/i.test(b.type || "");
+        const isArrearsBill = isArrears(b.description || "") || isArrears(b.type || "");
+        return isTuition && !isArrearsBill;
+    }).reduce((sum, b) => sum + b.amount, 0);
 
-    // 2. Arrears Bills (Expanded Scope to detect "Arrears from previous semester (Prev)")
+    // SAFETY FALLBACK: If NO tuition bill is found
+    if (totalTuitionBilled === 0 && programmes.length > 0) {
+        const prog = programmes.find(p => p.id === financialAuthority.programme || p.name === financialAuthority.programme);
+        const feeConfig = prog?.feeStructure?.find((fs: any) => fs.level === (financialAuthority.level));
+        if (feeConfig) totalTuitionBilled = feeConfig.tuitionFee;
+    }
+
+    // 2. Arrears Bills
     const arrearsBillings = billings.filter(b =>
         b.studentId === financialAuthority.id &&
         b.term === term &&
-        isArrears(b.description)
+        (isArrears(b.description || "") || isArrears(b.type || ""))
     );
     const totalArrearsBilled = arrearsBillings.reduce((sum, b) => sum + b.amount, 0);
 
-    // 3. Bursaries (using financial authority's bursary)
+    // 3. Bursaries
     const bursaryValue = financialAuthority.bursary && financialAuthority.bursary !== 'none'
         ? (bursaries.find(b => b.id === financialAuthority.bursary)?.value || 0)
         : 0;
 
-    // 4. Payments (Tuition + Arrears)
+    // 4. Payments
     const studentPayments = payments.filter(p =>
         p.studentId === financialAuthority.id &&
         (p.term === term || (!p.term && isCurrent))
     );
 
     const totalClearingPaid = studentPayments.reduce((acc, p) => {
-        if (p.allocations) {
+        const methodLower = String(p.method || "").toLowerCase().replace(/\s/g, "");
+        const descLower = String(p.description || "").toLowerCase();
+        const isDigitalIntegration =
+            ['schoolpay', 'pegpay'].includes(methodLower) ||
+            descLower.includes('automatic schoolpay') ||
+            descLower.includes('automatic pegpay') ||
+            p.metadata?.syncSource === 'digital_integration';
+
+        if (p.allocations && Object.keys(p.allocations).length > 0) {
             const tuitionKey = Object.keys(p.allocations).find(k => k.toLowerCase().includes('tuition'));
             const arrearsKey = Object.keys(p.allocations).find(k => isArrears(k));
             let amount = 0;
             if (tuitionKey) amount += (p.allocations[tuitionKey] || 0);
             if (arrearsKey) amount += (p.allocations[arrearsKey] || 0);
+
+            if (amount === 0 && isDigitalIntegration) {
+                const isOnlyGeneric = Object.keys(p.allocations).every(k =>
+                    ['general', 'collection', 'fee payment'].includes(k.toLowerCase().trim())
+                );
+                if (isOnlyGeneric) amount = p.amount;
+            }
+
             return acc + amount;
         } else {
+            if (isDigitalIntegration) return acc + p.amount;
             return acc + p.amount;
         }
     }, 0);
@@ -5362,9 +5385,14 @@ export const calculateClearancePercentage = (
     const startPrevBal = overridePrevBal !== undefined ? overridePrevBal : (financialAuthority.previousBalance || 0);
     const effectivePrev = hasArrearsBill ? 0 : startPrevBal;
 
-    const denominator = totalTuitionBilled + totalArrearsBilled + effectivePrev - bursaryValue;
-    if (denominator <= 0) return 100;
+    // DEBT-FIRST CLEARANCE LOGIC (User Request)
+    // Percentage tracks current tuition progress AFTER old debts are covered.
+    const totalArrears = totalArrearsBilled + effectivePrev;
+    const tuitionNetTarget = Math.max(0, totalTuitionBilled - bursaryValue);
+    const tuitionNetPaid = Math.max(0, totalClearingPaid - totalArrears);
 
-    const pct = (totalClearingPaid / denominator) * 100;
+    if (tuitionNetTarget <= 0) return 100; // No tuition target this term = fully cleared
+
+    const pct = (tuitionNetPaid / tuitionNetTarget) * 100;
     return Math.max(0, Math.min(100, pct));
 };

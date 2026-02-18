@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
-import { TransactionCategoryItem, TransactionType, useSchoolData } from '@/lib/store';
+import { TransactionCategoryItem, TransactionType, useSchoolData, generateId } from '@/lib/store';
+import { X, ChevronLeft, Plus, Edit2, Trash2, Check, Menu, AlertCircle } from 'lucide-react';
 
 interface CategoryManagerProps {
     type: TransactionType;
@@ -25,99 +26,133 @@ export default function CategoryManager({ type, onClose }: CategoryManagerProps)
 
     // ACTION STATE
     const [isDeleteMode, setIsDeleteMode] = useState<Record<string, boolean>>({}); // Map of ID -> showing delete button
+    const [isAdding, setIsAdding] = useState(false);
+    const [newValue, setNewValue] = useState('');
 
     // EDIT FORM STATE
     const [editValue, setEditValue] = useState('');
     const [editLabel, setEditLabel] = useState('');
 
-    const toggleDelete = (id: string) => {
+    const toggleDelete = (id: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
         setIsDeleteMode(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    const handleAdd = () => {
+        if (!newValue.trim()) return;
+        if (view === 'LIST') {
+            addCategory(type, newValue.trim());
+        } else if (activeCategory) {
+            addSubcategory(type, activeCategory.id, newValue.trim());
+        }
+        setNewValue('');
+        setIsAdding(false);
     };
 
     // --- VIEW 1: MAIN LIST ---
     const renderList = () => (
-        <div className="flex flex-col h-full bg-white">
-            <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                <button onClick={onClose} className="text-xl font-bold">❮ {type}</button>
-                <span className="font-bold text-gray-500">{type === 'Expense' ? 'Exp.' : 'Inc.'}</span>
-                <button
-                    onClick={() => {
-                        // Add new Category Mock Flow -> Usually would open input, simplifing to 'New Category' auto-add or prompt
-                        const name = prompt("Enter new category name:");
-                        if (name) addCategory(type, name);
-                    }}
-                    className="text-3xl font-light"
-                >
-                    +
+        <div className="flex flex-col h-full bg-slate-50">
+            <div className="flex items-center justify-between p-5 bg-white border-b border-slate-100 sticky top-0 z-10">
+                <button onClick={onClose} className="flex items-center gap-2 text-slate-800 font-black tracking-tight">
+                    <ChevronLeft className="w-5 h-5" />
+                    <span>{type.toUpperCase()}S</span>
                 </button>
-            </div>
-
-            {/* TOGGLE SUB HEADER */}
-            <div className="flex justify-between items-center px-4 py-3 bg-gray-50">
-                <span className="font-bold text-gray-700">Category</span>
-                {/* Toggle switch visual */}
-                <div className="w-10 h-5 bg-red-400 rounded-full relative cursor-pointer">
-                    <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow"></div>
+                <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{type === 'Expense' ? 'Expenses' : 'Income'}</span>
+                    <button
+                        onClick={() => {
+                            setIsAdding(!isAdding);
+                            setNewValue('');
+                        }}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isAdding ? 'bg-slate-100 text-slate-400 rotate-45' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'}`}
+                    >
+                        <Plus className="w-5 h-5" />
+                    </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
-                {categories.map(cat => (
-                    <div key={cat.id} className="flex items-center border-b border-gray-100 py-4 px-4 transition-all">
-                        {/* Minus / Delete Trigger */}
+            {isAdding && (
+                <div className="p-4 bg-white border-b border-slate-100 animate-in slide-in-from-top duration-300">
+                    <div className="flex gap-2">
+                        <input
+                            autoFocus
+                            placeholder={`New ${type} Category...`}
+                            value={newValue}
+                            onChange={e => setNewValue(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                        />
                         <button
-                            onClick={() => toggleDelete(cat.id)}
-                            className="bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center mr-4 shrink-0 shadow-sm"
+                            onClick={handleAdd}
+                            className="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest"
+                        >Add</button>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
+                {categories.map(cat => (
+                    <div
+                        key={cat.id}
+                        onClick={() => {
+                            setActiveCategory(cat);
+                            setView('SUBCATEGORIES');
+                            setIsDeleteMode({});
+                            setIsAdding(false);
+                        }}
+                        className="flex items-center bg-white border-b border-slate-100 py-4 px-5 active:bg-slate-50 transition-colors group cursor-pointer"
+                    >
+                        <button
+                            onClick={(e) => toggleDelete(cat.id, e)}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isDeleteMode[cat.id] ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-red-50 group-hover:text-red-400'}`}
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
-                            </svg>
+                            {isDeleteMode[cat.id] ? <X className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
                         </button>
 
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 ml-4">
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-base text-gray-800 uppercase">{cat.name}</span>
+                                <span className="font-extrabold text-sm text-slate-800 uppercase tracking-tight">{cat.name}</span>
                                 {cat.subcategories.length > 0 && (
-                                    <span className="text-gray-500 font-bold text-sm">({cat.subcategories.length})</span>
+                                    <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                        {cat.subcategories.length}
+                                    </span>
                                 )}
                             </div>
                             {cat.subcategories.length > 0 && (
-                                <div className="text-gray-400 text-xs truncate font-medium mt-0.5">
-                                    {cat.subcategories.join(', ')}
+                                <div className="text-slate-400 text-[10px] truncate font-bold mt-1 uppercase tracking-tighter italic">
+                                    {cat.subcategories.join(' • ')}
                                 </div>
                             )}
                         </div>
 
                         {isDeleteMode[cat.id] ? (
                             <button
-                                onClick={() => deleteCategory(type, cat.id)}
-                                className="bg-red-500 text-white px-4 py-1.5 rounded text-sm font-bold animate-fade-in shadow ml-2"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteCategory(type, cat.id);
+                                }}
+                                className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest animate-in zoom-in shadow-lg shadow-red-500/20 ml-2"
                             >
-                                Delete
+                                DELETE
                             </button>
                         ) : (
-                            <div className="flex gap-4 text-gray-400 items-center ml-2">
-                                <button
-                                    onClick={() => {
-                                        setActiveCategory(cat);
-                                        setView('SUBCATEGORIES');
-                                        setIsDeleteMode({});
-                                    }}
-                                    className="hover:text-black transition-colors"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
-                                    </svg>
-                                </button>
-                                <button className="hover:text-black transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                                    </svg>
-                                </button>
+                            <div className="text-slate-300">
+                                <ChevronLeft className="w-5 h-5 rotate-180" />
                             </div>
                         )}
                     </div>
                 ))}
+
+                {categories.length === 0 && !isAdding && (
+                    <div className="p-12 text-center text-slate-400">
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-xs font-black uppercase tracking-widest">No Categories Found</p>
+                        <button
+                            onClick={() => setIsAdding(true)}
+                            className="mt-4 text-blue-600 font-bold text-xs underline"
+                        >Create your first category</button>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -126,59 +161,89 @@ export default function CategoryManager({ type, onClose }: CategoryManagerProps)
     const renderSubcategories = () => {
         if (!activeCategory) return null;
         return (
-            <div className="flex flex-col h-full bg-white">
-                <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                    <button onClick={() => setView('LIST')} className="text-xl font-bold">❮ {type === 'Expense' ? 'Exp.' : 'Inc.'}</button>
-                    <div className="flex items-center gap-2 font-bold text-gray-800 uppercase text-sm truncate max-w-[150px]">
-                        {activeCategory.name}
-                    </div>
-                    {/* Header Pencil to Edit MAIN Category Name */}
-                    <div className="flex gap-2">
+            <div className="flex flex-col h-full bg-slate-50 text-slate-800">
+                <div className="flex items-center justify-between p-5 bg-white border-b border-slate-100 sticky top-0 z-10">
+                    <button onClick={() => setView('LIST')} className="flex items-center gap-2 font-black tracking-tight text-slate-800">
+                        <ChevronLeft className="w-5 h-5" />
+                        <span className="truncate max-w-[120px] uppercase text-xs">{activeCategory.name}</span>
+                    </button>
+
+                    <div className="flex items-center gap-3">
                         <button onClick={() => {
                             setEditValue(activeCategory.name);
                             setEditLabel('Category');
                             setView('EDIT_NAME');
-                        }} className="text-gray-400 text-xl">✎</button>
-                        <button onClick={() => {
-                            const name = prompt("Enter new subcategory name:");
-                            if (name) addSubcategory(type, activeCategory.id, name);
-                        }} className="text-3xl font-light">+</button>
+                        }} className="p-2 text-slate-400 hover:text-blue-500">
+                            <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                setIsAdding(!isAdding);
+                                setNewValue('');
+                            }}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isAdding ? 'bg-slate-100 text-slate-400 rotate-45' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'}`}
+                        >
+                            <Plus className="w-5 h-5" />
+                        </button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
-                    {activeCategory.subcategories.map(sub => (
-                        <div key={sub} className="flex items-center border-b border-gray-100 py-3 px-4">
+                {isAdding && (
+                    <div className="p-4 bg-white border-b border-slate-100 animate-in slide-in-from-top duration-300">
+                        <div className="flex gap-2">
+                            <input
+                                autoFocus
+                                placeholder="Subcategory name..."
+                                value={newValue}
+                                onChange={e => setNewValue(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-emerald-500"
+                            />
+                            <button
+                                onClick={handleAdd}
+                                className="bg-emerald-500 text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest"
+                            >Add</button>
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto no-scrollbar">
+                    {activeCategory.subcategories.map((sub, idx) => (
+                        <div key={`${sub}-${idx}`} className="flex items-center bg-white border-b border-slate-100 py-4 px-5 group">
                             <button
                                 onClick={() => toggleDelete(sub)}
-                                className="bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center mr-3 shrink-0"
+                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isDeleteMode[sub] ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-400 opacity-50'}`}
                             >
-                                -
+                                {isDeleteMode[sub] ? <X className="w-3.5 h-3.5" /> : <Trash2 className="w-4 h-4" />}
                             </button>
-                            <div className="flex-1 font-bold text-sm text-gray-800 uppercase">{sub}</div>
+                            <div className="flex-1 ml-4 font-bold text-sm text-slate-700 uppercase tracking-tight">{sub}</div>
 
                             {isDeleteMode[sub] ? (
                                 <button
                                     onClick={() => deleteSubcategory(type, activeCategory.id, sub)}
-                                    className="bg-red-500 text-white px-4 py-1 rounded text-sm font-bold animate-fade-in"
+                                    className="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest animate-in zoom-in"
                                 >
-                                    Delete
+                                    DELETE
                                 </button>
                             ) : (
-                                <div className="flex gap-4 text-gray-400">
+                                <div className="flex gap-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => {
                                         setActiveSubcategory(sub);
                                         setEditValue(sub);
                                         setEditLabel('Subcategory');
                                         setView('EDIT_NAME');
-                                    }}>✎</button>
-                                    <button>☰</button>
+                                    }} className="p-2 hover:text-blue-500">
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                             )}
                         </div>
                     ))}
-                    {activeCategory.subcategories.length === 0 && (
-                        <div className="p-8 text-center text-gray-400 italic">No subcategories</div>
+                    {activeCategory.subcategories.length === 0 && !isAdding && (
+                        <div className="p-12 text-center text-slate-400">
+                            <AlertCircle className="w-10 h-10 mx-auto mb-4 opacity-10" />
+                            <p className="text-[10px] font-black uppercase tracking-widest italic opacity-50">No subcategories defined for this group</p>
+                        </div>
                     )}
                 </div>
             </div>
@@ -190,58 +255,78 @@ export default function CategoryManager({ type, onClose }: CategoryManagerProps)
         if (!activeCategory) return null;
         return (
             <div className="flex flex-col h-full bg-white">
-                <div className="flex items-center justify-between p-4">
-                    <button onClick={() => setView(activeSubcategory ? 'SUBCATEGORIES' : 'SUBCATEGORIES')} className="text-lg font-bold">❮ Back</button>
-                    <span className="font-bold">Edit</span>
-                    <span className="text-xs border px-2 py-1 rounded bg-gray-50">{editLabel === 'Category' ? 'Main Category' : 'Sub Category'}</span>
+                <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                    <button onClick={() => {
+                        setView('SUBCATEGORIES');
+                        setActiveSubcategory(null);
+                    }} className="flex items-center gap-1 font-black text-slate-800 tracking-tight">
+                        <ChevronLeft className="w-5 h-5" />
+                        <span>BACK</span>
+                    </button>
+                    <span className="font-black text-xs uppercase tracking-widest text-slate-400">Renaming...</span>
+                    <div className="w-10" />
                 </div>
 
-                <div className="p-6 space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-gray-500 text-xs uppercase font-bold">Category</label>
-                        <div className="font-bold text-gray-800 border-b border-gray-200 pb-2">{activeCategory.name}</div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className={`text-gray-500 text-xs uppercase font-bold ${editLabel === 'Subcategory' ? 'text-black' : ''}`}>
-                            {editLabel}
+                <div className="p-8 space-y-6">
+                    <div className="space-y-3">
+                        <label className="text-slate-400 text-[10px] uppercase font-black tracking-widest flex items-center gap-2">
+                            <Edit2 className="w-3 h-3" />
+                            Rename {editLabel}
                         </label>
                         <input
                             value={editValue}
                             onChange={e => setEditValue(e.target.value)}
-                            className="w-full font-bold text-blue-600 text-xl border-b-2 border-blue-500 focus:outline-none pb-1 uppercase"
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    if (editLabel === 'Category') {
+                                        updateCategory(type, activeCategory.id, editValue.trim());
+                                        setActiveCategory(prev => prev ? ({ ...prev, name: editValue.trim() }) : null);
+                                    } else if (activeSubcategory) {
+                                        updateSubcategory(type, activeCategory.id, activeSubcategory, editValue.trim());
+                                    }
+                                    setView('SUBCATEGORIES');
+                                    setActiveSubcategory(null);
+                                }
+                            }}
+                            className="w-full font-black text-blue-600 text-2xl border-b-2 border-blue-500 focus:outline-none pb-2 uppercase tracking-tight"
                             autoFocus
                         />
+                        <p className="text-[9px] text-slate-400 font-bold uppercase italic mt-2">Old name was: {editLabel === 'Category' ? activeCategory.name : activeSubcategory}</p>
                     </div>
 
-                    <button
-                        onClick={() => {
-                            if (editLabel === 'Category') {
-                                updateCategory(type, activeCategory.id, editValue);
-                                // Hacky update of local state to reflect change immediately in header if we go back
-                                setActiveCategory(prev => prev ? ({ ...prev, name: editValue }) : null);
-                            } else if (activeSubcategory) {
-                                updateSubcategory(type, activeCategory.id, activeSubcategory, editValue);
-                            }
-                            setView('SUBCATEGORIES');
-                            setActiveSubcategory(null);
-                        }}
-                        className="w-full bg-red-400 text-white rounded-lg py-3 font-bold shadow-lg hover:bg-red-500 mt-8"
-                    >
-                        Save
-                    </button>
-                </div>
-
-                {/* Keyboard Placeholder (Visual only, usually handled by OS) */}
-                <div className="mt-auto bg-gray-100 h-[250px] flex items-center justify-center text-gray-400 text-sm border-t">
-                    [ Keyboard ]
+                    <div className="flex gap-3 pt-10">
+                        <button
+                            onClick={() => {
+                                if (editLabel === 'Category') {
+                                    updateCategory(type, activeCategory.id, editValue.trim());
+                                    setActiveCategory(prev => prev ? ({ ...prev, name: editValue.trim() }) : null);
+                                } else if (activeSubcategory) {
+                                    updateSubcategory(type, activeCategory.id, activeSubcategory, editValue.trim());
+                                }
+                                setView('SUBCATEGORIES');
+                                setActiveSubcategory(null);
+                            }}
+                            className="flex-1 bg-blue-600 text-white rounded-2xl py-4 font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
+                        >
+                            Save Changes
+                        </button>
+                        <button
+                            onClick={() => {
+                                setView('SUBCATEGORIES');
+                                setActiveSubcategory(null);
+                            }}
+                            className="px-6 py-4 text-slate-400 font-black text-xs uppercase tracking-widest"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         );
     };
 
     return (
-        <div className="h-full w-full max-w-sm mx-auto bg-white flex flex-col overflow-hidden text-black animate-slide-up">
+        <div className="h-full w-full max-w-sm mx-auto bg-white flex flex-col overflow-hidden text-slate-800 animate-in slide-in-from-bottom-5 duration-500">
             {view === 'LIST' && renderList()}
             {view === 'SUBCATEGORIES' && renderSubcategories()}
             {view === 'EDIT_NAME' && renderEditForm()}

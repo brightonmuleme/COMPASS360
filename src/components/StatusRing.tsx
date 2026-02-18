@@ -3,7 +3,7 @@ import React from 'react';
 import { EnrolledStudent, useSchoolData, determineStudentStatus, calculateClearancePercentage } from '@/lib/store';
 
 export const StatusRing = ({ student, size = 60, percentage: propPercentage, onClick }: { student: EnrolledStudent, size?: number, percentage?: number, onClick?: () => void }) => {
-    const { financialSettings, students, billings, payments, bursaries } = useSchoolData();
+    const { financialSettings, students, billings, payments, bursaries, programmes } = useSchoolData();
 
     // Bug Fix: Real-Time Financial Mirroring (Pay Code Sync)
     // Pass all students to enable automatic Pay Code lookup in the calculation
@@ -14,7 +14,8 @@ export const StatusRing = ({ student, size = 60, percentage: propPercentage, onC
         bursaries,
         undefined,
         undefined,
-        students // Enable Pay Code mirroring
+        students, // Enable Pay Code mirroring
+        programmes // Enable Tuition fallback
     );
 
     const percentage = propPercentage !== undefined ? propPercentage : calculatedPercentage;

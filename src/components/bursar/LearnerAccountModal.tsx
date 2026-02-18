@@ -293,7 +293,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             billings,
             payments,
             bursaries,
-            targetTerm
+            targetTerm,
+            programmes
         );
 
         return summary;
@@ -325,7 +326,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
             billings,
             payments,
             bursaries,
-            selectedStudent.semester
+            selectedStudent.semester,
+            programmes
         );
 
         if (currentSummary.clearanceTarget <= 0) return 100;

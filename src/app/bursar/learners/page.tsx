@@ -798,7 +798,7 @@ function LearnersContent() {
         const sourceTransactions = transactionsOverride || transactions;
         const studentTx = sourceTransactions.filter(t => t.studentName === student.name);
         // Use CLEARANCE financial metrics for status logic
-        const { clearanceTarget, clearancePaid } = calculateFinancials(student, billings, payments, bursaries);
+        const { clearanceTarget, clearancePaid } = calculateFinancials(student, billings, payments, bursaries, undefined, programmes);
 
         // 1. Check ALL Mandatory Requirements (Critical Gate)
         const allMandatoryMet = checkMandatoryCompliance(student, 'all', sourceTransactions);
@@ -822,7 +822,7 @@ function LearnersContent() {
         // First, calculate dynamic financials for everyone using the central engine
         const calculatedList = enrolledStudents.map(student => {
             const currentTerm = filterLevel || student.semester;
-            const stats = calculateFinancials(student, billings, payments, bursaries, currentTerm);
+            const stats = calculateFinancials(student, billings, payments, bursaries, currentTerm, programmes);
 
             return {
                 ...student,
@@ -1111,13 +1111,33 @@ function LearnersContent() {
             billed = Math.max(0, billed - (bursaryData?.value || 0));
         }
 
-        // Payments: STRICT ALLOCATION MATCHING
+        // Payments: STRICT ALLOCATION MATCHING with Digital Integration Fallback for Tuition
         const studentPayments = payments.filter(p => p.studentId === studentId && isTargetTerm(p.term));
         let paid = 0;
         studentPayments.forEach(p => {
-            if (p.allocations) {
+            const methodLower = String(p.method || "").toLowerCase().replace(/\s/g, "");
+            const descLower = String(p.description || "").toLowerCase();
+            const isDigitalIntegration =
+                ['schoolpay', 'pegpay'].includes(methodLower) ||
+                descLower.includes('automatic schoolpay') ||
+                descLower.includes('automatic pegpay') ||
+                p.metadata?.syncSource === 'digital_integration';
+
+            if (p.allocations && Object.keys(p.allocations).length > 0) {
                 const matchingKey = Object.keys(p.allocations).find(k => normalizeKey(k) === targetKey);
-                if (matchingKey) paid += Number(p.allocations[matchingKey]) || 0;
+                if (matchingKey) {
+                    paid += Number(p.allocations[matchingKey]) || 0;
+                } else if (targetKey === 'tuition' && isDigitalIntegration) {
+                    // Fallback for digital integrations: If specifically "Tuition" column and no other allocation found,
+                    // check if the allocation is just generic.
+                    const isOnlyGeneric = Object.keys(p.allocations).every(k =>
+                        ['general', 'collection', 'fee payment'].includes(k.toLowerCase().trim())
+                    );
+                    if (isOnlyGeneric) paid += p.amount;
+                }
+            } else if (targetKey === 'tuition' && isDigitalIntegration) {
+                // Fallback: Digital payment with NO allocations always counts as Tuition.
+                paid += p.amount;
             }
         });
 
@@ -2627,10 +2647,10 @@ function LearnersContent() {
                                         })}
 
                                         {/* Footer Audit Totals */}
-                                        <td style={{ textAlign: 'right', color: '#60a5fa' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateCreditPool(s.id, calculateFinancials(s, billings, payments, bursaries)), 0))}</td>
-                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).totalBilled, 0))}</td>
-                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).totalPayments, 0))}</td>
-                                        <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries).outstandingBalance, 0))}</td>
+                                        <td style={{ textAlign: 'right', color: '#60a5fa' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateCreditPool(s.id, calculateFinancials(s, billings, payments, bursaries, undefined, programmes)), 0))}</td>
+                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries, undefined, programmes).totalBilled, 0))}</td>
+                                        <td style={{ textAlign: 'right' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries, undefined, programmes).totalPayments, 0))}</td>
+                                        <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatMoney(filteredStudents.reduce((acc, s) => acc + calculateFinancials(s, billings, payments, bursaries, undefined, programmes).outstandingBalance, 0))}</td>
                                         <td style={{ textAlign: 'center' }}>-</td>
                                         {/* Spacer Cell */}
                                         <td style={{ width: '100px', border: 'none', background: 'transparent' }}></td>

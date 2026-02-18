@@ -146,8 +146,8 @@ function BursarLayoutContent({
                     </button>
 
                     <div className="flex items-center gap-2">
-                        <span className="font-bold text-white tracking-tight text-lg">
-                            VINE <span className="text-blue-500">{roleName === 'Admin' ? 'PORTAL' : roleName}</span>
+                        <span className="font-black text-white tracking-tighter text-xl uppercase">
+                            Compass <span className="text-blue-500">360</span>
                         </span>
                     </div>
 

@@ -168,7 +168,7 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
             // For now, let's just warn or allow.
         }
 
-        // SECURITY: Reset to Pending if a Director-Approved transaction is financially modified
+        // SECURITY: Preserve existing status but reset to Pending ONLY if critical financial fields change
         let status: 'pending' | 'approved' | 'rejected' = existingPayment?.status || (paymentCategory === 'digital_integration' ? 'approved' : 'pending');
         let directorNote = existingPayment?.directorNote;
         let approvedAt = existingPayment?.approvedAt;
@@ -181,23 +181,35 @@ export const TransactionFormModal = ({ isOpen, onClose, student, existingPayment
         }] : [];
 
         if (existingPayment && existingPayment.status === 'approved') {
-            const isFinancialChange =
-                Number(form.amount) !== existingPayment.amount ||
-                form.date !== existingPayment.date ||
-                form.type !== existingPayment.method;
+            // Robust check: Compare only the YYYY-MM-DD part of the dates
+            const existingDateOnly = new Date(existingPayment.date).toISOString().split('T')[0];
 
-            if (isFinancialChange) {
+            const isFundamentalFinancialChange =
+                Math.abs(Number(form.amount) - existingPayment.amount) > 1 || // Total amount changed
+                form.date !== existingDateOnly ||                             // Date changed
+                form.type !== existingPayment.method;                         // Bank/Mode changed
+
+            if (isFundamentalFinancialChange) {
                 status = 'pending';
                 approvedAt = undefined;
                 // Archive old approval context in history before clearing
                 history.push({
                     id: 'log_security_' + Date.now(),
-                    action: '[SYSTEM RESET]',
-                    details: `Security Reset: Approved status revoked due to financial modification (${formatMoney(existingPayment.amount)} -> ${formatMoney(Number(form.amount))}). Previous Note: ${existingPayment.directorNote || "N/A"}`,
+                    action: '[SECURITY RESET]',
+                    details: `Approval revoked due to fundamental change: ${formatMoney(existingPayment.amount)} -> ${formatMoney(Number(form.amount))} | ${existingDateOnly} -> ${form.date} | ${existingPayment.method} -> ${form.type}`,
                     user: 'System',
                     timestamp: new Date().toISOString()
                 });
                 directorNote = undefined;
+            } else {
+                // It's just an allocation or description change - KEEP STATUS
+                history.push({
+                    id: 'log_journal_' + Date.now(),
+                    action: 'Re-Allocation',
+                    details: 'Internal fee distribution updated. Approval status preserved.',
+                    user: 'System',
+                    timestamp: new Date().toISOString()
+                });
             }
         }
 
