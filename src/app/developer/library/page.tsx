@@ -2,7 +2,7 @@
 
 import { useSchoolData, TutorContent, TutorSettings, Programme, CourseUnit } from "@/lib/store";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Plus, Trash2, FileText, Video, HelpCircle, ArrowLeft, Play, Download, Eye, Pencil, ChevronDown, ChevronRight, Check, Settings, BookOpen, MoreVertical, X, Save, ArrowRight, Upload, Pause, SkipBack, SkipForward, Monitor, Volume2, VolumeX, Image as ImageIcon, Camera, Heart, Pin } from "lucide-react";
+import { Plus, Trash2, FileText, Video, HelpCircle, ArrowLeft, Play, Download, Eye, Pencil, ChevronDown, ChevronRight, Check, Settings, BookOpen, MoreVertical, X, Save, ArrowRight, Upload, Pause, SkipBack, SkipForward, Monitor, Volume2, VolumeX, Image as ImageIcon, Camera, Heart, Pin, Search } from "lucide-react";
 // Helper to generate PDF thumbnail
 const generatePDFThumbnail = async (file: File): Promise<string | null> => {
     try {
@@ -268,9 +268,9 @@ const ContentViewer = ({ content, onClose, onMinimize }: { content: TutorContent
 
 export default function DeveloperLibrary() {
     const {
-        programmes,
-        courseUnits,
-        tutorContents,
+        programmes: allProgrammes,
+        courseUnits: allCourseUnits,
+        tutorContents: allTutorContents,
         addTutorContent,
         deleteTutorContent,
         updateTutorContent,
@@ -283,6 +283,14 @@ export default function DeveloperLibrary() {
         updateCourseUnit,
         deleteCourseUnit
     } = useSchoolData();
+
+    // Constant for Developer/Admin
+    const currentTutorId = 'admin_main';
+
+    // Filter Data by Ownership (Admin sees their own + Global/Legal items)
+    const programmes = useMemo(() => allProgrammes.filter(p => p.ownerId === currentTutorId || !p.ownerId), [allProgrammes]);
+    const courseUnits = useMemo(() => allCourseUnits.filter(c => c.ownerId === currentTutorId || !c.ownerId), [allCourseUnits]);
+    const tutorContents = useMemo(() => allTutorContents.filter(c => c.tutorId === currentTutorId || !c.tutorId), [allTutorContents]);
 
     // --- STATES ---
     const [viewingContent, setViewingContent] = useState<TutorContent | null>(null);
@@ -345,11 +353,17 @@ export default function DeveloperLibrary() {
     const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
     const drafts = tutorContents.filter(c => c.status === 'Draft');
 
+    // UI States for Mobile Parity
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isFocusMode, setIsFocusMode] = useState(false);
+
     // Upload & Preview State
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadStep, setUploadStep] = useState<'file' | 'details'>('file');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [previewContent, setPreviewContent] = useState<TutorContent | null>(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [contentToDelete, setContentToDelete] = useState<TutorContent | null>(null);
 
     // Local Mock for Tutor Assignments
     const [taughtCUs, setTaughtCUs] = useState<string[]>([]);
@@ -397,7 +411,7 @@ export default function DeveloperLibrary() {
         setUploadStep('file');
         setEditingId(null);
     };
-    const currentTutorId = "admin_main";
+
 
     const configProgramme = useMemo(() => programmes.find(p => p.id === configProgId), [programmes, configProgId]);
 
@@ -440,7 +454,17 @@ export default function DeveloperLibrary() {
 
     const displayedContent = useMemo(() => {
         let content = tutorContents;
-        if (activeTab === 'Home') return content; // Home handles own filtering (Recent Uploads)
+
+        // 0. Search Filter (Contextual - applies to ALL tabs including Home)
+        if (searchQuery.trim()) {
+            const lowerQuery = searchQuery.toLowerCase();
+            content = content.filter(c =>
+                c.title.toLowerCase().includes(lowerQuery) ||
+                c.description?.toLowerCase().includes(lowerQuery)
+            );
+        }
+
+        if (activeTab === 'Home') return content; // Home filters are handled above (Search only)
 
         // 1. Filter by Type (Video, Note, Question)
         content = content.filter(c => c.type === activeTab);
@@ -468,11 +492,6 @@ export default function DeveloperLibrary() {
                     // Check direct level tag
                     const isTaggedLevel = c.levels?.includes(selectedLevel) || c.level === selectedLevel;
                     // Check CU level (if content has CUs, check if any of those CUs belong to this level)
-                    // Note: CUs have a 'level' property.
-                    // If content is linked to a CU, does that imply the content is for that level? Generally yes.
-                    // But usually content tagged deeply with CU might not explicitly be tagged with Level.
-                    // Let's assume explicit tagging for now or inferred from CUs.
-
                     const linkedCUs = courseUnits.filter(cu => c.courseUnitIds?.includes(cu.id) || c.courseUnitId === cu.id);
                     const hasCULevel = linkedCUs.some(cu => cu.level === selectedLevel);
 
@@ -482,11 +501,26 @@ export default function DeveloperLibrary() {
         }
 
         return content;
-    }, [tutorContents, activeTab, selectedCU, selectedProg, selectedLevel, courseUnits]);
+    }, [tutorContents, activeTab, selectedCU, selectedProg, selectedLevel, courseUnits, searchQuery]);
 
     const homeContent = useMemo(() => {
-        return [...tutorContents].sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-    }, [tutorContents]);
+        // If searchQuery is active, displayedContent actually handles the Home tab filtering now effectively.
+        // But for clarity/legacy, let's just use displayedContent if activeTab is Home?
+        // Actually, displayedContent for Home returns the filtered list.
+        // But let's keep homeContent as the SORTED list for "Recent Uploads" grid which might rely on it.
+        // We probably want the Recent Uploads grid to be filtered by search too?
+        // Yes. So let's base it on displayedContent if activeTab is Home, else sort full processed list.
+
+        let content = [...tutorContents];
+        if (searchQuery.trim()) {
+            const lowerQuery = searchQuery.toLowerCase();
+            content = content.filter(c =>
+                c.title.toLowerCase().includes(lowerQuery) ||
+                c.description?.toLowerCase().includes(lowerQuery)
+            );
+        }
+        return content.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
+    }, [tutorContents, searchQuery]);
 
     // --- DERIVED STATE ---
     const featuredContent = useMemo(() => {
@@ -524,7 +558,7 @@ export default function DeveloperLibrary() {
             const existing = programmes.find(p => p.id === editingProgId);
             if (existing) updateProgramme({ ...existing, ...progForm });
         } else {
-            addProgramme({ id: Date.now().toString(), ...progForm, levels: ['Year 1', 'Year 2', 'Year 3'], feeStructure: [], documents: {} });
+            addProgramme({ id: Date.now().toString(), ...progForm, levels: ['Year 1', 'Year 2', 'Year 3'], feeStructure: [], documents: {}, ownerId: currentTutorId, isTutorContent: false });
         }
         setIsProgModalOpen(false);
     };
@@ -538,7 +572,7 @@ export default function DeveloperLibrary() {
             const existing = courseUnits.find(c => c.id === editingCUId);
             if (existing) updateCourseUnit({ ...existing, name: cuForm.name, code: cuForm.code });
         } else {
-            addCourseUnit({ id: Date.now().toString(), programmeId: configProgramme.id, name: cuForm.name, code: cuForm.code || `${configProgramme.code}-CU-${Date.now()}`, level: configLevel, creditUnits: 3, type: 'Core', semester: 'I' });
+            addCourseUnit({ id: Date.now().toString(), programmeId: configProgramme.id, name: cuForm.name, code: cuForm.code || `${configProgramme.code}-CU-${Date.now()}`, level: configLevel, creditUnits: 3, type: 'Core', semester: 'I', ownerId: currentTutorId });
         }
         setIsCUModalOpen(false);
     };
@@ -618,11 +652,18 @@ export default function DeveloperLibrary() {
         setIsUploadModalOpen(true);
     };
 
-    const deleteContent = (id: string) => {
-        if (confirm("Are you sure you want to delete this content?")) {
-            deleteTutorContent(id);
+    const deleteContent = (content: TutorContent) => {
+        setContentToDelete(content);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = () => {
+        if (contentToDelete) {
+            deleteTutorContent(contentToDelete.id);
+            setIsDeleteModalOpen(false);
+            setContentToDelete(null);
         }
-    }
+    };
 
     const toggleLike = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -693,9 +734,9 @@ export default function DeveloperLibrary() {
 
 
     return (
-        <div className="min-h-screen pb-20 bg-[#050505] text-gray-100">
+        <div className="min-h-screen pb-20 bg-[#050505] text-gray-100 overflow-x-hidden w-full">
             {/* Header / Profile Section */}
-            <div className="relative h-64 md:h-80 w-full overflow-hidden">
+            <div className="relative min-h-[400px] md:h-80 w-full overflow-hidden">
                 {/* Cover Image */}
                 <div className="absolute inset-0 bg-gray-900">
                     {tutorProfile.coverImage ? (
@@ -703,67 +744,93 @@ export default function DeveloperLibrary() {
                     ) : (
                         <div className="w-full h-full bg-gradient-to-r from-blue-900/40 to-purple-900/40" />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-[#050505]/40 md:via-[#050505]/60 md:to-transparent" />
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-8">
-                    <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-end gap-6">
+                <div className="absolute bottom-0 left-0 right-0 p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center md:items-end gap-6">
                         {/* Profile Image */}
                         <div className="relative group">
-                            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-[#050505] overflow-hidden bg-gray-800 shadow-2xl relative z-10">
+                            <div className="w-28 h-28 md:w-40 md:h-40 rounded-full border-4 border-[#050505] overflow-hidden bg-gray-800 shadow-2xl relative z-10">
                                 {tutorProfile.profileImage ? (
                                     <img src={tutorProfile.profileImage} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-gray-600 bg-gray-900">
+                                    <div className="w-full h-full flex items-center justify-center text-3xl md:text-4xl font-bold text-gray-600 bg-gray-900">
                                         {tutorProfile.name.charAt(0)}
                                     </div>
                                 )}
                             </div>
                             <button
                                 onClick={() => setIsProfileModalOpen(true)}
-                                className="absolute bottom-2 right-2 z-20 bg-blue-600 p-2 rounded-full text-white shadow-lg hover:bg-blue-500 transition-colors opacity-0 group-hover:opacity-100"
+                                className="absolute bottom-1 right-1 md:bottom-2 md:right-2 z-20 bg-blue-600 p-2 rounded-full text-white shadow-lg hover:bg-blue-500 transition-colors"
                                 title="Edit Profile"
                             >
-                                <Pencil size={16} />
+                                <Pencil size={14} />
                             </button>
                         </div>
 
-                        <div className="flex-1 mb-2">
-                            <h1 className="text-4xl font-bold text-white mb-2">{tutorProfile.name}</h1>
-                            <p className="text-gray-400 max-w-2xl text-lg">{tutorProfile.bio}</p>
+                        <div className="flex-1 mb-2 text-center md:text-left">
+                            <h1 className="text-3xl md:text-5xl font-black text-white mb-2 tracking-tighter">
+                                {tutorProfile.name}
+                            </h1>
+                            <p className="text-gray-400 max-w-2xl text-base md:text-lg font-medium leading-relaxed">
+                                {tutorProfile.bio}
+                            </p>
                         </div>
 
-                        <div className="flex gap-3 mb-4">
+                        <div className="flex flex-row flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto mt-4 md:mt-0">
+                            <div className="relative group flex-1 md:flex-none min-w-[120px]">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search..."
+                                    className="pl-8 pr-3 py-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-all w-full md:w-40 text-[10px] md:text-sm"
+                                />
+                            </div>
                             <button
                                 onClick={() => setIsDraftsModalOpen(true)}
-                                className="px-5 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl font-bold border border-gray-700 transition-all flex items-center gap-2 hover:border-gray-500"
+                                className="px-3 py-2 bg-gray-800/50 text-gray-400 rounded-xl font-bold border border-gray-800 transition-all flex items-center gap-1.5 text-[10px] md:text-sm"
                             >
-                                <FileText size={20} />
-                                <span>Drafts {drafts.length > 0 && `(${drafts.length})`}</span>
+                                <FileText size={14} />
+                                <span className="hidden sm:inline">Drafts</span>
+                                {drafts.length > 0 && `(${drafts.length})`}
                             </button>
                             <button
                                 onClick={openUploadModal}
-                                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2"
+                                className="px-3 py-2 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/10 transition-all flex items-center gap-1.5 text-[10px] md:text-sm"
                             >
-                                <Plus size={20} />
-                                <span>Upload Content</span>
+                                <Plus size={14} />
+                                <span>Upload</span>
+                            </button>
+                            <button
+                                onClick={() => setIsFocusMode(!isFocusMode)}
+                                className={`px-3 py-2 rounded-xl font-bold border transition-all flex items-center gap-1.5 text-[10px] md:text-sm ${isFocusMode
+                                    ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-lg shadow-amber-500/10'
+                                    : 'bg-gray-800/50 border-gray-700 text-gray-400'
+                                    }`}
+                                title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+                            >
+                                <Eye size={14} className={isFocusMode ? "animate-pulse" : ""} />
+                                <span>{isFocusMode ? "Focused" : "Focus"}</span>
                             </button>
                             <button
                                 onClick={() => setViewMode(viewMode === 'content' ? 'programme-config' : 'content')}
-                                className={`px-6 py-3 rounded-xl font-bold border transition-all flex items-center gap-2 ${viewMode === 'programme-config'
+                                className={`px-3 py-2 rounded-xl font-bold border transition-all flex items-center gap-1.5 text-[10px] md:text-sm ${viewMode === 'programme-config'
                                     ? 'bg-blue-500/10 border-blue-500 text-blue-400'
-                                    : 'bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-gray-500'
+                                    : 'bg-gray-800/50 border-gray-700 text-gray-400'
                                     }`}
                             >
-                                <Settings size={20} />
-                                <span>{viewMode === 'content' ? 'Configure Programmes' : 'Back to Content'}</span>
+                                <Settings size={14} />
+                                <span>{viewMode === 'content' ? 'Config' : 'Repo'}</span>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="p-8 max-w-7xl mx-auto">
+            <div className="p-4 md:p-8 max-w-7xl mx-auto">
                 {viewMode === 'programme-config' ? (
                     // PROGRAMME CONFIGURATION VIEW
                     <div className="animate-fade-in space-y-8">
@@ -795,7 +862,7 @@ export default function DeveloperLibrary() {
                         </div>
 
                         {configProgramme ? (
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-8 space-y-8">
+                            <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-5 md:p-8 space-y-6 md:space-y-8">
                                 {/* Programme Details Header */}
                                 <div className="flex justify-between items-start">
                                     <div>
@@ -897,49 +964,51 @@ export default function DeveloperLibrary() {
                     // CONTENT VIEW
                     <div className="animate-fade-in space-y-6">
                         {/* Filters & Search */}
-                        <div className={`transition-all duration-300 ${activeTab === 'Home' ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
-                            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                                <div className="relative group">
-                                    <select
-                                        className="appearance-none bg-gray-900 border border-gray-700 text-gray-200 pl-4 pr-10 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-500/50 outline-none text-sm font-medium min-w-[200px] hover:border-gray-600 transition-colors cursor-pointer"
-                                        value={selectedProg}
-                                        onChange={e => { setSelectedProg(e.target.value); setSelectedLevel('All Levels'); setSelectedCU(null); }}
-                                    >
-                                        <option value="">All Programmes</option>
-                                        {programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-gray-200" />
-                                </div>
-
-                                <div className="h-8 w-px bg-gray-700 hidden md:block" />
-
-                                <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-                                    <button
-                                        onClick={() => { setSelectedLevel('All Levels'); setSelectedCU(null); }}
-                                        className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === 'All Levels' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
-                                    >
-                                        All Levels
-                                    </button>
-                                    {repoLevels.map(lvl => (
-                                        <button
-                                            key={lvl}
-                                            onClick={() => { setSelectedLevel(lvl); setSelectedCU(null); }}
-                                            className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === lvl ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                        {!isFocusMode && (
+                            <div className={`transition-all duration-300 ${activeTab === 'Home' ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
+                                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                                    <div className="relative group w-full md:w-auto">
+                                        <select
+                                            className="appearance-none bg-gray-900 border border-gray-700 text-gray-200 pl-4 pr-10 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-500/50 outline-none text-sm font-medium w-full md:w-auto md:min-w-[200px] hover:border-gray-600 transition-colors cursor-pointer truncate"
+                                            value={selectedProg}
+                                            onChange={e => { setSelectedProg(e.target.value); setSelectedLevel('All Levels'); setSelectedCU(null); }}
                                         >
-                                            {lvl}
+                                            <option value="">All Programmes</option>
+                                            {programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-gray-200" />
+                                    </div>
+
+                                    <div className="h-8 w-px bg-gray-700 hidden md:block" />
+
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+                                        <button
+                                            onClick={() => { setSelectedLevel('All Levels'); setSelectedCU(null); }}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === 'All Levels' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                                        >
+                                            All Levels
                                         </button>
-                                    ))}
+                                        {repoLevels.map(lvl => (
+                                            <button
+                                                key={lvl}
+                                                onClick={() => { setSelectedLevel(lvl); setSelectedCU(null); }}
+                                                className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedLevel === lvl ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}
+                                            >
+                                                {lvl}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
-                        {/* Tabs */}
-                        <div className="flex gap-1 mb-6 border-b border-gray-800 pb-1">
+                        {/* Tabs - Tutor Style Match */}
+                        <div className="flex gap-2 mb-6 border-b border-gray-800 pb-1 overflow-x-auto scrollbar-hide">
                             {(['Home', 'Note', 'Video', 'Question'] as ContentType[]).map(type => (
                                 <button
                                     key={type}
                                     onClick={() => { setActiveTab(type); setSelectedCU(null); }}
-                                    className={`px-6 py-3 rounded-t-xl font-bold text-sm transition-all flex items-center gap-2 ${activeTab === type
+                                    className={`px-4 md:px-6 py-2 md:py-3 rounded-t-xl font-bold text-xs md:text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === type
                                         ? 'text-blue-400 border-b-2 border-blue-500 bg-gradient-to-t from-blue-500/10 to-transparent'
                                         : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                                         }`}
@@ -948,10 +1017,7 @@ export default function DeveloperLibrary() {
                                     {type === 'Note' && <FileText size={16} />}
                                     {type === 'Video' && <Play size={16} />}
                                     {type === 'Question' && <HelpCircle size={16} />}
-                                    {type === 'Home' && 'HOME'}
-                                    {type === 'Note' && 'NOTES'}
-                                    {type === 'Video' && 'VIDEOS'}
-                                    {type === 'Question' && 'QUESTIONS'}
+                                    <span className="uppercase tracking-wider">{type === 'Home' ? 'HOME' : `${type}S`}</span>
                                 </button>
                             ))}
                         </div>
@@ -969,7 +1035,17 @@ export default function DeveloperLibrary() {
                                                         <CustomVideoPlayer
                                                             src={featuredContent.url || ''}
                                                             className="w-full h-full"
+                                                            poster={featuredContent.thumbnailUrl}
                                                         />
+                                                    ) : featuredContent.thumbnailUrl ? (
+                                                        <div className="w-full h-full relative group">
+                                                            <img
+                                                                src={featuredContent.thumbnailUrl}
+                                                                className="w-full h-full object-cover"
+                                                                alt={featuredContent.title}
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
+                                                        </div>
                                                     ) : (
                                                         <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
                                                             <div className="text-center">
@@ -980,7 +1056,7 @@ export default function DeveloperLibrary() {
                                                     )}
                                                     <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded shadow">FEATURED</div>
                                                 </div>
-                                                <div className="p-8 flex flex-col justify-center">
+                                                <div className="p-4 md:p-8 flex flex-col justify-center">
                                                     <div className="flex gap-2 mb-4">
                                                         <span className="px-2 py-0.5 text-xs font-bold bg-blue-600 text-white rounded uppercase tracking-wider">{featuredContent.type}</span>
                                                         <span className="px-2 py-0.5 text-xs font-bold bg-gray-800 text-gray-400 rounded border border-gray-700">{new Date(featuredContent.uploadDate).toLocaleDateString()}</span>
@@ -1012,7 +1088,7 @@ export default function DeveloperLibrary() {
                                             <div className="w-1 h-6 bg-blue-500 rounded-full" />
                                             Recent Uploads
                                         </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
                                             {homeContent.slice(0, 8).map(c => (
                                                 <div key={c.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all group relative cursor-pointer" onClick={() => handleViewContent(c)}>
                                                     <div className="aspect-video bg-gray-950 relative">
@@ -1083,29 +1159,34 @@ export default function DeveloperLibrary() {
                             ) : (
                                 // LIST VIEW (With Filter Logic)
                                 <div className="flex flex-col md:flex-row gap-6">
-                                    <div className="w-full md:w-64 shrink-0 space-y-2">
-                                        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
-                                            <h3 className="font-bold text-gray-300 mb-4 px-2">Course Units</h3>
-                                            <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                                                <button
-                                                    onClick={() => setSelectedCU(null)}
-                                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!selectedCU ? 'bg-blue-600 text-white font-medium' : 'text-gray-400 hover:bg-white/5'}`}
-                                                >
-                                                    All Units
-                                                </button>
-                                                {availableCourseUnits.map(cu => (
+                                    {!isFocusMode && (
+                                        <div className="w-full md:w-64 shrink-0 space-y-2 animate-in slide-in-from-left duration-300">
+                                            <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl sticky top-4">
+                                                <h3 className="font-bold text-gray-300 mb-4 px-2 flex items-center gap-2">
+                                                    <BookOpen size={16} className="text-blue-500" />
+                                                    Course Units
+                                                </h3>
+                                                <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                                                     <button
-                                                        key={cu.id}
-                                                        onClick={() => setSelectedCU(cu.id)}
-                                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors line-clamp-1 ${selectedCU === cu.id ? 'bg-blue-600 text-white font-medium' : 'text-gray-400 hover:bg-white/5'}`}
-                                                        title={cu.name}
+                                                        onClick={() => setSelectedCU(null)}
+                                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!selectedCU ? 'bg-blue-600 text-white font-medium shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:bg-white/5'}`}
                                                     >
-                                                        {cu.code} - {cu.name}
+                                                        All Units
                                                     </button>
-                                                ))}
+                                                    {availableCourseUnits.map(cu => (
+                                                        <button
+                                                            key={cu.id}
+                                                            onClick={() => setSelectedCU(cu.id)}
+                                                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors line-clamp-1 ${selectedCU === cu.id ? 'bg-blue-600 text-white font-medium shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:bg-white/5'}`}
+                                                            title={cu.name}
+                                                        >
+                                                            {cu.code} - {cu.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div className="flex-1">
                                         {/* Content Grid */}
@@ -1175,7 +1256,7 @@ export default function DeveloperLibrary() {
                                                             </div>
                                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <button onClick={() => openEditModal(c)} className="p-2 bg-gray-800 rounded-lg text-gray-400 hover:text-blue-400"><Pencil size={16} /></button>
-                                                                <button onClick={() => deleteTutorContent(c.id)} className="p-2 bg-gray-800 rounded-lg text-gray-400 hover:text-red-400"><Trash2 size={16} /></button>
+                                                                <button onClick={() => deleteContent(c)} className="p-2 bg-gray-800 rounded-lg text-gray-400 hover:text-red-400"><Trash2 size={16} /></button>
                                                             </div>
                                                         </div>
 
@@ -1350,37 +1431,44 @@ export default function DeveloperLibrary() {
                                                 </div>
                                             )}
 
-                                            {/* Cover Image Upload (Only for non-videos) */}
-                                            {uploadForm.fileType !== 'Video' && (
-                                                <div className="border border-dashed border-gray-700 bg-black/20 rounded-xl p-4 flex items-center gap-4 relative group hover:border-blue-500/50 transition-colors mb-4">
-                                                    <div className="w-16 h-16 bg-gray-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative">
-                                                        {uploadForm.thumbnailFile ? (
-                                                            <img src={URL.createObjectURL(uploadForm.thumbnailFile)} className="w-full h-full object-cover" />
-                                                        ) : uploadForm.thumbnailUrl ? (
-                                                            <img src={uploadForm.thumbnailUrl} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <FileText size={24} className="text-gray-600" />
-                                                        )}
-                                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                            <Upload size={16} className="text-white" />
-                                                        </div>
+                                            {/* Cover Image Upload (Always available) */}
+                                            <div className="border border-dashed border-gray-700 bg-black/20 rounded-xl p-4 flex items-center gap-4 relative group hover:border-blue-500/50 transition-colors mb-4">
+                                                <div className="w-16 h-16 bg-gray-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative">
+                                                    {uploadForm.thumbnailFile ? (
+                                                        <img src={URL.createObjectURL(uploadForm.thumbnailFile)} className="w-full h-full object-cover" />
+                                                    ) : uploadForm.thumbnailUrl ? (
+                                                        <img src={uploadForm.thumbnailUrl} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <FileText size={24} className="text-gray-600" />
+                                                    )}
+                                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                        <Upload size={16} className="text-white" />
                                                     </div>
-                                                    <div>
-                                                        <p className="text-sm font-bold text-gray-300">Add Cover Image</p>
-                                                        <p className="text-xs text-gray-500">Upload a custom thumbnail for this document.</p>
-                                                    </div>
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                        onChange={e => {
-                                                            if (e.target.files?.[0]) {
-                                                                setUploadForm({ ...uploadForm, thumbnailFile: e.target.files[0] });
-                                                            }
-                                                        }}
-                                                    />
                                                 </div>
-                                            )}
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-300">Add Cover Image</p>
+                                                    <p className="text-xs text-gray-500">Upload a custom thumbnail for this content.</p>
+                                                </div>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => {
+                                                                setUploadForm(prev => ({
+                                                                    ...prev,
+                                                                    thumbnailFile: file,
+                                                                    thumbnailUrl: reader.result as string
+                                                                }));
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
 
                                             <input
                                                 className="w-full bg-transparent text-2xl font-bold text-white placeholder-gray-600 outline-none border-b border-transparent focus:border-gray-700 pb-2 transition-colors"
@@ -1616,7 +1704,7 @@ export default function DeveloperLibrary() {
                                                 Resume
                                             </button>
                                             <button
-                                                onClick={() => deleteContent(draft.id)}
+                                                onClick={() => deleteContent(draft)}
                                                 className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
                                             >
                                                 <Trash2 size={16} />
@@ -1663,6 +1751,37 @@ export default function DeveloperLibrary() {
                         <div className="flex justify-end gap-3 mt-8">
                             <button onClick={() => setIsProfileModalOpen(false)} className="px-5 py-2.5 text-gray-400">Cancel</button>
                             <button onClick={() => { updateProfile(profileForm); setIsProfileModalOpen(false); }} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl">Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {isDeleteModalOpen && contentToDelete && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-md animate-fade-in">
+                    <div className="bg-[#0A0A0A] border border-red-500/30 rounded-[2.5rem] w-full max-w-md shadow-[0_0_100px_rgba(239,68,68,0.15)] overflow-hidden scale-in">
+                        <div className="p-10 text-center">
+                            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-red-500/20">
+                                <Trash2 size={32} className="text-red-500" />
+                            </div>
+                            <h2 className="text-2xl font-black text-white mb-4 uppercase tracking-tighter">Confirm Deletion</h2>
+                            <p className="text-gray-400 mb-10 text-sm leading-relaxed">
+                                You are about to permanently remove <span className="text-white font-bold">"{contentToDelete.title}"</span>. This action cannot be undone and will remove it from all student archives.
+                            </p>
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={confirmDelete}
+                                    className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg shadow-red-900/20 active:scale-95"
+                                >
+                                    Delete Permanently
+                                </button>
+                                <button
+                                    onClick={() => { setIsDeleteModalOpen(false); setContentToDelete(null); }}
+                                    className="w-full py-4 text-gray-500 hover:text-white font-black text-xs uppercase tracking-[0.2em] transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -14,7 +14,18 @@ export default function StudentDashboard() {
     const router = useRouter();
 
     // The Portal User Profile
-    const STUDENT = students.find(s => s.id.toString() === studentProfile?.id);
+    const STUDENT = students.find(s => s.id.toString() === studentProfile?.id) || {
+        ...studentProfile,
+        id: studentProfile.id,
+        name: studentProfile.name,
+        totalFees: 0,
+        balance: 0,
+        programme: 'Independent Learner',
+        level: 'N/A',
+        status: 'Active',
+        payCode: '',
+        compassNumber: 0
+    };
     const appName = schoolProfile?.name || "COMPASS 360";
 
     // Institutional Record Link
@@ -28,12 +39,11 @@ export default function StudentDashboard() {
     const displayStudent = linkedStudent || STUDENT;
 
     useEffect(() => {
-        if (hydrated) {
-            if (!STUDENT) {
-                router.replace('/');
-            }
+        // Only redirect if there is absolutely no profile (which shouldn't happen due to store defaults)
+        if (hydrated && !studentProfile?.id) {
+            router.replace('/');
         }
-    }, [STUDENT, hydrated, router]);
+    }, [studentProfile, hydrated, router]);
 
     // Timer Logic - Tied to institutional record primarily
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });

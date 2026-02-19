@@ -43,7 +43,8 @@ export default function RoleSelectionPage() {
                 id: defaultTutor?.id || 'tut_1',
                 name: defaultTutor?.name || 'Demo Tutor',
                 email: defaultTutor?.email || 'tutor@compass360.com',
-                subscriptionDaysLeft: 30
+                subscriptionDaysLeft: 30,
+                role: 'Tutor'
             });
         } else if (roleId === 'student') {
             setStudentProfile({
@@ -51,17 +52,19 @@ export default function RoleSelectionPage() {
                 name: 'Student User',
                 email: 'student@vine.ac.ug',
                 likedContentIds: [],
-                subscribedTutorIds: []
+                subscribedTutorIds: [],
+                subscriptionStatus: 'active',
+                subscriptionEndDate: '2026-12-31'
             });
         } else if (roleId === 'developer') {
             setDeveloperProfile({
                 id: 'dev_1',
                 name: 'Lead Developer',
-                email: 'dev@compass360.com'
+                role: 'Developer'
             });
         }
 
-        setActiveRole(roleId);
+        setActiveRole(roleId as any);
     };
 
     return (

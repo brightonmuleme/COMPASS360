@@ -663,9 +663,6 @@ function EnrollmentContent() {
 
     // ACTIVE STUDENTS FILTER
     const filteredStudents = enrolledStudents.filter(s => {
-        // STRICT SEPARATION: Only show Bursar Enrollments
-        if (s.origin !== 'bursar') return false;
-
         const matchesTerm = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             s.payCode.includes(searchTerm) ||
             (s.marketingAgent || '').toLowerCase().includes(searchTerm.toLowerCase());

@@ -1,6 +1,11 @@
 "use client";
 import React, { useState } from 'react';
 import { useSchoolData, LandingPageRoleContent, FeaturedSchool } from '@/lib/store';
+import {
+    Plus, Trash2, Upload, X, Image as ImageIcon, Save, Edit3,
+    School as SchoolIcon, Layout, Globe, CheckCircle2, RefreshCw,
+    GalleryHorizontal, Sparkles, ChevronRight, Camera, Search, MapPin
+} from 'lucide-react';
 
 export default function ContentManager() {
     const {
@@ -10,7 +15,6 @@ export default function ContentManager() {
     } = useSchoolData();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<LandingPageRoleContent | null>(null);
-
     const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
     const [schoolFormData, setSchoolFormData] = useState<FeaturedSchool | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -23,12 +27,10 @@ export default function ContentManager() {
                 const canvas = document.createElement('canvas');
                 let width = img.width;
                 let height = img.height;
-
                 if (width > maxWidth) {
                     height = (height * maxWidth) / width;
                     width = maxWidth;
                 }
-
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
@@ -41,18 +43,13 @@ export default function ContentManager() {
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isSchool: boolean = true, isLogo: boolean = false) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64String = reader.result as string;
             const slimmed = await compressImage(base64String, 1200, 0.7);
-
             if (isSchool && schoolFormData) {
-                if (isLogo) {
-                    setSchoolFormData({ ...schoolFormData, logo: slimmed });
-                } else {
-                    setSchoolFormData({ ...schoolFormData, image: slimmed });
-                }
+                if (isLogo) setSchoolFormData({ ...schoolFormData, logo: slimmed });
+                else setSchoolFormData({ ...schoolFormData, image: slimmed });
             } else if (!isSchool && formData) {
                 setFormData({ ...formData, image: slimmed });
             }
@@ -63,7 +60,6 @@ export default function ContentManager() {
     const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || !schoolFormData) return;
-
         Array.from(files).forEach(file => {
             const reader = new FileReader();
             reader.onloadend = async () => {
@@ -89,12 +85,12 @@ export default function ContentManager() {
         const newSchool: FeaturedSchool = {
             id: `sch_${Date.now()}`,
             name: 'New Featured School',
-            category: 'Category',
+            category: 'Academy',
             image: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=800',
             tagline: 'Excellence in Education',
             description: 'A brief description of the school.',
             status: 'Active',
-            location: 'Location',
+            location: 'Uganda',
             gallery: []
         };
         setEditingSchoolId(newSchool.id);
@@ -106,12 +102,7 @@ export default function ContentManager() {
         setIsSaving(true);
         try {
             const isNew = !featuredSchools.find(s => s.id === schoolFormData.id);
-            let updated: FeaturedSchool[];
-            if (isNew) {
-                updated = [...featuredSchools, schoolFormData];
-            } else {
-                updated = featuredSchools.map(s => s.id === schoolFormData.id ? schoolFormData : s);
-            }
+            const updated = isNew ? [...featuredSchools, schoolFormData] : featuredSchools.map(s => s.id === schoolFormData.id ? schoolFormData : s);
             await updateFeaturedSchools(updated);
             setEditingSchoolId(null);
             setSchoolFormData(null);
@@ -121,7 +112,7 @@ export default function ContentManager() {
     };
 
     const handleDeleteSchool = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this advertised school?")) return;
+        if (!window.confirm("Confirm deletion?")) return;
         setIsSaving(true);
         try {
             await deleteFeaturedSchool(id);
@@ -135,22 +126,15 @@ export default function ContentManager() {
     const handleWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         setIsSaving(true);
         const reader = new FileReader();
         reader.onloadend = async () => {
             try {
                 const base64String = reader.result as string;
                 const slimmed = await compressImage(base64String, 1920, 0.7);
-
                 const currentWallpapers = developerSettings?.wallpapers || [];
-                await updateDeveloperSettings({
-                    ...developerSettings,
-                    wallpapers: [...currentWallpapers, slimmed]
-                });
-            } finally {
-                setIsSaving(false);
-            }
+                await updateDeveloperSettings({ ...developerSettings, wallpapers: [...currentWallpapers, slimmed] });
+            } finally { setIsSaving(false); }
         };
         reader.readAsDataURL(file);
     };
@@ -160,13 +144,8 @@ export default function ContentManager() {
         try {
             const currentWallpapers = [...(developerSettings?.wallpapers || [])];
             currentWallpapers.splice(index, 1);
-            await updateDeveloperSettings({
-                ...developerSettings,
-                wallpapers: currentWallpapers
-            });
-        } finally {
-            setIsSaving(false);
-        }
+            await updateDeveloperSettings({ ...developerSettings, wallpapers: currentWallpapers });
+        } finally { setIsSaving(false); }
     };
 
     const handleEdit = (role: LandingPageRoleContent) => {
@@ -176,20 +155,13 @@ export default function ContentManager() {
 
     const handleSave = async () => {
         if (!formData || !editingId) return;
-
         setIsSaving(true);
         try {
-            const updatedContent = landingPageContent.map(item =>
-                item.id === editingId ? formData : item
-            );
-
+            const updatedContent = landingPageContent.map(item => item.id === editingId ? formData : item);
             await updateLandingPageContent(updatedContent);
             setEditingId(null);
             setFormData(null);
-            alert("Landing Page Content Updated!");
-        } finally {
-            setIsSaving(false);
-        }
+        } finally { setIsSaving(false); }
     };
 
     const handleChange = (field: keyof LandingPageRoleContent, value: any) => {
@@ -197,411 +169,286 @@ export default function ContentManager() {
         setFormData({ ...formData, [field]: value });
     };
 
-    const handleFeatureChange = (index: number, value: string) => {
-        if (!formData) return;
-        const newFeatures = [...formData.features];
-        newFeatures[index] = value;
-        setFormData({ ...formData, features: newFeatures });
-    };
+    // --- UI VIEW STATE ---
+    const [activeTab, setActiveTab] = useState<'Identity' | 'Schools' | 'Wallpaper'>('Identity');
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-    return (
-        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '2rem', fontWeight: 'bold', margin: '0', color: '#0f172a' }}>Landing Page Content</h1>
-                {isSaving && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                        <div style={{ width: '12px', height: '12px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%' }} className="animate-spin" />
-                        SYNCING TO CLOUD...
-                    </div>
-                )}
-            </div>
+    // --- RENDER HELPERS ---
 
-            {/* Backdrop Wallpapers Section */}
-            <div style={{
-                background: 'white',
-                padding: '2.5rem',
-                borderRadius: '2rem',
-                boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)',
-                border: '1px solid #f1f5f9',
-                marginBottom: '3rem',
-                opacity: isSaving ? 0.6 : 1,
-                pointerEvents: isSaving ? 'none' : 'auto',
-                transition: 'opacity 0.2s'
-            }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
-                    <div>
-                        <h2 style={{ fontSize: '1.2rem', margin: 0, fontWeight: '900', color: '#0f172a' }}>Hero Background Wallpapers</h2>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>These images will cycle in a cinematic slideshow on the landing page.</p>
-                    </div>
-                    <label style={{
-                        padding: '0.75rem 1.5rem',
-                        borderRadius: '1rem',
-                        background: isSaving ? '#94a3b8' : '#3b82f6',
-                        color: 'white',
-                        fontWeight: '800',
-                        fontSize: '0.8rem',
-                        cursor: isSaving ? 'not-allowed' : 'pointer',
-                        textTransform: 'uppercase',
-                        transition: 'all 0.2s'
-                    }}>
-                        {isSaving ? 'Processing...' : 'Add Wallpaper'}
-                        <input type="file" accept="image/*" onChange={handleWallpaperUpload} style={{ display: 'none' }} disabled={isSaving} />
-                    </label>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1.5rem' }}>
-                    {(developerSettings?.wallpapers || []).map((url, idx) => (
-                        <div key={idx} style={{ position: 'relative', borderRadius: '1.5rem', overflow: 'hidden', height: '120px', border: '1px solid #f1f5f9' }}>
-                            <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            <button
-                                onClick={() => removeWallpaper(idx)}
-                                style={{
-                                    position: 'absolute', top: '0.5rem', right: '0.5rem',
-                                    width: '24px', height: '24px', borderRadius: '50%',
-                                    background: 'rgba(255,0,0,0.8)', color: 'white',
-                                    border: 'none', cursor: 'pointer', fontSize: '10px',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontWeight: 'bold'
-                                }}
-                            >✕</button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Portal Sections */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', marginBottom: '4rem' }}>
-                {landingPageContent.map((role) => {
-                    const isEditing = editingId === role.id;
-
-                    return (
-                        <div key={role.id} style={{
-                            background: 'white',
-                            padding: '2.5rem',
-                            borderRadius: '2rem',
-                            boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)',
-                            border: '1px solid #f1f5f9'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                                    <div style={{
-                                        width: '48px', height: '48px', borderRadius: '1rem', background: role.theme,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-                                        fontWeight: '900', fontSize: '1.2rem'
-                                    }}>
-                                        {role.id[0].toUpperCase()}
-                                    </div>
-                                    <div>
-                                        <h2 style={{ fontSize: '1.1rem', margin: 0, textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.05em', color: '#1e293b' }}>
-                                            {role.id} Identity
-                                        </h2>
-                                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                            Portal Landing Section
-                                        </p>
-                                    </div>
-                                </div>
-                                {!isEditing && (
-                                    <button
-                                        onClick={() => handleEdit(role)}
-                                        style={{
-                                            padding: '0.6rem 1.25rem',
-                                            borderRadius: '0.75rem',
-                                            border: '1px solid #e2e8f0',
-                                            cursor: 'pointer',
-                                            background: 'white',
-                                            fontSize: '0.75rem',
-                                            fontWeight: '800',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.05em',
-                                            color: '#64748b'
-                                        }}
-                                    >
-                                        Edit Content
-                                    </button>
-                                )}
+    const renderHeader = () => (
+        <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 pb-4">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <div onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 p-[2px]">
+                            <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center">
+                                <Layout size={20} className="text-white" />
                             </div>
-
-                            {isEditing && formData ? (
-                                <div style={{ display: 'grid', gap: '2rem' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Hero Title</label>
-                                            <input
-                                                type="text"
-                                                value={formData.title}
-                                                onChange={(e) => handleChange('title', e.target.value)}
-                                                style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Accent Tagline</label>
-                                            <input
-                                                type="text"
-                                                value={formData.tagline}
-                                                onChange={(e) => handleChange('tagline', e.target.value)}
-                                                style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', fontSize: '0.9rem', fontWeight: '600', color: role.theme }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Marketing Description</label>
-                                        <textarea
-                                            value={formData.description}
-                                            onChange={(e) => handleChange('description', e.target.value)}
-                                            style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: '1px solid #e2e8f0', minHeight: '100px', fontSize: '0.9rem', lineHeight: '1.6', color: '#475569' }}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Visual Asset</label>
-                                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                                            <div style={{ flex: 1 }}>
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={(e) => handleImageUpload(e, false)}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
-                                                />
-                                            </div>
-                                            <div style={{ width: '140px', height: '100px', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                                                <img src={formData.image} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                                        <button
-                                            onClick={handleSave}
-                                            style={{ padding: '1rem 2.5rem', borderRadius: '1rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '900', fontSize: '0.8rem', textTransform: 'uppercase' }}
-                                        >
-                                            Save Changes
-                                        </button>
-                                        <button
-                                            onClick={() => { setEditingId(null); setFormData(null); }}
-                                            style={{ padding: '1rem 2.5rem', borderRadius: '1rem', background: '#f1f5f9', color: '#64748b', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase' }}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ display: 'flex', gap: '3rem', alignItems: 'center' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.02em' }}>{role.title}</h3>
-                                        <p style={{ margin: '0 0 1.25rem 0', color: role.theme, fontWeight: '800', fontSize: '0.9rem', textTransform: 'uppercase' }}>{role.tagline}</p>
-                                        <p style={{ margin: 0, color: '#64748b', lineHeight: '1.6', fontSize: '0.95rem', fontWeight: '500' }}>{role.description}</p>
-                                    </div>
-                                    <div style={{ width: '240px', flexShrink: 0 }}>
-                                        <img src={role.image} alt={role.title} style={{ width: '100%', borderRadius: '1.5rem', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.15)', border: '4px solid white' }} />
-                                    </div>
-                                </div>
-                            )}
                         </div>
-                    );
-                })}
-            </div>
-
-            {/* Discover Top Schools Section */}
-            <div style={{ background: 'white', padding: '2.5rem', borderRadius: '2rem', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9', marginBottom: '4rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <div style={{
-                            width: '40px', height: '40px', borderRadius: '12px', background: '#0f172a',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
-                        }}>
-                            🏫
-                        </div>
-                        <h2 style={{ fontSize: '1.2rem', margin: 0, fontWeight: '900', color: '#0f172a' }}>Featured Schools Directory</h2>
+                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-slate-900 rounded-full"></div>
                     </div>
-                    {!editingSchoolId && (
-                        <button
-                            onClick={handleAddNewSchool}
-                            style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase' }}
-                        >
-                            Add New School
+                    <div>
+                        <h1 className="text-sm font-bold text-white leading-none">Developer</h1>
+                        <p className="text-[10px] text-slate-400 font-medium mt-1">Content Manager</p>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    {/* Contextual Actions based on Tab */}
+                    {activeTab === 'Schools' && !editingSchoolId && (
+                        <button onClick={handleAddNewSchool} className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 shadow-lg shadow-emerald-900/20">
+                            <Plus size={20} />
                         </button>
                     )}
+                    {activeTab === 'Wallpaper' && (
+                        <label className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-500 shadow-lg shadow-blue-900/20 cursor-pointer">
+                            <Camera size={20} />
+                            <input type="file" accept="image/*" onChange={handleWallpaperUpload} className="hidden" disabled={isSaving} />
+                        </label>
+                    )}
                 </div>
+            </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    {featuredSchools.map((school: FeaturedSchool) => {
-                        const isEditingSchool = editingSchoolId === school.id;
+            {/* Mobile Tab Navigation */}
+            <div className="flex items-center px-4 mt-2 gap-2 overflow-x-auto no-scrollbar">
+                {[
+                    { id: 'Identity', icon: Sparkles, label: 'Identity' },
+                    { id: 'Schools', icon: SchoolIcon, label: 'Schools' },
+                    { id: 'Wallpaper', icon: GalleryHorizontal, label: 'Wallpapers' },
+                ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as any)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id
+                                ? 'bg-white text-slate-900 shadow-lg'
+                                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
+                            }`}
+                    >
+                        <tab.icon size={14} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
 
-                        return (
-                            <div key={school.id} style={{ border: '1px solid #f1f5f9', borderRadius: '1.5rem', padding: '1.5rem' }}>
-                                {isEditingSchool && schoolFormData ? (
-                                    <div style={{ display: 'grid', gap: '1.5rem' }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>School Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={schoolFormData.name}
-                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, name: e.target.value })}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Category</label>
-                                                <input
-                                                    type="text"
-                                                    value={schoolFormData.category}
-                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, category: e.target.value })}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
-                                                />
-                                            </div>
+            {isSaving && (
+                <div className="absolute top-full left-0 right-0 bg-blue-600/10 backdrop-blur-sm h-1">
+                    <div className="h-full bg-blue-500 animate-progress origin-left"></div>
+                </div>
+            )}
+        </div>
+    );
+
+    return (
+        <div className="h-full bg-black min-h-screen text-slate-200 pb-20">
+            {renderHeader()}
+
+            <div className="px-4 py-6 space-y-6">
+
+                {/* --- TAB: IDENTITY --- */}
+                {activeTab === 'Identity' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        {landingPageContent.map((role) => (
+                            <div key={role.id} className="group relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 hover:border-slate-700 transition-all">
+                                {/* Edit Mode */}
+                                {editingId === role.id ? (
+                                    <div className="p-4 space-y-4">
+                                        <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
+                                            <img src={formData?.image} className="w-full h-full object-cover opacity-50" />
+                                            <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-white/10 transition-colors">
+                                                <Camera size={24} className="text-white mb-2" />
+                                                <span className="text-[10px] uppercase font-bold text-white tracking-widest">Change Image</span>
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, false)} className="hidden" />
+                                            </label>
                                         </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tagline</label>
-                                                <input
-                                                    type="text"
-                                                    value={schoolFormData.tagline}
-                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, tagline: e.target.value })}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Location</label>
-                                                <input
-                                                    type="text"
-                                                    value={schoolFormData.location || ''}
-                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData, location: e.target.value })}
-                                                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Description</label>
+                                        <div className="space-y-3">
+                                            <input
+                                                value={formData?.title}
+                                                onChange={(e) => handleChange('title', e.target.value)}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-bold text-white placeholder-slate-600 focus:border-blue-500 outline-none"
+                                                placeholder="Title"
+                                            />
+                                            <input
+                                                value={formData?.tagline}
+                                                onChange={(e) => handleChange('tagline', e.target.value)}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-bold text-blue-400 placeholder-slate-600 focus:border-blue-500 outline-none"
+                                                placeholder="Tagline"
+                                            />
                                             <textarea
-                                                value={schoolFormData.description}
-                                                onChange={(e) => setSchoolFormData({ ...schoolFormData, description: e.target.value })}
-                                                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', minHeight: '80px' }}
+                                                value={formData?.description}
+                                                onChange={(e) => handleChange('description', e.target.value)}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:border-blue-500 outline-none min-h-[80px]"
+                                                placeholder="Description"
                                             />
                                         </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Main Image</label>
-                                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                                    <div style={{ width: '100px', height: '60px', borderRadius: '0.75rem', overflow: 'hidden', border: '1px solid #f1f5f9' }}>
-                                                        <img src={schoolFormData.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    </div>
-                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, false)} style={{ fontSize: '0.7rem', flex: 1 }} />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.5rem' }}>School Logo</label>
-                                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                                    <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', border: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        {schoolFormData.logo ? <img src={schoolFormData.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : 'No Logo'}
-                                                    </div>
-                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, true)} style={{ fontSize: '0.7rem', flex: 1 }} />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '1rem' }}>Gallery Management</label>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                                                {(schoolFormData.gallery || []).map((img, idx) => (
-                                                    <div key={idx} style={{ position: 'relative', height: '80px', borderRadius: '0.75rem', overflow: 'hidden', border: '1px solid #f1f5f9' }}>
-                                                        <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                        <button
-                                                            onClick={() => removeGalleryImage(idx)}
-                                                            style={{ position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', cursor: 'pointer', fontSize: '10px' }}
-                                                        >✕</button>
-                                                    </div>
-                                                ))}
-                                                <label style={{
-                                                    height: '80px', borderRadius: '0.75rem', border: '2px dashed #e2e8f0',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    cursor: 'pointer', color: '#94a3b8', fontSize: '1.5rem'
-                                                }}>
-                                                    +
-                                                    <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} style={{ display: 'none' }} />
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-                                            <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                                <button
-                                                    onClick={handleSaveSchool}
-                                                    style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                >
-                                                    Save School
-                                                </button>
-                                                <button
-                                                    onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }}
-                                                    style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#f1f5f9', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: '#64748b', fontSize: '0.8rem' }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                            <button
-                                                onClick={() => handleDeleteSchool(school.id)}
-                                                style={{ padding: '0.75rem 1.5rem', borderRadius: '0.75rem', background: '#fee2e2', color: '#ef4444', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                            >
-                                                Delete School
+                                        <div className="flex gap-2 pt-2">
+                                            <button onClick={handleSave} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+                                                <CheckCircle2 size={14} /> Save
+                                            </button>
+                                            <button onClick={() => { setEditingId(null); setFormData(null); }} className="px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg text-xs font-bold uppercase tracking-wider">
+                                                Cancel
                                             </button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                                        <div style={{ width: '100px', height: '70px', borderRadius: '1rem', overflow: 'hidden', background: '#f8fafc', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-                                            <img src={school.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                {school.logo && <img src={school.logo} alt="" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />}
-                                                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: '#0f172a' }}>{school.name}</h4>
+                                    /* View Mode */
+                                    <>
+                                        <div className="relative aspect-video">
+                                            <img src={role.image} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+                                            <div className="absolute top-3 left-3 px-2 py-1 bg-black/50 backdrop-blur-md rounded-md text-[10px] font-bold text-white uppercase tracking-wider border border-white/10">
+                                                {role.id}
                                             </div>
-                                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: '700' }}>
-                                                <span style={{ color: '#3b82f6' }}>{school.category}</span> • {school.location}
-                                            </p>
-                                            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>"{school.tagline}"</p>
+                                            <button
+                                                onClick={() => handleEdit(role)}
+                                                className="absolute top-3 right-3 p-2 bg-slate-900/80 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600"
+                                            >
+                                                <Edit3 size={14} />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => {
-                                                setEditingSchoolId(school.id);
-                                                setSchoolFormData({ ...school });
-                                            }}
-                                            style={{
-                                                padding: '0.6rem 1.25rem',
-                                                borderRadius: '0.75rem',
-                                                border: '1px solid #e2e8f0',
-                                                background: 'white',
-                                                cursor: 'pointer',
-                                                fontSize: '0.75rem',
-                                                fontWeight: '800',
-                                                color: '#64748b',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = 'white'}
-                                        >
-                                            Edit Details
-                                        </button>
+                                        <div className="p-4 relative -mt-6">
+                                            <h3 className="text-lg font-black text-white italic uppercase tracking-tight">{role.title}</h3>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest mt-1 mb-2" style={{ color: role.theme }}>{role.tagline}</p>
+                                            <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">{role.description}</p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* --- TAB: SCHOOLS --- */}
+                {activeTab === 'Schools' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        {/* Empty State */}
+                        {featuredSchools.length === 0 && (
+                            <div className="flex flex-col items-center justify-center h-64 text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+                                <SchoolIcon size={48} className="mb-4 opacity-50" />
+                                <p className="text-sm font-medium">No schools configured</p>
+                                <button onClick={handleAddNewSchool} className="mt-4 px-6 py-2 bg-slate-800 text-white rounded-full text-xs font-bold hover:bg-slate-700">
+                                    Add First School
+                                </button>
+                            </div>
+                        )}
+
+                        {featuredSchools.map((school) => (
+                            <div key={school.id} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden">
+                                {editingSchoolId === school.id ? (
+                                    <div className="p-4 space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Logo</label>
+                                                <div className="w-16 h-16 bg-black rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden relative group/logo cursor-pointer">
+                                                    {schoolFormData?.logo ? <img src={schoolFormData.logo} className="w-full h-full object-contain" /> : <ImageIcon size={20} className="text-slate-700" />}
+                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, true)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Cover</label>
+                                                <div className="h-16 bg-black rounded-xl border border-slate-800 overflow-hidden relative group/cover cursor-pointer">
+                                                    <img src={schoolFormData?.image} className="w-full h-full object-cover opacity-50" />
+                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, false)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <input
+                                                value={schoolFormData?.name}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, name: e.target.value })}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-bold text-white placeholder-slate-600 focus:border-emerald-500 outline-none"
+                                                placeholder="School Name"
+                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={schoolFormData?.category}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, category: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                    placeholder="Category"
+                                                />
+                                                <input
+                                                    value={schoolFormData?.location}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, location: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                    placeholder="Location"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 flex flex-col gap-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Gallery ({schoolFormData?.gallery?.length || 0})</label>
+                                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                                {(schoolFormData?.gallery || []).map((img, idx) => (
+                                                    <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 group/gal">
+                                                        <img src={img} className="w-full h-full object-cover" />
+                                                        <button onClick={() => removeGalleryImage(idx)} className="absolute inset-0 bg-red-600/80 flex items-center justify-center opacity-0 group-hover/gal:opacity-100 transition-opacity">
+                                                            <X size={12} className="text-white" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <label className="w-12 h-12 rounded-lg border border-dashed border-slate-700 flex items-center justify-center text-slate-500 hover:text-white hover:border-slate-500 cursor-pointer shrink-0">
+                                                    <Plus size={16} />
+                                                    <input type="file" multiple accept="image/*" onChange={handleGalleryUpload} className="hidden" />
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2 pt-2 border-t border-slate-800">
+                                            <button onClick={handleSaveSchool} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold uppercase tracking-wider">
+                                                Save
+                                            </button>
+                                            <button onClick={() => handleDeleteSchool(school.id)} className="px-3 bg-red-900/30 text-red-500 hover:bg-red-900/50 py-2 rounded-lg">
+                                                <Trash2 size={16} />
+                                            </button>
+                                            <button onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }} className="px-3 bg-slate-800 text-slate-400 py-2 rounded-lg">
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* View Mode */
+                                    <div className="p-4 flex gap-4">
+                                        <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-slate-800 bg-black">
+                                            <img src={school.image} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-start justify-between">
+                                                <div>
+                                                    <h3 className="text-sm font-bold text-white truncate">{school.name}</h3>
+                                                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mt-0.5">{school.category}</p>
+                                                </div>
+                                                <button onClick={() => { setEditingSchoolId(school.id); setSchoolFormData({ ...school }); }} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors">
+                                                    <Edit3 size={14} />
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 line-clamp-1 flex items-center gap-1">
+                                                <MapPin size={10} /> {school.location}
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                        );
-                    })}
-                </div>
-                {featuredSchools.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '2px dashed #f1f5f9', borderRadius: '2rem' }}>
-                        <p style={{ color: '#94a3b8', fontWeight: '600', margin: 0 }}>No featured schools advertised yet.</p>
-                        <button
-                            onClick={handleAddNewSchool}
-                            style={{ marginTop: '1.5rem', padding: '0.75rem 2rem', borderRadius: '1rem', background: '#0f172a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '800' }}
-                        >
-                            Create First Listing
-                        </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* --- TAB: WALLPAPERS --- */}
+                {activeTab === 'Wallpaper' && (
+                    <div className="grid grid-cols-2 gap-3 pb-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        {developerSettings?.wallpapers?.map((url, idx) => (
+                            <div key={idx} className="relative aspect-[9/16] rounded-xl overflow-hidden group bg-slate-900 border border-slate-800">
+                                <img src={url} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button onClick={() => removeWallpaper(idx)} className="p-2 bg-red-600 rounded-full text-white shadow-lg hover:scale-110 transition-transform">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        <label className="aspect-[9/16] rounded-xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-blue-400 hover:border-blue-500/50 transition-all cursor-pointer bg-slate-900/50">
+                            <Plus size={24} />
+                            <span className="text-[10px] uppercase font-bold tracking-widest">Add New</span>
+                            <input type="file" accept="image/*" onChange={handleWallpaperUpload} className="hidden" disabled={isSaving} />
+                        </label>
                     </div>
                 )}
             </div>

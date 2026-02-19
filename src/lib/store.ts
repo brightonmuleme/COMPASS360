@@ -476,6 +476,8 @@ export interface StudentProfile {
     subscribedTutorIds: string[];
     subscriptionStatus: 'active' | 'expired' | 'trial';
     subscriptionEndDate: string;
+    walletBalance: number;
+    paymentRequests: SubscriptionRequest[];
     password?: string;
 }
 
@@ -558,6 +560,7 @@ export interface CourseUnit {
     level: string; // "Year 1"
     semester: string; // "Semester 1"
     defaultGrading?: 'percentage' | 'number' | 'letter'; // Override default page grading logic
+    ownerId?: string; // Links to the creator (Tutor/Developer)
 }
 
 export interface ResultPageConfig {
@@ -851,106 +854,17 @@ export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
 };
 export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
     {
-        id: '1',
-        name: 'Kampala Institute of Health Professionals',
-        category: 'Science & Technology',
-        image: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/1_logo.png',
-        tagline: 'Innovating the future, today.',
-        description: 'A world-class facility dedicated to health education with state-of-the-art labs and clinical training programs.',
-        contact: '+256 700 123456',
-        email: 'info@kihp.ac.ug',
-        location: 'Kira Road, Kampala',
-        gallery: [
-            'https://images.unsplash.com/photo-1576091160550-217359f42f8c?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=800'
-        ],
-        status: 'Active'
-    },
-    {
-        id: '2',
-        name: 'The Summit International',
-        category: 'International Boarding',
-        image: 'https://images.unsplash.com/photo-1523050335102-c32241c80f6a?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/2_logo.png',
-        tagline: 'Global Leaders in the making.',
-        description: 'Experience a diverse culture and competitive sports on our expansive campus.',
-        contact: '+256 700 000002',
-        email: 'admissions@summit.intl',
-        location: 'Entebbe',
-        gallery: [
-            'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=800'
-        ],
-        status: 'Active'
-    },
-    {
-        id: '3',
-        name: 'St. Kingsbury College',
-        category: 'Traditional Heritage',
-        image: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/3_logo.png',
-        tagline: 'Excellence since 1895.',
-        description: 'A prestigious institution with a rich history of academic discipline and character building.',
-        contact: '+256 700 000003',
-        email: 'hello@kingsbury.edu',
-        location: 'Mukono',
-        gallery: [
-            'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1564981797816-1043664bf78d?auto=format&fit=crop&q=80&w=800'
-        ],
-        status: 'Active'
-    },
-    {
-        id: '4',
-        name: 'Future Foundry',
-        category: 'Vocational Engineering',
-        image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/4_logo.png',
-        tagline: 'Hands-on Engineering.',
-        description: 'Advanced robotics and engineering programs for practical skill development.',
-        contact: '+256 700 000004',
-        email: 'desk@futurefoundry.ug',
-        location: 'Nakawa',
-        gallery: [
-            'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800'
-        ],
-        status: 'Active'
-    },
-    {
-        id: '5',
-        name: 'Little Explorers Nursery',
-        category: 'Early Childhood',
-        image: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/5_logo.png',
-        tagline: 'Where imagination begins.',
-        description: 'A nurturing environment focused on creative play and early literacy.',
-        contact: '+256 700 000005',
-        email: 'play@littleexplorers.ac.ug',
-        location: 'Nakasero, Kampala',
-        gallery: [
-            'https://images.unsplash.com/photo-1587582423116-ec07293f0395?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1576489911415-6a7574507df5?auto=format&fit=crop&q=80&w=800'
-        ],
-        status: 'Active'
-    },
-    {
-        id: '6',
-        name: 'Victoria Lake Academy',
-        category: 'Elite Secondary',
-        image: 'https://images.unsplash.com/photo-1509062522246-373b1eef731e?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/6_logo.png',
-        tagline: 'Knowledge by the Lakeside.',
-        description: 'A serene learning environment with a focus on holistic development and aquatic sports.',
-        contact: '+256 700 000006',
-        email: 'admin@vla.edu',
-        location: 'Munyonyo',
-        gallery: [
-            'https://images.unsplash.com/photo-1504608524841-42fe6f032b4b?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/flagged/photo-1551307402-99933d74c651?auto=format&fit=crop&q=80&w=800'
-        ],
+        id: 'sami_health',
+        name: 'SAMI HEALTH SCIENCE INSTITUTE',
+        category: 'Health Science',
+        image: 'https://images.unsplash.com/photo-1576091160550-217359941f3b?auto=format&fit=crop&q=80&w=800',
+        logo: '/schools/sami_logo.png',
+        tagline: 'Excellence in Health Education',
+        description: 'A leading health science institute dedicated to training the next generation of medical professionals.',
+        contact: '+256 700 000000',
+        email: 'samihealthscience@gmail.com',
+        location: 'Kampala',
+        gallery: [],
         status: 'Active'
     }
 ];
@@ -1429,6 +1343,32 @@ export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [];
 
 export const INITIAL_TUTORS: Tutor[] = [
     {
+        id: 'dvid',
+        name: 'Kusasira David',
+        email: 'kusasiradavid@gmail.com',
+        phone: '+256 700 000000',
+        type: 'Full-time',
+        status: 'Active',
+        programmeIds: [],
+        department: 'Independent',
+        bio: 'Senior Tutor and Content Creator.',
+        stats: { subscribers: 0, views: 0, uploads: 0 },
+        password: 'password123'
+    },
+    {
+        id: 'compass_tutor',
+        name: 'Compass Tutor',
+        email: 'tutor@compass360.ug',
+        phone: '+256 700 000001',
+        type: 'Full-time',
+        status: 'Active',
+        programmeIds: [],
+        department: 'Independent',
+        bio: 'Official Compass 360 Education Partner.',
+        stats: { subscribers: 0, views: 0, uploads: 0 },
+        password: 'password123'
+    },
+    {
         id: 'system',
         name: 'System Administrator',
         email: 'system@vine.ac.ug',
@@ -1438,57 +1378,12 @@ export const INITIAL_TUTORS: Tutor[] = [
         programmeIds: [],
         department: 'Information Technology',
         bio: 'Automated system account for maintaining platform resources.'
-    },
-    {
-        id: 'tutor_1',
-        name: 'Dr. Sarah N',
-        email: 'sarah.n@compass360.ac.ug',
-        phone: '+256 700 000001',
-        type: 'Full-time',
-        status: 'Active',
-        programmeIds: ['mbchb', 'pharm'],
-        department: 'Department of Anatomy',
-        specialization: 'Human Anatomy & Physiology',
-        bio: 'Senior lecturer with over 10 years of experience in teaching gross anatomy.',
-        stats: { subscribers: 142, views: 5600, uploads: 24 },
-        password: 'password123',
-        walletBalance: 0,
-        subscriptionPrice: 3500,
-        subscriptionDuration: '6 Months'
-    },
-    {
-        id: 'tutor_2',
-        name: 'Prof. James O',
-        email: 'james.o@vine.ac.ug',
-        phone: '+256 700 000002',
-        type: 'Full-time',
-        status: 'Active',
-        programmeIds: ['nurs', 'mbchb'],
-        department: 'School of Nursing',
-        specialization: 'Clinical Nursing',
-        bio: 'Expert in critical care nursing and patient safety protocols.',
-        stats: { subscribers: 89, views: 2300, uploads: 15 },
-        password: 'password123'
-    },
-    {
-        id: 'tutor_3',
-        name: 'Ms. Mary K',
-        email: 'mary.k@vine.ac.ug',
-        phone: '+256 700 000003',
-        type: 'Part-time',
-        status: 'Active',
-        programmeIds: ['clin', 'mbchb', 'nurs'],
-        department: 'Public Health',
-        specialization: 'Community Health',
-        bio: 'Passionate about preventive medicine and community outreach programs.',
-        stats: { subscribers: 210, views: 8900, uploads: 42 },
-        password: 'password123'
     }
 ];
 export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     {
         id: 'tc1',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Video',
         title: 'Introduction to Anatomy: The Skeletal System',
         description: 'Comprehensive overview of the human skeletal system, including bone types, structure, and functions.',
@@ -1503,7 +1398,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc2',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Note',
         title: 'Lecture Notes: Cardiovascular Physiology',
         description: 'Detailed lecture notes including diagrams of the heart, cardiac cycle phases, and blood pressure regulation mechanisms. Includes practice questions at the end.',
@@ -1518,7 +1413,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc3',
-        tutorId: 'tutor_2',
+        tutorId: 'dvid',
         type: 'Video',
         title: 'Advanced Surgical Techniques: Suturing',
         description: 'Watch a demonstration of various suturing techniques used in emergency medicine. Includes simple interrupted, vertical mattress, and subcuticular stitches.',
@@ -1533,7 +1428,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc4',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Question',
         title: 'Q&A Session: Pathology Finals Prep',
         description: 'Recorded Q&A session addressing common misconceptions in general pathology. Topics include inflammation, tissue repair, and hemodynamic disorders.',
@@ -1548,7 +1443,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc5',
-        tutorId: 'tutor_3',
+        tutorId: 'compass_tutor',
         type: 'Video',
         title: 'Community Hygiene Fundamentals',
         description: 'Basics of sanitation and hygiene in rural communities. Field demonstration included.',
@@ -1563,7 +1458,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc6',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Question',
         title: 'Anatomy Mock Exam 1',
         description: 'Practice questions for the upcoming skeletal system CA.',
@@ -1578,7 +1473,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc7',
-        tutorId: 'tutor_2',
+        tutorId: 'dvid',
         type: 'Video',
         title: 'Patient Care Ethics',
         description: 'Understanding the core principles of nursing ethics and patient rights.',
@@ -1593,7 +1488,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc8',
-        tutorId: 'tutor_3',
+        tutorId: 'compass_tutor',
         type: 'Note',
         title: 'Public Health Policy 101',
         description: 'Introduction to national health policies and their implementation.',
@@ -1608,7 +1503,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc9',
-        tutorId: 'tutor_2',
+        tutorId: 'dvid',
         type: 'Note',
         title: 'Nursing Fundamentals: Vital Signs',
         description: 'Guide to measuring and interpreting vital signs accurately.',
@@ -1623,7 +1518,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc10',
-        tutorId: 'tutor_3',
+        tutorId: 'compass_tutor',
         type: 'Question',
         title: 'Clinical Rotations Quiz',
         description: 'Test your readiness for the first clinical rotation.',
@@ -1638,7 +1533,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc11',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Video',
         title: 'Pharmacology Basics: Pharmacokinetics',
         description: 'How drugs move through the body: Absorption, Distribution, Metabolism, Excretion.',
@@ -1653,7 +1548,7 @@ export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     },
     {
         id: 'tc12',
-        tutorId: 'tutor_1',
+        tutorId: 'dvid',
         type: 'Note',
         title: 'Common Drug Interactions',
         description: 'A reference sheet for common drug-drug and drug-food interactions.',
@@ -1907,7 +1802,7 @@ function useSchoolDataInternal() {
 
     const [tutors, setTutors] = useState<Tutor[]>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_tutors_v2');
+            const saved = localStorage.getItem('school_tutors_v4');
             return saved ? JSON.parse(saved) : INITIAL_TUTORS;
         }
         return INITIAL_TUTORS;
@@ -2175,7 +2070,11 @@ function useSchoolDataInternal() {
                 name: 'Student User',
                 email: 'student@vine.ac.ug',
                 likedContentIds: [],
-                subscribedTutorIds: []
+                subscribedTutorIds: [],
+                subscriptionStatus: 'active',
+                subscriptionEndDate: '2026-12-31',
+                walletBalance: 0,
+                paymentRequests: []
             };
         }
         return {
@@ -2183,7 +2082,11 @@ function useSchoolDataInternal() {
             name: 'Student User',
             email: 'student@vine.ac.ug',
             likedContentIds: [],
-            subscribedTutorIds: []
+            subscribedTutorIds: [],
+            subscriptionStatus: 'active',
+            subscriptionEndDate: '2026-12-31',
+            walletBalance: 0,
+            paymentRequests: []
         };
     });
 
@@ -2328,6 +2231,8 @@ function useSchoolDataInternal() {
             try {
                 localStorage.setItem('school_app_updates_v1', JSON.stringify(appUpdates));
                 localStorage.setItem('school_app_offers_v1', JSON.stringify(appOffers));
+                localStorage.setItem('school_tutors_v4', JSON.stringify(tutors));
+                localStorage.setItem('app_featured_schools_v4', JSON.stringify(featuredSchools));
                 localStorage.setItem('school_tutor_contents_v1', JSON.stringify(tutorContents));
                 localStorage.setItem('school_suggestions_v1', JSON.stringify(suggestions));
                 localStorage.setItem('school_student_profile_v1', JSON.stringify(studentProfile));
@@ -2372,8 +2277,12 @@ function useSchoolDataInternal() {
                     isFeatured: d.is_featured || false
                 }));
 
-                setTutorContents(mapped);
-                safeSetItem('school_tutor_contents_v1', mapped);
+                setTutorContents(prev => {
+                    const localIds = new Set(prev.map(c => c.id));
+                    const newFromCloud = mapped.filter(c => !localIds.has(c.id));
+                    return [...prev, ...newFromCloud];
+                });
+                safeSetItem('school_tutor_contents_v1', mapped); // Still persist cloud version if needed, but state holds merge
             }
         } catch (error) {
             console.error('☁️ CLOUD ERROR: Failed to load tutor content:', error);
@@ -2467,17 +2376,17 @@ function useSchoolDataInternal() {
     };
 
     const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>({
-        id: 'vine_intl',
-        name: 'VINE INTERNATIONAL SCHOOL',
-        motto: 'Excellence in All Things',
-        type: 'Secondary',
-        poBox: 'P.O. Box 1234, Kampala',
+        id: 'sami_health',
+        name: 'SAMI HEALTH SCIENCE INSTITUTE',
+        motto: 'Excellence in Health Education',
+        type: 'Nursing/Midwifery',
+        poBox: 'P.O. Box 0000, Kampala',
         city: 'Kampala',
         phone: '+256 700 000000',
-        email: 'info@vine.ac.ug',
-        principal: 'Dr. John Doe',
-        administrator: 'Ms. Jane Smith',
-        status: 'Pending'
+        email: 'samihealthscience@gmail.com',
+        principal: 'Director',
+        administrator: 'Admin',
+        status: 'Active'
     });
     const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
         if (typeof window !== 'undefined') {
@@ -2542,7 +2451,8 @@ function useSchoolDataInternal() {
             email: 'student@vine.ac.ug',
             likedContentIds: [],
             subscribedTutorIds: [],
-            subscriptionStatus: 'expired'
+            subscriptionStatus: 'expired',
+            subscriptionEndDate: '2020-01-01'
         });
     };
 
@@ -2601,24 +2511,33 @@ function useSchoolDataInternal() {
 
     const purchasePlatformPass = (studentId: string | number, type: '6 Months' | '1 Year') => {
         const cost = type === '6 Months' ? 5000 : 9000;
+        const months = type === '6 Months' ? 6 : 12;
 
-        // 1. Initial Validation (Pre-Check)
-        const student = students.find(s => s.id === studentId || s.payCode === studentId);
-        if (!student) throw new Error("Critical: Student record not found.");
-        if ((student.walletBalance || 0) < cost) throw new Error("Insufficient wallet balance for this plan.");
+        // Update Global Profile
+        setStudentProfile(prev => {
+            if ((prev.walletBalance || 0) < cost) throw new Error("Insufficient wallet balance.");
 
+            const startDate = new Date();
+            const currentExpiry = prev.subscriptionEndDate ? new Date(prev.subscriptionEndDate) : new Date(0);
+            const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
+            const newExpiry = new Date(baseDate);
+            newExpiry.setMonth(newExpiry.getMonth() + months);
+
+            return {
+                ...prev,
+                walletBalance: (prev.walletBalance || 0) - cost,
+                subscriptionEndDate: newExpiry.toISOString(),
+                subscriptionStatus: 'active'
+            };
+        });
+
+        // Sync to Linked Student if applicable
         setStudents(prev => prev.map(s => {
             if (s.id === studentId || s.payCode === studentId) {
-                // Secondary Check for absolute transaction safety
                 if ((s.walletBalance || 0) < cost) return s;
-
-                const months = type === '6 Months' ? 6 : 12;
                 const startDate = new Date();
-                const currentExpiryStr = s.subscriptionExpiry;
-                const currentExpiry = currentExpiryStr ? new Date(currentExpiryStr) : new Date(0);
-
+                const currentExpiry = s.subscriptionExpiry ? new Date(s.subscriptionExpiry) : new Date(0);
                 const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
-
                 const newExpiry = new Date(baseDate);
                 newExpiry.setMonth(newExpiry.getMonth() + months);
 
@@ -2631,7 +2550,7 @@ function useSchoolDataInternal() {
             }
             return s;
         }));
-        logGlobalAction('Plan Purchase', `Student ${studentId} purchased ${type} pass.`, 'platform');
+        logGlobalAction('Plan Purchase', `User ${studentId} purchased ${type} pass.`, 'platform');
     };
 
     const subscribeToTutor = (studentId: string | number, tutorId: string) => {
@@ -2824,6 +2743,7 @@ function useSchoolDataInternal() {
         setGeneralTransactions(loadFromStorage('school_general_transactions_v1', INITIAL_TRANSACTIONS));
         setPromotionBatches(loadFromStorage('school_promotion_batches_v1', INITIAL_PROMOTION_BATCHES));
         setSuggestions(loadFromStorage('school_suggestions_v1', INITIAL_SUGGESTIONS));
+        setRegistrarStudents(loadFromStorage('school_registrar_students_v1', INITIAL_REGISTRAR_STUDENTS));
 
         // Load Profile (Logo persistence)
         setSchoolProfile(loadFromStorage('school_profile_v1', {
@@ -2936,17 +2856,13 @@ function useSchoolDataInternal() {
 
     }, [hydrated, resultPageConfigs.length]); // Run when configs change (e.g. after cleanup)
     const safeSetItem = (key: string, value: any) => {
-        if (!hydrated) return;
-
-        let valueToSave = value;
+        if (!hydrated || typeof window === 'undefined') return;
 
         try {
-            // Specialized handling for active role (with obfuscation - now in sessionStorage)
+            // Specialized handling for active role (sessionStorage only)
             if (key === 'school_active_role') {
                 if (value) {
-                    const stringValue = String(value);
-                    sessionStorage.setItem(key, window.btoa(stringValue));
-                    // Also clear legacy local storage to prevent confusion
+                    sessionStorage.setItem(key, window.btoa(String(value)));
                     localStorage.removeItem(key);
                 } else {
                     sessionStorage.removeItem(key);
@@ -2955,7 +2871,7 @@ function useSchoolDataInternal() {
                 return;
             }
 
-            // Specialized handling for active account ID (now in sessionStorage)
+            // Specialized handling for active account ID (sessionStorage only)
             if (key === 'school_active_account_id') {
                 if (value) {
                     sessionStorage.setItem(key, String(value));
@@ -2967,179 +2883,45 @@ function useSchoolDataInternal() {
                 return;
             }
 
-            // === AGGRESSIVE AUTO-PRUNING (Option A) ===
-            const now = getSyncedDate();
-            const sixMonthsAgo = new Date(now);
-            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-            const threeMonthsAgo = new Date(now);
-            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
-            // PRUNE PAYMENTS: Keep only last 6 months + approved/pending transactions
-            if (key === 'school_payments_v1') {
-                const payments = value as Payment[];
-                valueToSave = payments.filter(p => {
-                    const paymentDate = new Date(p.date);
-                    const status = (p.status || '').toLowerCase();
-                    // Keep if: recent (6mo) OR approved status OR pending (awaiting Director approval) OR has attachments (evidence)
-                    return paymentDate >= sixMonthsAgo ||
-                        status === 'approved' ||
-                        status === 'pending' ||
-                        (p.attachments && p.attachments.length > 0);
-                });
-
-                // If we pruned data, log it
-                if (payments.length !== valueToSave.length) {
-                    console.log(`🧹 Auto-pruned ${payments.length - valueToSave.length} old payments (older than 6 months, excluding approved/pending)`);
-                }
-            }
-
-            // PRUNE BILLINGS: Keep only last 6 months
-            if (key === 'school_billings_v1') {
-                const billings = value as Billing[];
-                valueToSave = billings.filter(b => {
-                    const billingDate = new Date(b.date);
-                    return billingDate >= sixMonthsAgo;
-                });
-
-                if (billings.length !== valueToSave.length) {
-                    console.log(`🧹 Auto-pruned ${billings.length - valueToSave.length} old billings (older than 6 months)`);
-                }
-            }
-
-            // PRUNE GENERAL TRANSACTIONS: Keep only last 3 months (these are heavy)
-            if (key === 'school_general_transactions_v1') {
-                const transactions = value as GeneralTransaction[];
-                valueToSave = transactions.filter(t => {
-                    const txDate = new Date(t.date);
-                    // Keep recent OR flagged items
-                    return txDate >= threeMonthsAgo || t.isFlagged;
-                });
-
-                if (transactions.length !== valueToSave.length) {
-                    console.log(`🧹 Auto-pruned ${transactions.length - valueToSave.length} old general transactions (older than 3 months)`);
-                }
-            }
-
-            // PRUNE STUDENTS: Strip old promotion history snapshots
-            if (key === 'school_students') {
-                const oneYearAgo = new Date(now);
-                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-                valueToSave = (value as EnrolledStudent[]).map(s => ({
-                    ...s,
-                    // Keep only last 5 promotion records, strip snapshots from old ones
-                    promotionHistory: s.promotionHistory?.map(h => {
-                        const hDate = new Date(h.date);
-                        if (!isNaN(hDate.getTime()) && hDate < oneYearAgo) {
-                            return {
-                                ...h,
-                                requirementsSnapshot: undefined,
-                                servicesSnapshot: undefined
-                            };
-                        }
-                        return h;
-                    }).slice(-5), // Keep only last 5 records
-                    // Strip profile pics to save space (can be re-uploaded)
-                    profilePic: s.profilePic ? (s.profilePic.length > 50000 ? undefined : s.profilePic) : undefined
-                }));
-            }
-
-            // STRIP BULKY DATA FROM APPLICATIONS LOCALLY (Keep only text)
-            if (key === 'app_school_applications_v1') {
-                valueToSave = (value as any[]).slice(-50).map(app => ({
-                    ...app,
-                    profilePhoto: undefined, // Only keep images in the Cloud, not local storage
-                    academicResults: undefined,
-                    full_data: undefined
-                }));
-            }
-
-            // PRUNE DELETED ITEMS: Keep only last 100 deleted billings/payments
-            if (key === 'school_deleted_billings_v1') {
-                valueToSave = (value as any[]).slice(-100);
-            }
-            if (key === 'school_deleted_payments_v1') {
-                valueToSave = (value as any[]).slice(-100);
-            }
-
-            localStorage.setItem(key, JSON.stringify(valueToSave));
+            // Normal storage
+            localStorage.setItem(key, JSON.stringify(value));
         } catch (e) {
             if (e instanceof Error && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
                 console.error(`❌ STORAGE QUOTA EXCEEDED for ${key}!`);
-
-                // Silent log instead of alert for better UX
-                console.warn(`⚠️ STORAGE FULL! Pruning old data for ${key}...`);
+                console.warn(`⚠️ STORAGE FULL! Attempting to clear heavy logs to make space...`);
 
                 try {
-                    // Emergency purge of heavy, non-critical data
-                    const heavyKeys = [
+                    // Emergency purge of heavy logs AND stale app data
+                    const logKeys = [
                         'school_global_audit_logs_v1',
                         'school_inventory_logs_v1',
                         'school_post_history_v1',
                         'school_deleted_billings_v1',
-                        'school_deleted_payments_v1'
+                        'school_deleted_payments_v1',
+                        'app_developer_settings_v1', // Usually high-res wallpapers causing issues
+                        'app_landing_content_v1'
                     ];
 
-                    console.log('🚨 Attempting emergency purge of:', heavyKeys);
-                    heavyKeys.forEach(k => {
+                    logKeys.forEach(k => {
                         try {
                             localStorage.removeItem(k);
-                            console.log(`✅ Cleared ${k}`);
+                            console.log(`🧹 Emergency Storage: Removed ${k} to free space.`);
                         } catch (err) {
                             console.error(`Failed to clear ${k}`, err);
                         }
                     });
+
+                    // If value is a huge object/string (like Base64 content), don't save it if we're still failing
+                    const contentSize = JSON.stringify(value).length;
+                    if (contentSize > 1000000) { // 1MB threshold
+                        console.warn(`⚠️ skipping save of huge item (${(contentSize / 1024 / 1024).toFixed(2)} MB): ${key}`);
+                        return;
+                    }
+
+                    localStorage.setItem(key, JSON.stringify(value));
                 } catch (purgeError) {
                     console.error("Emergency purge failed", purgeError);
-                }
-
-                // Attempt to save with extreme optimizations
-                let emergencyValue = valueToSave;
-
-                if (key === 'school_students') {
-                    emergencyValue = (valueToSave as EnrolledStudent[]).map(s => ({
-                        ...s,
-                        profilePic: undefined,
-                        promotionHistory: undefined, // Strip ALL history
-                        documentHistory: undefined
-                    }));
-                } else if (key === 'school_payments_v1') {
-                    // Keep only last 50 payments
-                    emergencyValue = (valueToSave as Payment[]).slice(-50).map(p => ({
-                        ...p,
-                        attachments: undefined, // Strip attachments
-                        history: undefined
-                    }));
-                } else if (key === 'school_billings_v1') {
-                    // Keep only last 50 billings
-                    emergencyValue = (valueToSave as Billing[]).slice(-50).map(b => ({
-                        ...b,
-                        attachments: undefined,
-                        history: undefined
-                    }));
-                } else if (key === 'school_general_transactions_v1') {
-                    // Keep only last 20 transactions
-                    emergencyValue = (valueToSave as GeneralTransaction[]).slice(-20).map(t => ({
-                        ...t,
-                        attachments: undefined,
-                        longDescription: undefined
-                    }));
-                } else if (key === 'school_tutor_contents_v1') {
-                    emergencyValue = (value as TutorContent[]).slice(0, 10).map(c => ({
-                        ...c,
-                        thumbnailUrl: undefined,
-                        description: (c.description || "").substring(0, 50) + "..."
-                    }));
-                }
-
-                try {
-                    localStorage.setItem(key, JSON.stringify(emergencyValue));
-                    console.log(`✅ Successfully saved ${key} with emergency optimizations.`);
-                    alert(`✅ Emergency save successful!\n\nSome old data was removed to make space. Your recent transaction should now be saved.`);
-                } catch (e2) {
-                    console.error(`❌ TOTAL STORAGE FAILURE for ${key}. Data WILL NOT persist.`, e2);
-                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data even after cleanup. Please:\n1. Clear browser cache\n2. Contact system administrator\n3. Export important data immediately`);
+                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data to local storage. Please ensure your cloud connection is active and contact support.`);
                 }
             } else {
                 console.error(`Storage Error for ${key}:`, e);
@@ -3274,8 +3056,10 @@ function useSchoolDataInternal() {
 
     const [featuredSchools, setFeaturedSchools] = useState<FeaturedSchool[]>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('app_featured_schools_v2');
-            return saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
+            const saved = localStorage.getItem('app_featured_schools_v4');
+            const data = saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
+            const APPROVED_SCHOOL_IDS = ['sami_health'];
+            return data.filter((s: any) => APPROVED_SCHOOL_IDS.includes(s.id));
         }
         return INITIAL_FEATURED_SCHOOLS;
     });
@@ -3432,7 +3216,9 @@ function useSchoolDataInternal() {
                         setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
                     }
                     if (config.featured_schools && config.featured_schools.length > 0) {
-                        setFeaturedSchools(config.featured_schools);
+                        const APPROVED_SCHOOL_IDS = ['sami_health'];
+                        const filtered = config.featured_schools.filter((s: any) => APPROVED_SCHOOL_IDS.includes(s.id));
+                        setFeaturedSchools(filtered.length > 0 ? filtered : INITIAL_FEATURED_SCHOOLS);
                     }
                 }
             } catch (err) {
@@ -3445,7 +3231,7 @@ function useSchoolDataInternal() {
     useEffect(() => {
         safeSetItem('app_landing_content_v1', landingPageContent);
         safeSetItem('app_developer_settings_v1', developerSettings);
-        safeSetItem('app_featured_schools_v2', featuredSchools);
+        safeSetItem('app_featured_schools_v4', featuredSchools);
     }, [landingPageContent, developerSettings, featuredSchools, hydrated]);
 
     const updateLandingPageContent = async (content: LandingPageRoleContent[]) => {
@@ -4736,6 +4522,18 @@ function useSchoolDataInternal() {
     useEffect(() => {
         if (!hydrated || !schoolProfile.id || isCloudSyncing) return;
 
+        // --- 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK ---
+        // Prevents local development bugs from wiping out Live Production Data
+        const isLocalHost = typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+        if (isLocalHost) {
+            // We allow pulling (reading) but BLOCK automated pushing (overwriting)
+            console.log("🛑 SAFETY BOUNDARY ENGAGED: Localhost is in READ-ONLY mode. Live database is protected.");
+            return;
+        }
+        // -------------------------------------------
+
         // Core Business State Bundle
         const stateToCloud = {
             students,
@@ -4987,6 +4785,15 @@ function useSchoolDataInternal() {
         filteredBillings,
         payments,
         filteredPayments,
+        downloadBackup: () => {
+            const backup = { students, registrarStudents, payments, billings, timestamp: new Date().toISOString() };
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `VINE_EMERGENCY_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        },
         hydrated,
         checkingAccess,
         addProgramme,
@@ -4998,6 +4805,9 @@ function useSchoolDataInternal() {
         isProcessingPromotion,
         setIsProcessingPromotion,
         setStudents, // Exposing raw setter for flexibility in complex pages
+        setRegistrarStudents,
+        setPayments,
+        setBillings,
         setServices, // Exposing raw setter
         setBursaries, // Exposing raw setter
         postHistory, addPostHistory, deletePostHistory, // New Actions
@@ -5013,7 +4823,7 @@ function useSchoolDataInternal() {
         restorePayment,
         deletedBillings,
         filteredDeletedBillings,
-        deletedPayments, // Added this line
+        deletedPayments,
         filteredDeletedPayments,
         deleteStudent, // New
         deleteStudents, // New Bulk
@@ -5036,6 +4846,35 @@ function useSchoolDataInternal() {
         deleteStudentResult,
         performDeepRepair,
         calculateStudentInitialFinancials,
+        releaseGhostPayments: () => {
+            const activeStudentIds = new Set(students.map(s => s.id));
+            let releasedCount = 0;
+
+            console.log("👻 RELEASE GHOSTS: Starting scan...");
+            console.log(`📊 Active Students: ${activeStudentIds.size}`);
+
+            setPayments(prev => prev.map(p => {
+                // If payment is linked (status LINKED or Approved/Paid) AND has a studentId that is NOT in the active set
+                // We must handle cases where studentId might be 0 or null safely
+                if (p.studentId && !activeStudentIds.has(p.studentId)) {
+                    // This is a GHOST LINK
+                    console.log(`🔓 Releasing Payment ${p.id} (PayCode: ${p.metadata?.payCode}) from dead ID: ${p.studentId}`);
+                    releasedCount++;
+                    return {
+                        ...p,
+                        studentId: 0, // Detach
+                        status: 'Pending', // Reset status to allow claiming
+                        date: p.date // Preserve original date
+                    };
+                }
+                return p;
+            }));
+
+            // Also check Unclaimed Payments list just in case triggers there too
+            // (Though usually unclaimed are already unlinked, but sometimes they get 'stuck' with a code but no student)
+
+            return releasedCount;
+        },
 
         promotionBatches,
         requisitionDraft,

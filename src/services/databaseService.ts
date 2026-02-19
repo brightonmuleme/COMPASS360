@@ -103,6 +103,14 @@ export const databaseService = {
     },
 
     saveSchoolCloudState: async (schoolId: string, state: any) => {
+        // 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK
+        // This ensures Development/Localhost NEVER overwrites Production Data
+        if (typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            console.warn("🛑 SAFETY BOUNDARY: Cloud Save Blocked on Localhost/Dev Environment.");
+            return true;
+        }
+
         try {
             console.log('☁️ CLOUD SAVE: Starting for school ID:', schoolId);
 

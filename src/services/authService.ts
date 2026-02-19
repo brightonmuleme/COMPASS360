@@ -71,7 +71,7 @@ export const authService = {
                         {
                             id: data.user.id,
                             full_name: params.name,
-                            email: params.email,
+                            // email column missing in DB schema, omitting to prevent failure
                             role: params.role,
                             school_id: params.schoolId,
                             pay_code: params.payCode

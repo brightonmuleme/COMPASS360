@@ -176,6 +176,10 @@ export default function BursarSidebar({ isOpen, onClose }: { isOpen?: boolean, o
                             <Link href="/bursar/branding" className={`${styles.link} ${isActive('/bursar/branding') ? styles.active : ''}`} onClick={handleClose}>
                                 🏛️ Portal Branding
                             </Link>
+
+                            <Link href="/admin/recovery" className={`${styles.link} ${isActive('/admin/recovery') ? styles.active : ''} text-red-400`} onClick={handleClose}>
+                                ☣️ Disaster Recovery
+                            </Link>
                         </>
                     )}
 

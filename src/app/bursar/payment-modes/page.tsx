@@ -17,7 +17,7 @@ export default function PaymentModesPage() {
         deletedPayments, unclaimedPayments, // Get deleted and unclaimed payments
         documentTemplates, programmes, // Added for receipt printing
         activeRole, updatePayment, developerSettings, schoolProfile,
-        linkPayment
+        linkPayment, releaseGhostPayments // Added releaseGhostPayments
     } = useSchoolData();
 
     // --- STATE MANAGEMENT ---
@@ -1301,6 +1301,21 @@ export default function PaymentModesPage() {
                                         <p className="text-slate-500 text-xs mt-1">Found {viewTxs.transactions.length} records</p>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        {/* GHOST RELEASE BUTTON */}
+                                        {viewTxs.filter === 'unsynced' && (
+                                            <button
+                                                onClick={() => {
+                                                    const count = releaseGhostPayments();
+                                                    alert(`👻 Ghost Busting Complete!\n\nReleased ${count} payments from deleted student records.\n\nYou can now link these payments to the new student profiles.`);
+                                                    // Force refresh view by closing and reopening or just let state update naturally (payments array updates)
+                                                    setViewTxs({ ...viewTxs, open: false });
+                                                }}
+                                                className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold rounded-lg transition-colors border border-amber-200 flex items-center gap-2"
+                                                title="Fix payments stuck to deleted students"
+                                            >
+                                                <span>🔓 Release Ghost Payments</span>
+                                            </button>
+                                        )}
                                         <button onClick={() => setViewTxs({ ...viewTxs, open: false })} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">✕</button>
                                     </div>
                                 </div>

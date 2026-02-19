@@ -80,5 +80,14 @@ export const developerService = {
             throw error;
         }
         return true;
+    },
+
+    updateGlobalSettings: async (settings: any) => {
+        const { error } = await supabase
+            .from('platform_settings')
+            .upsert({ id: 1, ...settings });
+
+        if (error) throw error;
+        return true;
     }
 };

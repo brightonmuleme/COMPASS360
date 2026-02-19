@@ -8,7 +8,7 @@ import { useSchoolData } from '@/lib/store';
 const ROLE_ACCESS: Record<string, string[]> = {
     'Registrar': ['/admin/admissions', '/admin/enrollment', '/admin/results', '/admin/activity', '/admin/calendar', '/admin/profile'],
     'School News Coordinator': ['/admin/news'],
-    'Director': ['/admin/dashboard', '/bursar/learners', '/bursar/services', '/bursar/approvals', '/bursar/results', '/bursar'] // Director access
+    'Director': ['/admin/dashboard', '/admin/recovery', '/bursar/learners', '/bursar/services', '/bursar/approvals', '/bursar/results', '/bursar'] // Director access
 };
 
 // Global flag to prevent flashing loading state during layout swaps

@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Check, X, Search, School, Trash2, AlertCircle, Loader2, RefreshCw, User, Shield, Info } from 'lucide-react';
+import { Check, X, Search, School, Trash2, AlertCircle, Loader2, RefreshCw, User, Shield, Info, ChevronRight, Mail, Phone, MapPin } from 'lucide-react';
 import { useSchoolData } from '@/lib/store';
 
 export default function SchoolValidationPage() {
@@ -82,237 +82,241 @@ export default function SchoolValidationPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto p-8 font-sans text-slate-800">
+        <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* HEADER */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 leading-tight tracking-tight">Partner School Management</h1>
-                    <p className="text-slate-500 mt-2 font-medium">Scale the platform by validating and onboarding new educational institutions.</p>
+                    <h1 className="text-3xl md:text-5xl font-black text-slate-900 leading-tight tracking-tighter">
+                        School <span className="text-blue-600">Validators</span>
+                    </h1>
+                    <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em] mt-2 flex items-center gap-2">
+                        <span className="w-12 h-[1px] bg-blue-600"></span>
+                        Educational Infrastructure Management
+                    </p>
                 </div>
-                <div className="bg-blue-50 border border-blue-100 text-blue-700 px-5 py-2.5 rounded-2xl text-sm font-black flex items-center gap-2 shadow-sm">
+                <div className="bg-blue-600 shadow-xl shadow-blue-200 text-white px-6 py-3 rounded-2xl text-xs font-black flex items-center justify-center gap-3 self-start md:self-auto">
                     <School size={18} />
-                    {pendingSchools.length} New Requests
+                    <span>{pendingSchools.length} Pending Requests</span>
                 </div>
             </div>
 
             {/* TABS */}
-            <div className="flex gap-6 mb-8 border-b border-slate-200">
+            <div className="flex gap-4 md:gap-8 border-b border-slate-200">
                 <button
                     onClick={() => setActiveTab('pending')}
-                    className={`pb-4 px-2 font-black text-sm transition-all relative ${activeTab === 'pending' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`pb-4 px-2 font-black text-xs md:text-sm uppercase tracking-widest transition-all relative ${activeTab === 'pending' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    Pending Approvals
+                    Inbound Pipeline
                     {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full"></div>}
                 </button>
                 <button
                     onClick={() => setActiveTab('active')}
-                    className={`pb-4 px-2 font-black text-sm transition-all relative ${activeTab === 'active' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`pb-4 px-2 font-black text-xs md:text-sm uppercase tracking-widest transition-all relative ${activeTab === 'active' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    Active Schools Directory
+                    Active Network
                     {activeTab === 'active' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full"></div>}
                 </button>
             </div>
 
-            {/* CONTENT */}
-            <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200 overflow-hidden min-h-[400px]">
+            {/* CONTENT AREA */}
+            <div>
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24">
-                        <Loader2 className="animate-spin text-blue-600" size={48} />
-                        <p className="mt-6 text-slate-400 font-bold uppercase tracking-widest text-xs">Syncing Cloud Database</p>
+                    <div className="flex flex-col items-center justify-center py-32 bg-white rounded-[3rem] border border-slate-100 shadow-sm">
+                        <Loader2 className="animate-spin text-blue-600 mb-6" size={48} />
+                        <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Syncing Cloud Database...</p>
                     </div>
                 ) : activeTab === 'pending' ? (
-                    // PENDING VIEW
-                    <div>
+                    <div className="space-y-4">
                         {pendingSchools.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                                <Check size={48} className="text-green-500 mb-4" />
-                                <h3 className="text-lg font-bold">All caught up!</h3>
-                                <p>No pending school applications.</p>
+                            <div className="flex flex-col items-center justify-center py-32 bg-white rounded-[3rem] border border-slate-100 shadow-sm opacity-50">
+                                <Check size={48} className="text-emerald-500 mb-4" />
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Repository Clear</h3>
+                                <p className="text-[10px] font-bold text-slate-400">All school applications have been processed.</p>
                             </div>
                         ) : (
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 border-b border-slate-100">
-                                    <tr>
-                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Institution</th>
-                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Contact Person</th>
-                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Phone Number</th>
-                                        <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose text-right">Verification</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {pendingSchools.map(app => (
-                                        <tr key={app.id} className="hover:bg-blue-50/30 transition-colors">
-                                            <td className="p-5">
-                                                <div className="font-black text-slate-900 text-lg">{app.school_name}</div>
-                                                <div className="text-xs font-bold text-slate-400 mt-0.5">{app.email}</div>
-                                            </td>
-                                            <td className="p-5 text-sm font-bold text-slate-600">{app.admin_name || 'N/A'}</td>
-                                            <td className="p-5">
-                                                <span className="text-xs font-bold text-slate-600">{app.phone || 'N/A'}</span>
-                                            </td>
-                                            <td className="p-5">
-                                                <div className="flex justify-end gap-3">
-                                                    <button
-                                                        onClick={() => handleReject(app.id)}
-                                                        className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                                                        title="Reject Application"
-                                                    >
-                                                        <X size={20} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleApprove(app.id)}
-                                                        className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black shadow-lg shadow-slate-200 transition-all active:scale-95"
-                                                    >
-                                                        <Check size={16} /> Approve Access
-                                                    </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {pendingSchools.map(app => (
+                                    <div key={app.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-900/5 transition-all group overflow-hidden relative">
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-[4rem] flex items-center justify-center text-blue-200 -z-10 group-hover:scale-110 transition-transform">
+                                            <School size={40} />
+                                        </div>
+
+                                        <div className="mb-6">
+                                            <h3 className="text-xl font-black text-slate-900 leading-tight mb-1 group-hover:text-blue-600 transition-colors uppercase">{app.school_name}</h3>
+                                            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-4">
+                                                <Mail size={12} /> {app.email}
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
+                                                        <User size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">Point of Contact</p>
+                                                        <p className="text-xs font-black text-slate-700">{app.admin_name || 'System Generated'}</p>
+                                                    </div>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
+                                                        <Phone size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">Direct Line</p>
+                                                        <p className="text-xs font-black text-slate-700 font-mono">{app.phone || 'NO_LINK'}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => handleReject(app.id)}
+                                                className="flex-1 px-4 py-3 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-transparent hover:border-rose-100"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleApprove(app.id)}
+                                                className="flex-[2] px-4 py-3 bg-slate-900 hover:bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-200 hover:shadow-blue-200 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <Check size={16} /> Approve Access
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 ) : (
-                    // ACTIVE VIEW
-                    <div>
-                        <div className="p-6 border-b border-slate-100 flex gap-4 bg-slate-50/30">
-                            <div className="relative flex-1 max-w-md group">
-                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                    <div className="space-y-6">
+                        {/* Directory Filters */}
+                        <div className="flex flex-col md:flex-row gap-4">
+                            <div className="relative flex-1 group">
+                                <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
                                 <input
                                     type="text"
-                                    placeholder="Search institutional database..."
-                                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all shadow-sm"
+                                    placeholder="Search the educational network..."
+                                    className="w-full pl-14 pr-6 py-4 bg-white border border-slate-100 rounded-[2rem] text-sm font-black focus:outline-none focus:ring-8 focus:ring-blue-500/5 focus:border-blue-500 transition-all shadow-sm"
                                 />
                             </div>
                         </div>
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50/50 border-b border-slate-100">
-                                <tr>
-                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">School ID & Name</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Email</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Status</th>
-                                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Management</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {activeSchools.map(school => (
-                                    <tr key={school.id} className="hover:bg-slate-50/50 transition-colors group">
-                                        <td className="p-5">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                                                    <School size={20} />
-                                                </div>
-                                                <div>
-                                                    <div className="font-black text-slate-900">{school.name}</div>
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">ID: {school.id?.substring(0, 8) || 'VINE_INTL'}</div>
-                                                </div>
+
+                        {/* Active Schools Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {activeSchools.map(school => (
+                                <div key={school.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-900/5 transition-all group relative overflow-hidden">
+                                    <div className="flex items-start justify-between mb-6">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all transform group-hover:rotate-6 shadow-sm">
+                                                <School size={28} />
                                             </div>
-                                        </td>
-                                        <td className="p-5">
-                                            <div className="text-xs font-bold text-slate-600">{school.email || 'N/A'}</div>
-                                        </td>
-                                        <td className="p-5">
-                                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex w-fit items-center gap-1.5 ${school.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
-                                                }`}>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${school.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                                {school.status}
-                                            </span>
-                                        </td>
-                                        <td className="p-5 text-right">
-                                            <button
-                                                onClick={() => setSelectedSchool(school)}
-                                                className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
-                                            >
-                                                Manage Roles
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {activeSchools.length === 0 && (
-                                    <tr>
-                                        <td colSpan={4} className="p-12 text-center">
-                                            <div className="flex flex-col items-center opacity-30">
-                                                <School size={48} className="mb-4" />
-                                                <p className="font-black uppercase tracking-widest text-xs">Repository Empty</p>
+                                            <div>
+                                                <h3 className="text-lg font-black text-slate-900 uppercase leading-none mb-2">{school.name}</h3>
+                                                <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex w-fit items-center gap-1.5 ${school.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+                                                    <div className={`w-1 h-1 rounded-full ${school.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
+                                                    {school.status}
+                                                </span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 mb-8">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                                            <Mail size={12} className="text-slate-300" /> {school.email || 'NO_EMAIL'}
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-black text-blue-600 uppercase tracking-tighter">
+                                            <MapPin size={12} className="text-blue-200" /> Regional Node: {school.id?.substring(0, 8) || 'SYSTEM_DEFAULT'}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setSelectedSchool(school)}
+                                        className="w-full py-4 bg-slate-50 hover:bg-slate-900 text-slate-600 hover:text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border border-slate-100 group-hover:border-transparent group-hover:shadow-lg group-hover:shadow-slate-200"
+                                    >
+                                        Manage Roles <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                            {activeSchools.length === 0 && (
+                                <div className="col-span-full py-32 bg-white rounded-[3rem] border border-slate-100 shadow-sm opacity-50 flex flex-col items-center justify-center">
+                                    <AlertCircle size={48} className="text-slate-300 mb-4" />
+                                    <p className="font-black uppercase tracking-widest text-xs text-slate-400">Institutional Database Empty</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* ROLE MANAGEMENT MODAL */}
+            {/* ROLE MANAGEMENT MODAL (REFURBISHED) */}
             {selectedSchool && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in-95 duration-300">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xl animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in-95 duration-300">
                         {/* Modal Header */}
-                        <div className="p-8 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                            <div className="flex items-center gap-5 text-left">
-                                <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-blue-200">
-                                    <Shield size={32} />
+                        <div className="px-8 py-10 bg-slate-900 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 opacity-20 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                            <div className="relative z-10 flex items-center justify-between">
+                                <div className="flex items-center gap-6">
+                                    <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-blue-500/40 transform rotate-12">
+                                        <Shield size={40} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h2 className="text-3xl font-black text-white leading-tight tracking-tighter uppercase">{selectedSchool.name}</h2>
+                                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mt-2 opacity-80">Access Management Terminal</p>
+                                    </div>
                                 </div>
-                                <div className="text-left">
-                                    <h2 className="text-2xl font-black text-slate-900 leading-tight">{selectedSchool.name}</h2>
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Institutional Identity & Access Management</p>
-                                </div>
+                                <button
+                                    onClick={() => setSelectedSchool(null)}
+                                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
+                                >
+                                    <X size={24} />
+                                </button>
                             </div>
-                            <button
-                                onClick={() => setSelectedSchool(null)}
-                                className="w-10 h-10 flex items-center justify-center rounded-2xl hover:bg-slate-200 text-slate-400 transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-8 text-left">
-                            <div className="flex items-center gap-2 mb-6 text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl w-fit">
+                        <div className="p-8">
+                            <div className="flex items-center gap-2 mb-8 text-blue-600 bg-blue-50 px-5 py-2.5 rounded-2xl w-fit">
                                 <User size={16} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Authorized Staff Accounts</span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Authorized Personnel Registry</span>
                             </div>
 
-                            <div className="space-y-4">
+                            <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
                                 {(() => {
-                                    // Use hardcoded vine_intl if the school ID matches our legacy mock, otherwise match dynamic ID
                                     const schoolId = selectedSchool.id ? selectedSchool.id : 'vine_intl';
                                     const associatedStaff = staffAccounts.filter(acc => acc.schoolId === schoolId || (schoolId === 'vine_intl' && !acc.schoolId));
 
                                     if (associatedStaff.length === 0) {
                                         return (
-                                            <div className="py-12 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center text-slate-400">
-                                                <Info size={32} className="mb-3 opacity-20" />
-                                                <p className="text-sm font-bold">No localized staff accounts found.</p>
-                                                <p className="text-xs italic mt-1 font-medium">Create staff accounts to see them here.</p>
+                                            <div className="py-20 border-2 border-dashed border-slate-100 rounded-[2.5rem] flex flex-col items-center text-slate-300">
+                                                <Info size={40} className="mb-4 opacity-20" />
+                                                <p className="text-xs font-black uppercase tracking-widest text-center">Localized Staff Registry <br />is currently empty</p>
                                             </div>
                                         );
                                     }
 
                                     return associatedStaff.map(staff => (
-                                        <div key={staff.id} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-blue-200 hover:bg-white transition-all">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center border border-slate-200 group-hover:scale-110 transition-transform">
-                                                    <span className="text-xl">👤</span>
+                                        <div key={staff.id} className="flex flex-col sm:flex-row items-center justify-between p-6 bg-slate-50 rounded-[2rem] border border-slate-100 group hover:border-blue-500/30 hover:bg-white hover:shadow-xl hover:shadow-blue-900/5 transition-all gap-6">
+                                            <div className="flex items-center gap-4 w-full">
+                                                <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center border border-slate-100 group-hover:scale-110 group-hover:rotate-6 transition-all text-2xl">
+                                                    👤
                                                 </div>
-                                                <div className="text-left">
-                                                    <div className="font-black text-slate-900">{staff.name || 'Staff Member'}</div>
-                                                    <div className="flex gap-2 items-center mt-0.5">
-                                                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-wider">{staff.role}</span>
-                                                        <div className="w-1 h-1 rounded-full bg-slate-300" />
-                                                        <span className="text-[10px] font-bold text-slate-400 font-mono">@{staff.username}</span>
+                                                <div className="text-left flex-1">
+                                                    <div className="font-black text-slate-900 uppercase tracking-tight text-lg leading-none mb-2">{staff.name || 'Anonymous User'}</div>
+                                                    <div className="flex flex-wrap gap-2 items-center">
+                                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase tracking-widest">{staff.role}</span>
+                                                        <span className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter">@{staff.username}</span>
                                                     </div>
                                                 </div>
                                             </div>
 
                                             <button
                                                 onClick={() => handleResetPassword(staff.id, staff.name)}
-                                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-900 text-slate-600 hover:text-white border border-slate-200 hover:border-transparent rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] transition-all shadow-sm group/btn active:scale-95"
                                             >
-                                                <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-1000" />
-                                                Reset Password
+                                                <RefreshCw size={14} className="group-hover/btn:rotate-180 transition-transform duration-1000" />
+                                                Reset Credentials
                                             </button>
                                         </div>
                                     ));
@@ -321,12 +325,12 @@ export default function SchoolValidationPage() {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-8 pt-0 flex justify-end">
+                        <div className="p-8 pt-0 flex flex-col sm:flex-row gap-3">
                             <button
                                 onClick={() => setSelectedSchool(null)}
-                                className="px-8 py-3.5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-slate-200 hover:bg-black transition-all"
+                                className="w-full py-5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] transition-all active:scale-95"
                             >
-                                Done
+                                Dismiss
                             </button>
                         </div>
                     </div>

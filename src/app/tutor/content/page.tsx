@@ -279,8 +279,8 @@ import { databaseService } from "@/services/databaseService";
 export default function TutorContentLibrary() {
     const {
         programmes: allProgrammes,
-        courseUnits,
-        tutorContents,
+        courseUnits: allCourseUnits,
+        tutorContents: allTutorContents,
         addTutorContent,
         deleteTutorContent,
         updateTutorContent,
@@ -299,10 +299,10 @@ export default function TutorContentLibrary() {
     // SECURITY FIX: Remove hardcoded ID, use session
     const currentTutorId = globalSchoolProfile?.id;
 
-    // Filter to only show tutor's own programmes
-    const programmes = useMemo(() => {
-        return allProgrammes.filter(p => p.ownerId === currentTutorId && p.isTutorContent);
-    }, [allProgrammes, currentTutorId]);
+    // Filter to only show tutor's own content
+    const programmes = useMemo(() => allProgrammes.filter(p => p.ownerId === currentTutorId), [allProgrammes, currentTutorId]);
+    const courseUnits = useMemo(() => allCourseUnits.filter(c => c.ownerId === currentTutorId), [allCourseUnits, currentTutorId]);
+    const tutorContents = useMemo(() => allTutorContents.filter(c => c.tutorId === currentTutorId), [allTutorContents, currentTutorId]);
 
     // --- STATES ---
     const [viewingContent, setViewingContent] = useState<TutorContent | null>(null);
@@ -602,7 +602,7 @@ export default function TutorContentLibrary() {
             const existing = courseUnits.find(c => c.id === editingCUId);
             if (existing) updateCourseUnit({ ...existing, name: cuForm.name, code: cuForm.code });
         } else {
-            addCourseUnit({ id: Date.now().toString(), programmeId: configProgramme.id, name: cuForm.name, code: cuForm.code || `${configProgramme.code}-CU-${Date.now()}`, level: configLevel, creditUnits: 3, type: 'Core', semester: 'I' });
+            addCourseUnit({ id: Date.now().toString(), programmeId: configProgramme.id, name: cuForm.name, code: cuForm.code || `${configProgramme.code}-CU-${Date.now()}`, level: configLevel, creditUnits: 3, type: 'Core', semester: 'I', ownerId: currentTutorId });
         }
         setIsCUModalOpen(false);
     };
@@ -1142,6 +1142,7 @@ export default function TutorContentLibrary() {
                                                         <CustomVideoPlayer
                                                             src={featuredContent.url || ''}
                                                             className="w-full h-full"
+                                                            poster={featuredContent.thumbnailUrl}
                                                         />
                                                     ) : featuredContent.thumbnailUrl ? (
                                                         <div className="w-full h-full relative group">

@@ -12,7 +12,12 @@ import {
     Zap,
     Lock,
     Eye,
-    RefreshCw
+    RefreshCw,
+    Terminal,
+    Cpu,
+    Database,
+    Cloud,
+    CheckCircle2
 } from 'lucide-react';
 
 export default function GlobalSettingsPage() {
@@ -30,7 +35,6 @@ export default function GlobalSettingsPage() {
     const handleSave = async () => {
         setLoading(true);
         try {
-            // In a real app, this would upsert to 'platform_settings' table
             await developerService.updateGlobalSettings(settings);
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
@@ -43,133 +47,192 @@ export default function GlobalSettingsPage() {
     };
 
     return (
-        <div style={{ padding: '1rem', maxWidth: '1000px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
+        <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>System Settings</h1>
-                    <p style={{ color: '#64748b' }}>Configure the global environment and platform behavior.</p>
+                    <h1 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase italic">
+                        System <span className="text-red-600">Settings</span>
+                    </h1>
+                    <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em] mt-2 flex items-center gap-2">
+                        <span className="w-12 h-[1px] bg-red-600"></span>
+                        Platform Logic & Global Variables
+                    </p>
                 </div>
+
                 <button
                     onClick={handleSave}
                     disabled={loading}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.75rem 1.5rem',
-                        background: saved ? '#10b981' : '#3b82f6',
-                        color: 'white',
-                        borderRadius: '12px',
-                        border: 'none',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.3s'
-                    }}
+                    className={`
+                        flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl active:scale-95
+                        ${saved ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-black shadow-slate-900/20'}
+                        ${loading ? 'opacity-70 cursor-not-allowed' : ''}
+                    `}
                 >
-                    {loading ? <RefreshCw className="animate-spin" size={18} /> : (saved ? <Zap size={18} /> : <Save size={18} />)}
-                    {saved ? 'System Updated' : 'Save Changes'}
+                    {loading ? <RefreshCw className="animate-spin" size={16} /> : (saved ? <CheckCircle2 size={16} /> : <Save size={16} />)}
+                    {saved ? 'Synchronized' : 'Execute Update'}
                 </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* General Config */}
-                <div style={{ background: 'white', padding: '2rem', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)', border: '1px solid #f1f5f9' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <Settings className="text-blue-500" size={20} />
-                        Basic Configuration
-                    </h3>
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" />
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem' }}>Platform Name</label>
-                            <input
-                                type="text"
-                                value={settings.siteName}
-                                onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', outline: 'none' }}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem' }}>Support Email</label>
-                            <input
-                                type="email"
-                                value={settings.supportEmail}
-                                onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
-                                style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', outline: 'none' }}
-                            />
+                    <div className="relative z-10">
+                        <h3 className="text-sm font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-widest italic">
+                            <div className="p-2 bg-slate-900 text-white rounded-xl group-hover:bg-red-600 transition-colors">
+                                <Globe size={16} />
+                            </div>
+                            Core Environment
+                        </h3>
+
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Platform Alias</label>
+                                <input
+                                    type="text"
+                                    value={settings.siteName}
+                                    onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
+                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black focus:outline-none focus:ring-8 focus:ring-red-500/5 focus:border-red-500 transition-all italic uppercase"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">NOC Support Email</label>
+                                <input
+                                    type="email"
+                                    value={settings.supportEmail}
+                                    onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
+                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black focus:outline-none focus:ring-8 focus:ring-red-500/5 focus:border-red-500 transition-all italic uppercase"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* System Toggles */}
-                <div style={{ background: 'white', padding: '2rem', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)', border: '1px solid #f1f5f9' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <Shield className="text-orange-500" size={20} />
-                        Platform Guard
-                    </h3>
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" />
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <div style={{ fontWeight: 600, color: '#1e293b' }}>Maintenance Mode</div>
-                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Lock the site for everyone except developers.</div>
+                    <div className="relative z-10">
+                        <h3 className="text-sm font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-widest italic">
+                            <div className="p-2 bg-slate-900 text-white rounded-xl group-hover:bg-amber-500 transition-colors">
+                                <Shield size={16} />
                             </div>
-                            <input
-                                type="checkbox"
-                                checked={settings.maintenanceMode}
-                                onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })}
-                                style={{ width: '1.5rem', height: '1.5rem', cursor: 'pointer' }}
-                            />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <div style={{ fontWeight: 600, color: '#1e293b' }}>Open Registration</div>
-                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Allow new students/tutors to sign up.</div>
+                            Security Toggles
+                        </h3>
+
+                        <div className="space-y-8">
+                            <div className="flex items-center justify-between gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group/item">
+                                <div className="space-y-1">
+                                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Stasis Mode</div>
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase leading-tight max-w-[200px]">Restrict platform access to root level only.</div>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.maintenanceMode}
+                                        onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500" />
+                                </label>
                             </div>
-                            <input
-                                type="checkbox"
-                                checked={settings.allowRegistration}
-                                onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })}
-                                style={{ width: '1.5rem', height: '1.5rem', cursor: 'pointer' }}
-                            />
+
+                            <div className="flex items-center justify-between gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group/item">
+                                <div className="space-y-1">
+                                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Open Registry</div>
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase leading-tight max-w-[200px]">Onboard new entities to the ecosystem.</div>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.allowRegistration}
+                                        onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500" />
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Security Section */}
-                <div style={{ gridColumn: '1 / -1', background: '#0f172a', padding: '2rem', borderRadius: '24px', color: 'white' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                        <div style={{ padding: '0.75rem', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '12px', color: '#3b82f6' }}>
-                            <Lock size={24} />
-                        </div>
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Critical Infrastructure</h3>
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Advanced server-side credentials and API endpoint management.</p>
-                        </div>
-                    </div>
+                {/* Infrastructure Details */}
+                <div className="md:col-span-2 bg-[#0d0d0d] p-8 md:p-12 rounded-[3rem] text-white overflow-hidden relative">
+                    <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-red-600/10 rounded-full blur-[80px]" />
+                    <div className="absolute -left-16 -top-16 w-64 h-64 bg-slate-600/10 rounded-full blur-[80px]" />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>Supabase Project URL</label>
-                            <div style={{ position: 'relative' }}>
-                                <input
-                                    type="text"
-                                    readOnly
-                                    value="https://ccxgdztlplwtaznwrfyr.supabase.co"
-                                    style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', outline: 'none' }}
-                                />
-                                <Eye size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'no-allowed', opacity: 0.5 }} />
+                    <div className="relative z-10 flex flex-col lg:flex-row gap-12">
+                        <div className="lg:w-1/3">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-red-600 rounded-2xl shadow-xl shadow-red-600/20">
+                                    <Terminal size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black italic uppercase tracking-tighter">Infrastructure</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Core Engine Specifications</p>
+                                </div>
                             </div>
+                            <p className="text-xs font-bold text-slate-400 leading-relaxed uppercase italic">
+                                Critical server-side parameters and API handshake protocols. Modify with extreme caution as these affect production stability.
+                            </p>
                         </div>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>System Version</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <code style={{ flex: 1, padding: '0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', color: '#3b82f6', fontWeight: 700 }}>
-                                    v{settings.systemVersion} (STABLE)
-                                </code>
-                                <button style={{ padding: '0.5rem 1rem', background: '#334155', border: 'none', borderRadius: '8px', color: 'white', fontSize: '0.75rem', fontWeight: 600, cursor: 'not-allowed' }}>
-                                    Update Engine
-                                </button>
+
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] space-y-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black text-red-500 uppercase tracking-widest italic">
+                                    <Cloud size={14} /> Data Cloud URL
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value="https://ccxgdztlplwtaznwrfyr.supabase.co"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono font-bold text-slate-400 outline-none"
+                                    />
+                                    <Eye size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600" />
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] space-y-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black text-blue-400 uppercase tracking-widest italic">
+                                    <Cpu size={14} /> Engine Hash
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <code className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[10px] font-mono font-black text-blue-400 italic">
+                                        v{settings.systemVersion}-STABLE
+                                    </code>
+                                    <button className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-white transition-colors">
+                                        <RefreshCw size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                                        <Database size={20} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-black uppercase tracking-widest italic">Database</div>
+                                        <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest italic">Status: Online</div>
+                                    </div>
+                                </div>
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
+                            </div>
+
+                            <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-slate-800 text-slate-400 rounded-xl">
+                                        <RefreshCw size={20} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-black uppercase tracking-widest italic">Cache</div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Last Scanned: 2m ago</div>
+                                    </div>
+                                </div>
+                                <button className="text-[9px] font-black uppercase text-red-500 hover:underline tracking-widest italic">Purge Buffer</button>
                             </div>
                         </div>
                     </div>

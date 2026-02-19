@@ -40,6 +40,9 @@ import {
 import SharedContentLibrary from "@/components/shared/SharedContentLibrary";
 import CustomVideoPlayer from "@/components/shared/CustomVideoPlayer";
 
+const DEFAULT_THUMBNAIL = "https://images.unsplash.com/photo-1576091160550-217359941f3b?q=80&w=2070&auto=format&fit=crop"; // Medical exam/learning
+const DEFAULT_HERO = "https://images.unsplash.com/photo-1516534775068-ba3e84529ec1?q=80&w=2070&auto=format&fit=crop"; // Professional Workspace/Library
+
 export default function ResourceCenter() {
     const router = useRouter();
     const {
@@ -66,7 +69,7 @@ export default function ResourceCenter() {
     const [selectedLevel, setSelectedLevel] = useState<string>('All Levels');
     const [theaterMode, setTheaterMode] = useState(false);
 
-    const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
+    const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', 'dvid', 'compass_tutor', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
 
     const linkedStudent = useMemo(() => {
         if (!studentProfile.linkedStudentCode) return null;
@@ -172,14 +175,15 @@ export default function ResourceCenter() {
 
     const filteredTutors = useMemo(() => {
         if (activeTab !== 'Tutors') return [];
+        const VERIFIED_TUTOR_IDS = ['dvid', 'compass_tutor'];
         return tutors.filter(t =>
-            !SYSTEM_TUTOR_IDS.includes(t.id) && (
+            VERIFIED_TUTOR_IDS.includes(t.id) && (
                 !searchQuery ||
                 t.name.toLowerCase().includes(searchLower) ||
                 (t.department && t.department.toLowerCase().includes(searchLower))
             )
         );
-    }, [tutors, activeTab, searchQuery, SYSTEM_TUTOR_IDS, searchLower]);
+    }, [tutors, activeTab, searchQuery, searchLower]);
 
     const checkTutorAccess = (tutorId: string) => {
         if (SYSTEM_TUTOR_IDS.includes(tutorId)) return true;
@@ -194,12 +198,19 @@ export default function ResourceCenter() {
     };
 
     const handleViewContent = (content: TutorContent) => {
-        if (!hasActivePass) return;
-        if (!checkTutorAccess(content.tutorId)) {
-            router.push(`/student/tutors/${content.tutorId}`);
-        } else {
-            setViewingContent(content);
+        console.log("?? Resource Center: Viewing content:", { title: content.title, type: content.type, tutorId: content.tutorId, url: content.url });
+
+        if (!hasActivePass && !SYSTEM_TUTOR_IDS.includes(content.tutorId)) {
+            console.log("?? Access Denied: No active pass for non-system content.");
+            router.push(`/student/tutor/${content.tutorId}`);
+            return;
         }
+
+        if (!content.url || content.url === '#') {
+            console.warn("?? Warning: Content has no valid URL.");
+        }
+
+        setViewingContent(content);
     };
 
     const handleNext = () => {
@@ -407,21 +418,31 @@ export default function ResourceCenter() {
                         {/* CINEMATIC HERO */}
                         {featuredContent && activeTab === 'All' && !searchQuery && !selectedProg && (
                             <div
-                                className="relative w-full aspect-[16/9] md:aspect-[30/9] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden group cursor-pointer border border-white/5 shadow-[0_50px_100px_rgba(0,0,0,1)]"
-                                onClick={() => handleViewContent(featuredContent)}
+                                className="relative w-full aspect-[16/9] md:aspect-[30/9] rounded-[2.5rem] md:rounded-[4rem] overflow-hidden group border border-white/5 shadow-[0_50px_100px_rgba(0,0,0,1)]"
                             >
-                                <img src={featuredContent.thumbnailUrl || '/api/placeholder/1200/600'} className="w-full h-full object-cover transition-transform duration-[4000ms] group-hover:scale-105 opacity-80" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+                                <img
+                                    src={featuredContent.thumbnailUrl || (featuredContent.type !== 'Video' && featuredContent.url ? featuredContent.url : DEFAULT_HERO)}
+                                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-[4000ms] group-hover:scale-105"
+                                    alt={featuredContent.title}
+                                    onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_HERO; }}
+                                />
+                                <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black via-black/60 to-transparent" />
                                 <div className="absolute inset-x-0 bottom-0 p-8 md:p-20 space-y-6 md:space-y-10">
                                     <div className="bg-red-600 w-fit px-4 py-1.5 rounded-sm text-[10px] md:text-[12px] font-black uppercase tracking-[0.4em] shadow-xl">Global Archive</div>
                                     <h2 className="text-3xl md:text-7xl font-black text-white tracking-tighter leading-[0.9] max-w-4xl drop-shadow-2xl uppercase">
                                         {featuredContent.title}
                                     </h2>
                                     <div className="flex gap-4 md:gap-6">
-                                        <button className="bg-white text-black px-8 md:px-12 py-4 md:py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-[0.3em] flex items-center gap-3 shadow-2xl hover:scale-105 active:scale-95 transition-all">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleViewContent(featuredContent); }}
+                                            className="bg-white text-black px-8 md:px-12 py-4 md:py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-[0.3em] flex items-center gap-3 shadow-2xl hover:scale-105 active:scale-95 transition-all"
+                                        >
                                             <Play size={18} fill="black" /> Play Now
                                         </button>
-                                        <button className="bg-white/10 backdrop-blur-md text-white px-8 md:px-12 py-4 md:py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-[0.3em] flex items-center gap-3 shadow-2xl border border-white/10 hover:bg-white/20 transition-all">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleViewContent(featuredContent); }}
+                                            className="bg-white/10 backdrop-blur-md text-white px-8 md:px-12 py-4 md:py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-[0.3em] flex items-center gap-3 shadow-2xl border border-white/10 hover:bg-white/20 transition-all"
+                                        >
                                             More Info
                                         </button>
                                     </div>
@@ -448,7 +469,11 @@ export default function ResourceCenter() {
                                                 onClick={() => handleViewContent(content)}
                                             >
                                                 <div className={!hasActivePass ? "blur-[12px] opacity-30 h-full w-full" : "h-full w-full"}>
-                                                    <img src={content.thumbnailUrl || '/api/placeholder/400/225'} className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity" />
+                                                    <img
+                                                        src={content.thumbnailUrl || (content.type !== 'Video' && content.url ? content.url : DEFAULT_THUMBNAIL)}
+                                                        className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity"
+                                                        onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_THUMBNAIL; }}
+                                                    />
                                                 </div>
                                                 {!hasActivePass && (
                                                     <div className="absolute inset-0 flex items-center justify-center p-4">

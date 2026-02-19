@@ -30,33 +30,7 @@ export default function FeesPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    const linkedStudent = studentProfile.linkedStudentCode
-        ? students.find(s => s.payCode === studentProfile.linkedStudentCode)
-        : null;
-
-    if (!linkedStudent) {
-        return (
-            <div className="p-8 max-w-4xl mx-auto min-h-screen flex flex-col items-center justify-center text-center animate-fade-in text-gray-100 bg-[#0a0a0a]">
-                <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
-                    <ShieldCheck size={48} className="text-red-500" />
-                </div>
-                <h1 className="text-4xl font-black mb-4 tracking-tight">Identity Required</h1>
-                <p className="text-gray-400 mb-8 max-w-md text-lg leading-relaxed">
-                    Access to the COMPASS 360 wallet and institutional fees requires a verified student profile.
-                </p>
-                <a
-                    href="/student/profile"
-                    className="bg-red-600 text-white px-10 py-4 rounded-2xl font-black hover:bg-red-700 transition-all flex items-center gap-2 shadow-xl shadow-red-900/20 active:scale-95 uppercase tracking-widest text-sm"
-                >
-                    Link My Identity
-                </a>
-            </div>
-        );
-    }
-
-    const hasActivePass = linkedStudent.subscriptionExpiry
-        ? new Date(linkedStudent.subscriptionExpiry) > new Date()
-        : false;
+    const hasActivePass = studentProfile.subscriptionStatus === 'active';
 
     const handleSubmitPayment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -70,12 +44,13 @@ export default function FeesPage() {
         setSuccess('');
 
         try {
+            // Updated to be profile-first
             await submitSubscriptionRequest({
-                studentId: linkedStudent.id.toString(),
-                studentName: linkedStudent.name,
+                studentId: studentProfile.id,
+                studentName: studentProfile.name,
                 transactionId,
                 reference,
-                phoneNumber: linkedStudent.phoneNumber || 'N/A'
+                phoneNumber: studentProfile.phoneNumber || 'N/A'
             });
             setSuccess('Payment request submitted! Awaiting manual verification.');
             setTransactionId('');
@@ -91,11 +66,11 @@ export default function FeesPage() {
         if (isPurchasing) return;
         setIsPurchasing(true);
         try {
-            await purchasePlatformPass(linkedStudent.id, type);
+            await purchasePlatformPass(studentProfile.id, type);
             setSuccess(`Successfully purchased ${type} Platform Pass!`);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err: any) {
-            alert(err.message);
+            setError(err.message);
         } finally {
             setIsPurchasing(false);
         }
@@ -139,7 +114,7 @@ export default function FeesPage() {
 
                             <h3 className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Available Balance</h3>
                             <div className="text-5xl font-black mb-8 tracking-tighter">
-                                {formatMoney(linkedStudent.walletBalance || 0)}
+                                {formatMoney(studentProfile.walletBalance || 0)}
                             </div>
 
                             <div className="flex items-center gap-4">
@@ -148,9 +123,9 @@ export default function FeesPage() {
                                 </div>
                             </div>
 
-                            {linkedStudent.subscriptionExpiry && (
+                            {studentProfile.subscriptionEndDate && (
                                 <p className="text-gray-500 text-[10px] mt-4 uppercase tracking-widest flex items-center gap-2">
-                                    <Clock size={12} /> Expires: {new Date(linkedStudent.subscriptionExpiry).toLocaleDateString()}
+                                    <Clock size={12} /> Expires: {new Date(studentProfile.subscriptionEndDate).toLocaleDateString()}
                                 </p>
                             )}
                         </div>
@@ -271,12 +246,12 @@ export default function FeesPage() {
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 px-2">Verification History</h3>
                             <div className="space-y-3">
-                                {linkedStudent.paymentRequests?.length === 0 ? (
+                                {(!studentProfile.paymentRequests || studentProfile.paymentRequests.length === 0) ? (
                                     <div className="bg-[#111] p-10 rounded-[2rem] border border-[#222] text-center text-gray-600 italic text-sm">
                                         No recent payment submissions.
                                     </div>
                                 ) : (
-                                    linkedStudent.paymentRequests?.map((req) => (
+                                    studentProfile.paymentRequests.map((req) => (
                                         <div key={req.id} className="bg-[#111] p-5 rounded-2xl border border-[#222] flex items-center justify-between group hover:border-[#333] transition-colors">
                                             <div className="flex items-center gap-4">
                                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${req.status === 'Approved' ? 'bg-green-500/10 text-green-500' : req.status === 'Rejected' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'}`}>

@@ -1,6 +1,25 @@
 "use client";
 import React, { useState } from 'react';
 import { useSchoolData, SchoolApplication } from '@/lib/store';
+import {
+    Search,
+    Filter,
+    Calendar,
+    ChevronRight,
+    Mail,
+    Phone,
+    MapPin,
+    User,
+    GraduationCap,
+    BookOpen,
+    Clock,
+    X,
+    ExternalLink,
+    CheckCircle2,
+    CheckCircle,
+    Info,
+    History
+} from 'lucide-react';
 
 export default function ApplicationsManager() {
     const { schoolApplications, updateSchoolApplicationStatus } = useSchoolData();
@@ -31,275 +50,340 @@ export default function ApplicationsManager() {
     const selectedApp = schoolApplications.find(a => a.id === selectedAppId);
     const schoolNames = Array.from(new Set(schoolApplications.map(app => app.schoolName)));
 
-    const getStatusColor = (status: string) => {
+    const getStatusStyles = (status: string) => {
         switch (status) {
-            case 'pending': return '#f59e0b';
-            case 'viewed': return '#3b82f6';
-            case 'contacted': return '#10b981';
-            default: return '#64748b';
+            case 'pending': return 'bg-amber-50 text-amber-700 border-amber-100';
+            case 'viewed': return 'bg-blue-50 text-blue-700 border-blue-100';
+            case 'contacted': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+            default: return 'bg-slate-50 text-slate-700 border-slate-100';
         }
     };
 
-    const LabelValue = ({ label, value }: { label: string, value?: string | number }) => (
-        <div style={{ marginBottom: '0.8rem' }}>
-            <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.2rem' }}>{label}</span>
-            <span style={{ fontSize: '0.95rem', color: '#1e293b', fontWeight: '500' }}>{value || 'N/A'}</span>
+    const StatusBadge = ({ status }: { status: string }) => (
+        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${getStatusStyles(status)}`}>
+            {status}
+        </span>
+    );
+
+    const LabelValue = ({ label, value, icon: Icon }: { label: string, value?: string | number, icon?: any }) => (
+        <div className="space-y-1">
+            <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 italic">
+                {Icon && <Icon size={12} />} {label}
+            </span>
+            <span className="block text-sm font-bold text-slate-900 group-hover:text-red-600 transition-colors uppercase leading-tight italic">
+                {value || 'Not Disclosed'}
+            </span>
         </div>
     );
 
     return (
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem', minHeight: '100vh', background: '#f8fafc' }}>
-            <div style={{ marginBottom: '3rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
-                    <div>
-                        <h1 style={{ fontSize: '2.5rem', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>Applications Hub</h1>
-                        <p style={{ color: '#64748b', fontSize: '1.1rem', marginTop: '0.5rem' }}>Reviewing {schoolApplications.length} total admissions across institutions.</p>
-                    </div>
+        <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header Section */}
+            <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div>
+                    <h1 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase italic">
+                        Applications <span className="text-red-600">Hub</span>
+                    </h1>
+                    <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em] mt-2 flex items-center gap-2">
+                        <span className="w-12 h-[1px] bg-red-600"></span>
+                        Reviewing {schoolApplications.length} Admissions Pipeline
+                    </p>
+                </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem', background: 'white', padding: '0.5rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                        {(['all', 'pending', 'viewed', 'contacted'] as const).map(f => (
-                            <button
-                                key={f}
-                                onClick={() => setStatusFilter(f)}
-                                style={{
-                                    padding: '0.7rem 1.4rem',
-                                    borderRadius: '12px',
-                                    border: 'none',
-                                    background: statusFilter === f ? '#0f172a' : 'transparent',
-                                    color: statusFilter === f ? 'white' : '#64748b',
-                                    fontWeight: '700',
-                                    cursor: 'pointer',
-                                    textTransform: 'capitalize',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                {f}
-                            </button>
-                        ))}
+                <div className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-3xl self-start">
+                    {(['all', 'pending', 'viewed', 'contacted'] as const).map(f => (
+                        <button
+                            key={f}
+                            onClick={() => setStatusFilter(f)}
+                            className={`px-4 md:px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === f ? 'bg-white text-red-600 shadow-xl shadow-red-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+                        >
+                            {f}
+                        </button>
+                    ))}
+                </div>
+            </header>
+
+            {/* Filters Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
+                <div className="relative group">
+                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-red-600 transition-colors z-10 pointer-events-none italic font-black text-[10px] uppercase tracking-widest">School</span>
+                    <select
+                        value={schoolFilter}
+                        onChange={(e) => setSchoolFilter(e.target.value)}
+                        className="w-full pl-20 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black focus:outline-none focus:ring-8 focus:ring-red-500/5 focus:border-red-500 transition-all appearance-none italic"
+                    >
+                        <option value="all">ALL INSTITUTIONS</option>
+                        {schoolNames.map(name => <option key={name} value={name}>{name.toUpperCase()}</option>)}
+                    </select>
+                </div>
+
+                <div className="flex gap-2">
+                    <div className="flex-1 relative group">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-focus-within:text-red-500 transition-colors z-10 italic font-black text-[8px] uppercase tracking-tighter">Start</span>
+                        <input
+                            type="date"
+                            value={dateRange.start}
+                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black focus:outline-none focus:ring-8 focus:ring-red-500/5 focus:border-red-500 transition-all italic"
+                        />
+                    </div>
+                    <div className="flex-1 relative group">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-focus-within:text-red-500 transition-colors z-10 italic font-black text-[8px] uppercase tracking-tighter">End</span>
+                        <input
+                            type="date"
+                            value={dateRange.end}
+                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black focus:outline-none focus:ring-8 focus:ring-red-500/5 focus:border-red-500 transition-all italic"
+                        />
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', border: '1px solid #f1f5f9' }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                        <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Filter by Institution</span>
-                        <select
-                            value={schoolFilter}
-                            onChange={(e) => setSchoolFilter(e.target.value)}
-                            style={{ width: '100%', padding: '0.8rem', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', outline: 'none' }}
-                        >
-                            <option value="all">All Schools</option>
-                            {schoolNames.map(name => <option key={name} value={name}>{name}</option>)}
-                        </select>
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: '350px', display: 'flex', gap: '1rem' }}>
-                        <div style={{ flex: 1 }}>
-                            <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Start Date</span>
-                            <input type="date" value={dateRange.start} onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} style={{ width: '100%', padding: '0.8rem', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', outline: 'none' }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>End Date</span>
-                            <input type="date" value={dateRange.end} onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} style={{ width: '100%', padding: '0.8rem', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', outline: 'none' }} />
-                        </div>
-                    </div>
+                <div className="flex items-center gap-2">
+                    <button className="flex-1 h-full bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-200">
+                        Apply Scrub
+                    </button>
+                    <button
+                        onClick={() => { setSchoolFilter('all'); setStatusFilter('all'); setDateRange({ start: '', end: '' }) }}
+                        className="p-4 bg-slate-100 text-slate-400 hover:text-red-600 rounded-2xl transition-all"
+                    >
+                        <X size={20} />
+                    </button>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '2rem', alignItems: 'start' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 {/* Applications List */}
-                <div style={{ display: 'grid', gap: '1rem' }}>
+                <div className={`${selectedAppId ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-4`}>
                     {filteredApps.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '8rem 2rem', background: 'white', borderRadius: '32px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                            <div style={{ fontSize: '4rem', marginBottom: '1.5rem' }}>📥</div>
-                            <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b' }}>No applications match your filter</h3>
-                            <p style={{ color: '#64748b' }}>Try changing the status filter or wait for new submissions.</p>
+                        <div className="py-32 text-center bg-white rounded-[3rem] border border-slate-100">
+                            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner">
+                                <History size={48} className="text-slate-200" />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 italic tracking-tight uppercase mb-2">Registry Silent</h3>
+                            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">No matching signals found in transmission</p>
                         </div>
                     ) : (
-                        filteredApps.map(app => (
-                            <div
-                                key={app.id}
-                                onClick={() => setSelectedAppId(app.id)}
-                                style={{
-                                    background: 'white',
-                                    padding: '1.5rem',
-                                    borderRadius: '24px',
-                                    boxShadow: selectedAppId === app.id ? '0 10px 25px -5px rgba(0,0,0,0.1)' : '0 4px 6px -1px rgba(0,0,0,0.02)',
-                                    border: selectedAppId === app.id ? '2px solid #0f172a' : '2px solid transparent',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '1.5rem'
-                                }}
-                            >
-                                <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: '#f1f5f9', flexShrink: 0, overflow: 'hidden' }}>
-                                    {app.profilePhoto ? (
-                                        <img src={app.profilePhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🧑</div>
-                                    )}
-                                </div>
+                        <div className="grid grid-cols-1 gap-4">
+                            {filteredApps.map(app => (
+                                <div
+                                    key={app.id}
+                                    onClick={() => setSelectedAppId(app.id)}
+                                    className={`
+                                        group relative bg-white p-6 rounded-[2.5rem] border transition-all cursor-pointer overflow-hidden flex flex-col sm:flex-row sm:items-center gap-6
+                                        ${selectedAppId === app.id ? 'border-red-600 shadow-2xl shadow-red-900/10' : 'border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 hover:border-slate-200'}
+                                    `}
+                                >
+                                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-slate-50 bg-gradient-to-br from-slate-50 to-slate-100 flex-shrink-0 overflow-hidden border border-slate-100 ring-4 ring-slate-50">
+                                        {app.profilePhoto ? (
+                                            <img src={app.profilePhoto} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <User size={32} className="text-slate-300" />
+                                            </div>
+                                        )}
+                                        {app.status === 'pending' && <div className="absolute top-2 right-2 w-3 h-3 bg-amber-500 rounded-full border-2 border-white animate-pulse" />}
+                                    </div>
 
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '0.3rem' }}>
-                                        <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', margin: 0 }}>{app.applicantName}</h3>
-                                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                            <span style={{
-                                                padding: '0.2rem 0.6rem',
-                                                borderRadius: '8px',
-                                                fontSize: '0.65rem',
-                                                fontWeight: '800',
-                                                background: '#f1f5f9',
-                                                color: '#64748b',
-                                                textTransform: 'uppercase'
-                                            }}>ADMISSION</span>
-                                            <span style={{
-                                                padding: '0.2rem 0.6rem',
-                                                borderRadius: '8px',
-                                                fontSize: '0.65rem',
-                                                fontWeight: '800',
-                                                background: `${getStatusColor(app.status)}15`,
-                                                color: getStatusColor(app.status),
-                                                textTransform: 'uppercase'
-                                            }}>{app.status}</span>
+                                    <div className="flex-1 min-w-0 space-y-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="text-xl font-black text-slate-900 truncate leading-none uppercase italic tracking-tight group-hover:text-red-600 transition-colors">
+                                                {app.applicantName}
+                                            </h3>
+                                            <StatusBadge status={app.status} />
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">
+                                            <span className="flex items-center gap-1.5"><GraduationCap size={12} className="text-red-400" /> {app.schoolName}</span>
+                                            <span className="flex items-center gap-1.5"><Calendar size={12} className="text-slate-300" /> {new Date(app.submittedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 pt-2">
+                                            <span className="px-3 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[9px] font-black text-slate-500 uppercase tracking-tighter truncate max-w-[150px]">
+                                                {app.programmes || 'Academic Path'}
+                                            </span>
+                                            <span className="px-3 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[9px] font-black text-blue-600 uppercase tracking-tighter italic">
+                                                {app.entryLevel || 'L1'}
+                                            </span>
                                         </div>
                                     </div>
-                                    <p style={{ color: '#64748b', fontSize: '0.85rem', margin: 0 }}>
-                                        Applying to <strong>{app.schoolName}</strong> • {new Date(app.submittedAt).toLocaleDateString()}
-                                    </p>
-                                </div>
 
-                                {app.academicResults && (
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0 }}>
-                                        <img src={app.academicResults} alt="Doc preview" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end sm:justify-center gap-4 sm:ml-auto">
+                                        {app.academicResults && (
+                                            <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 p-1 group-hover:border-red-200 transition-colors">
+                                                <img src={app.academicResults} alt="Doc preview" className="w-full h-full object-cover rounded-lg opacity-40 group-hover:opacity-100 transition-opacity" />
+                                            </div>
+                                        )}
+                                        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-red-600 group-hover:text-white transition-all transform group-hover:translate-x-1">
+                                            <ChevronRight size={20} />
+                                        </div>
                                     </div>
-                                )}
-
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: '600' }}>{app.programmes || 'General'}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{app.entryLevel || 'Lvl 1'}</div>
                                 </div>
-
-                                <div style={{ fontSize: '1.2rem', color: '#cbd5e1' }}>→</div>
-                            </div>
-                        ))
+                            ))}
+                        </div>
                     )}
                 </div>
 
-                {/* Detailed Sidebar */}
-                <div style={{ position: 'sticky', top: '2rem' }}>
-                    {selectedApp ? (
-                        <div style={{ background: 'white', borderRadius: '32px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden', border: '1px solid #f1f5f9' }}>
-                            <div style={{ background: '#0f172a', padding: '2.5rem 2rem', color: 'white', textAlign: 'center' }}>
-                                <div style={{ width: '100px', height: '100px', borderRadius: '30px', background: 'rgba(255,255,255,0.1)', margin: '0 auto 1.5rem', overflow: 'hidden', border: '4px solid rgba(255,255,255,0.2)' }}>
-                                    {selectedApp.profilePhoto ? (
-                                        <img src={selectedApp.profilePhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem' }}>👤</div>
-                                    )}
-                                </div>
-                                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>{selectedApp.applicantName}</h2>
-                                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem', margin: 0 }}>{selectedApp.applicantEmail}</p>
+                {/* Detailed Sidebar / Drawer */}
+                {selectedAppId && (
+                    <div className="lg:col-span-5 lg:sticky lg:top-8 animate-in slide-in-from-right-8 duration-500">
+                        <div className="bg-white rounded-[3rem] border border-slate-100 shadow-2xl shadow-slate-900/20 overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
+                            {/* Profile Header */}
+                            <div className="relative p-8 bg-[#0d0d0d] text-white">
+                                <button
+                                    onClick={() => setSelectedAppId(null)}
+                                    className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all z-20"
+                                >
+                                    <X size={20} />
+                                </button>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '2rem' }}>
-                                    <select
-                                        value={selectedApp.status}
-                                        onChange={(e) => updateSchoolApplicationStatus(selectedApp.id, e.target.value as any)}
-                                        style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.8rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', cursor: 'pointer', outline: 'none' }}
-                                    >
-                                        <option value="pending" style={{ color: 'black' }}>Pending</option>
-                                        <option value="viewed" style={{ color: 'black' }}>Viewed</option>
-                                        <option value="contacted" style={{ color: 'black' }}>Contacted</option>
-                                    </select>
-                                    <button
-                                        onClick={() => window.open(`mailto:${selectedApp.applicantEmail}`)}
-                                        style={{ background: 'white', color: 'black', border: 'none', padding: '0.8rem', borderRadius: '12px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}
-                                    >
-                                        Contact
-                                    </button>
+                                <div className="relative z-10 flex flex-col items-center gap-6 py-4">
+                                    <div className="relative w-32 h-32 rounded-[2.5rem] bg-white/10 p-[4px] ring-4 ring-white/5 shadow-2xl shadow-black/50 overflow-hidden">
+                                        <div className="w-full h-full rounded-[2.3rem] overflow-hidden bg-white/5">
+                                            {selectedApp?.profilePhoto ? (
+                                                <img src={selectedApp.profilePhoto} alt="" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-4xl">🧑</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-center">
+                                        <h2 className="text-3xl font-black italic uppercase tracking-tight mb-1">{selectedApp?.applicantName}</h2>
+                                        <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em] italic mb-6">
+                                            Identity: <span className="text-red-500">REF_{selectedApp?.id?.slice(-8).toUpperCase()}</span>
+                                        </p>
+
+                                        <div className="grid grid-cols-2 gap-3 w-full">
+                                            <div className="relative group">
+                                                <select
+                                                    value={selectedApp?.status}
+                                                    onChange={(e) => updateSchoolApplicationStatus(selectedApp!.id, e.target.value as any)}
+                                                    className="w-full pl-4 pr-10 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white appearance-none cursor-pointer transition-all outline-none"
+                                                >
+                                                    <option value="pending" className="text-slate-900">Pending</option>
+                                                    <option value="viewed" className="text-slate-900">Viewed</option>
+                                                    <option value="contacted" className="text-slate-900">Contacted</option>
+                                                </select>
+                                                <Clock className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" size={14} />
+                                            </div>
+                                            <button
+                                                onClick={() => window.open(`mailto:${selectedApp?.applicantEmail}`)}
+                                                className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                            >
+                                                <Mail size={14} /> Contact
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div style={{ padding: '2rem', maxHeight: 'calc(100vh - 450px)', overflowY: 'auto' }}>
-                                <section style={{ marginBottom: '2.5rem' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Personal Info</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                        <LabelValue label="Gender" value={selectedApp.gender} />
-                                        <LabelValue label="Nationality" value={selectedApp.nationality} />
-                                        <LabelValue label="Phone" value={selectedApp.applicantPhone} />
-                                        <LabelValue label="DOB" value={selectedApp.dob} />
-                                        <div style={{ gridColumn: 'span 2' }}>
-                                            <LabelValue label="Address" value={selectedApp.address} />
+                            {/* Content Panels */}
+                            <div className="flex-1 overflow-y-auto p-8 space-y-12 no-scrollbar">
+                                {/* Academic Focus */}
+                                <section>
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-red-600 mb-6 italic">
+                                        <GraduationCap size={16} /> Admission Profile
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-8">
+                                        <div className="col-span-2 p-6 bg-slate-50 rounded-3xl border border-slate-100 group">
+                                            <LabelValue label="Institution Request" value={selectedApp?.schoolName} icon={GraduationCap} />
+                                        </div>
+                                        <div className="col-span-2 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Selected Programmes" value={selectedApp?.programmes} icon={BookOpen} />
+                                        </div>
+                                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Entry Level" value={selectedApp?.entryLevel} />
+                                        </div>
+                                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Study Mode" value={selectedApp?.modeOfStudy} />
                                         </div>
                                     </div>
                                 </section>
 
-                                <section style={{ marginBottom: '2.5rem' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Academic Choice</h4>
-                                    <LabelValue label="Target School" value={selectedApp.schoolName} />
-                                    <LabelValue label="Programme(s)" value={selectedApp.programmes} />
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                        <LabelValue label="Level" value={selectedApp.entryLevel} />
-                                        <LabelValue label="Mode" value={selectedApp.modeOfStudy} />
-                                    </div>
-                                </section>
-
-                                <section style={{ marginBottom: '2.5rem' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Background</h4>
-                                    <LabelValue label="Last Institution" value={selectedApp.lastInstitution} />
-                                    <LabelValue label="Highest Qual." value={selectedApp.highestQualification} />
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                        <LabelValue label="Year" value={selectedApp.completionYear} />
-                                        <LabelValue label="Exam Body" value={selectedApp.examBody} />
-                                    </div>
-                                </section>
-
-                                {selectedApp.academicResults && (
-                                    <section style={{ marginBottom: '2.5rem' }}>
-                                        <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Academic Results</h4>
+                                {/* Results Section */}
+                                {selectedApp?.academicResults && (
+                                    <section>
+                                        <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-6 italic">
+                                            <Info size={16} /> Official Credentials
+                                        </h4>
                                         <div
-                                            style={{ width: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', cursor: 'zoom-in', transition: 'transform 0.2s' }}
+                                            className="relative aspect-[4/3] rounded-[2rem] overflow-hidden border-2 border-slate-100 group cursor-zoom-in"
                                             onClick={() => window.open(selectedApp.academicResults)}
                                         >
-                                            <img src={selectedApp.academicResults} alt="Results" style={{ width: '100%', display: 'block' }} />
+                                            <img src={selectedApp.academicResults} alt="Results" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <ExternalLink size={32} className="text-white" />
+                                            </div>
                                         </div>
-                                        <p style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.5rem' }}>Click image to view full size</p>
+                                        <p className="text-center mt-3 text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Encrypted Document Link</p>
                                     </section>
                                 )}
 
-                                <section style={{ marginBottom: '2.5rem' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Emergency Contact</h4>
-                                    <LabelValue label="Kin Name" value={selectedApp.nokName} />
-                                    <LabelValue label="Relationship" value={selectedApp.nokRelationship} />
-                                    <LabelValue label="Kin Phone" value={selectedApp.nokPhone} />
-                                </section>
-
+                                {/* Bio Data */}
                                 <section>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.2rem' }}>Legacy Info</h4>
-                                    <p style={{ fontSize: '0.9rem', color: '#64748b', fontStyle: 'italic' }}>
-                                        {selectedApp.message ? `"${selectedApp.message}"` : 'No additional message provided.'}
-                                    </p>
-                                    <div style={{ marginTop: '1rem' }}>
-                                        <LabelValue label="Source" value={selectedApp.sourceOfInfo} />
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600 mb-6 italic">
+                                        <User size={16} /> Bio-Metrics
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-6 bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
+                                        <LabelValue label="Gender" value={selectedApp?.gender} />
+                                        <LabelValue label="Nationality" value={selectedApp?.nationality} />
+                                        <LabelValue label="Date of Birth" value={selectedApp?.dob} />
+                                        <LabelValue label="Sync ID" value={selectedApp?.id?.slice(0, 8)} />
+                                        <div className="col-span-2 pt-2">
+                                            <LabelValue label="Primary Contact" value={selectedApp?.applicantPhone} icon={Phone} />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <LabelValue label="Residential" value={selectedApp?.address} icon={MapPin} />
+                                        </div>
                                     </div>
                                 </section>
+
+                                {/* Background */}
+                                <section>
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-amber-500 mb-6 italic">
+                                        <History size={16} /> Legacy History
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="col-span-full p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Prior Institution" value={selectedApp?.lastInstitution} />
+                                        </div>
+                                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Highest Award" value={selectedApp?.highestQualification} />
+                                        </div>
+                                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                            <LabelValue label="Final Year" value={selectedApp?.completionYear} />
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* Emergency */}
+                                <section>
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-rose-500 mb-6 italic">
+                                        <Phone size={16} /> Emergency Linkage
+                                    </h4>
+                                    <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
+                                        <LabelValue label="Next of Kin" value={selectedApp?.nokName} />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <LabelValue label="Relationship" value={selectedApp?.nokRelationship} />
+                                            <LabelValue label="Kin Pulse" value={selectedApp?.nokPhone} />
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* Message */}
+                                {selectedApp?.message && (
+                                    <section className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
+                                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500 mb-4 italic">Applicant Memo</h4>
+                                        <p className="text-sm font-bold italic text-slate-300 leading-relaxed uppercase">
+                                            "{selectedApp.message}"
+                                        </p>
+                                    </section>
+                                )}
                             </div>
                         </div>
-                    ) : (
-                        <div style={{ background: 'white', padding: '4rem 2rem', borderRadius: '32px', textAlign: 'center', border: '2px dashed #cbd5e1', color: '#94a3b8' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>👉</div>
-                            <p style={{ fontWeight: '600' }}>Select an application from the list to view full details</p>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
-
-            <style jsx global>{`
-                ::-webkit-scrollbar { width: 6px; }
-                ::-webkit-scrollbar-track { background: transparent; }
-                ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-                ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-            `}</style>
         </div>
     );
 }
