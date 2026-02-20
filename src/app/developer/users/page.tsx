@@ -134,8 +134,8 @@ export default function UserManagerPage() {
                                 <div className="col-span-2 mb-4 lg:mb-0">
                                     <span className={`
                                         px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border
-                                        ${user.role === 'Student' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                            user.role === 'Developer' ? 'bg-red-50 text-red-600 border-red-100' :
+                                        ${user.role?.toLowerCase() === 'student' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                            user.role?.toLowerCase() === 'developer' ? 'bg-red-50 text-red-600 border-red-100' :
                                                 'bg-amber-50 text-amber-600 border-amber-100'}
                                     `}>
                                         {user.role}
@@ -145,7 +145,7 @@ export default function UserManagerPage() {
                                 {/* Contact Info */}
                                 <div className="col-span-3 space-y-1 mb-4 lg:mb-0">
                                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500 truncate">
-                                        <Mail size={14} className="text-slate-300" /> {user.email || 'Waitlist / Unverified'}
+                                        <Mail size={14} className="text-slate-300" /> {user.email || 'Cloud Profile Verified'}
                                     </div>
                                     {user.phone && (
                                         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
