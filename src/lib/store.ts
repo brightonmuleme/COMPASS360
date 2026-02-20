@@ -210,9 +210,8 @@ export interface EnrolledStudent {
     bursary: string; // ID of bursary scheme
     previousBalance: number;
     status: 'active' | 'deactivated' | 'graduated' | 'enrolled' | 'suspended';
-    subscriptionStatus?: SubscriptionRequestStatus | 'active' | 'expired';
-    accountStatus?: 'clearance' | 'defaulter' | 'probation';
     tuitionStatus?: 'cleared' | 'probation' | 'defaulter';
+    subscriptionStatus?: SubscriptionRequestStatus | 'active' | 'expired' | 'trial';
     enrollmentDate?: string;
     documentHistory?: DocumentRecord[];
     physicalRequirements?: PhysicalRequirement[];
@@ -908,7 +907,7 @@ export const determineStudentStatus = (student: EnrolledStudent, settings: Finan
 
 export interface Billing {
     id: string;
-    studentId: number;
+    studentId: number | string;
     programmeId: string;
     level: string; // "Year 1"
     term: string; // "Semester 1"
@@ -933,7 +932,7 @@ export interface Billing {
 
 export interface Payment {
     id: string;
-    studentId: number;
+    studentId: number | string;
     billingId?: string; // Optional link to specific bill
     amount: number;
     date: string;
@@ -1872,10 +1871,13 @@ function useSchoolDataInternal() {
                             const cloudRequests = cp.payment_requests || [];
                             const localRequests = index >= 0 ? (merged[index].paymentRequests || []) : [];
 
-                            // Simple merge: Keep all unique IDs, prioritize cloud if present
+                            // Smart merge: Prioritize cloud status (Approved/Rejected), but keep local "Pending" if cloud doesn't know about them yet
                             const requestMap = new Map();
                             [...localRequests, ...cloudRequests].forEach(r => {
-                                if (!requestMap.has(r.id) || r.status !== 'Pending') {
+                                const existing = requestMap.get(r.id);
+                                // If cloud update exists, or if we don't have it yet, take it.
+                                // BUT don't let cloud "Pending" overwrite a local "Approved" we just did.
+                                if (!existing || r.status !== 'Pending' || (existing && existing.status === 'Pending')) {
                                     requestMap.set(r.id, r);
                                 }
                             });
@@ -1883,7 +1885,7 @@ function useSchoolDataInternal() {
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
                             const updatedStudent: EnrolledStudent = {
-                                id: cp.id, // Preserve Supabase UUID as the primary ID
+                                id: cp.id,
                                 name: cp.full_name || 'Student',
                                 payCode: cp.pay_code || cp.id,
                                 programme: index >= 0 ? merged[index].programme : 'Independent Learner',
@@ -1940,18 +1942,21 @@ function useSchoolDataInternal() {
                             // Merge Payment Requests: Prioritize cloud status, but keep local uniques
                             const cloudRequests = profile.payment_requests || [];
                             const localRequests = prev.paymentRequests || [];
+                            // Smart merge: Prioritize cloud status (Approved/Rejected), but keep local if cloud still says "Pending"
                             const requestMap = new Map();
-
-                            // Load local first
-                            localRequests.forEach((r: any) => requestMap.set(r.id, r));
-                            // Overwrite with cloud (cloud is source of truth for status)
-                            cloudRequests.forEach((r: any) => requestMap.set(r.id, r));
+                            [...localRequests, ...cloudRequests].forEach(r => {
+                                const existing = requestMap.get(r.id);
+                                if (!existing || r.status !== 'Pending' || (existing && existing.status === 'Pending')) {
+                                    requestMap.set(r.id, r);
+                                }
+                            });
 
                             const mergedRequests = Array.from(requestMap.values())
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
                             return {
                                 ...prev,
+                                id: profile.id, // Ensure ID is preserved from cloud
                                 walletBalance: profile.wallet_balance || 0,
                                 paymentRequests: mergedRequests,
                                 subscriptionStatus: (profile.subscription_status as any) || 'expired',
@@ -2656,7 +2661,11 @@ function useSchoolDataInternal() {
 
         const updatedRequests = currentRequests.map(r => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
         const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
-        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
+
+        // Find UUID: Check if studentId is UUID, otherwise look it up in students list
+        const targetUserId = (typeof studentId === 'string' && studentId.length > 20)
+            ? studentId
+            : (targetStudent && typeof targetStudent.id === 'string' && targetStudent.id.length > 20 ? targetStudent.id : null);
 
         // 2. Update Local State
         setStudents(prev => prev.map(s => {
@@ -2664,16 +2673,20 @@ function useSchoolDataInternal() {
             return isMatch ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
         }));
 
-        // If the person logged in IS the student (rare in dev portal but possible if testing)
-        if (studentProfile.id.toString() === studentId.toString()) {
+        // sync updated balance to student profile if this is the student
+        if (studentProfile.id.toString() === studentId.toString() || (targetUserId && studentProfile.id === targetUserId)) {
             setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
         // 3. PERSIST TO CLOUD
         if (targetUserId) {
             try {
-                await developerService.updateUserProfile(targetUserId, { wallet_balance: updatedBalance, payment_requests: updatedRequests });
-                console.log("✅ Cloud Sync Success: Student balance updated.");
+                // FORCE CLOUD SYNC AWAIT
+                await developerService.updateUserProfile(targetUserId as string, {
+                    wallet_balance: updatedBalance,
+                    payment_requests: updatedRequests
+                });
+                console.log("✅ Cloud Sync Success: Student balance verified and saved.");
             } catch (err) {
                 console.error("❌ Cloud Sync Error (Verify Payment):", err);
             }
@@ -2681,10 +2694,6 @@ function useSchoolDataInternal() {
 
         logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
     };
-
-
-
-
 
     const purchasePlatformPass = async (studentId: string | number, type: '6 Months' | '1 Year') => {
         const cost = type === '6 Months' ? 5000 : 9000;
@@ -2761,7 +2770,7 @@ function useSchoolDataInternal() {
         const months = duration === '1 Month' ? 1 : duration === '3 Months' ? 3 : 6;
 
         // 1. Initial Validation & Data Prep
-        const student = students.find(s => s.id === studentId || s.payCode === studentId);
+        const student = students.find(s => s.id.toString() === studentId.toString() || s.payCode === studentId.toString());
         if (!student) throw new Error("Critical: Student record not found.");
         if ((student.walletBalance || 0) < price) throw new Error("Insufficient wallet balance for this subscription.");
 
@@ -2788,7 +2797,7 @@ function useSchoolDataInternal() {
 
         // 2. Execute SEQUENTIAL State Updates (Flat)
         setStudents(prev => prev.map(s => {
-            if (s.id === studentId || s.payCode === studentId) {
+            if (s.id.toString() === studentId.toString() || s.payCode === studentId.toString()) {
                 if ((s.walletBalance || 0) < price) return s;
                 const otherSubs = s.tutorSubscriptions?.filter(ts => ts.tutorId !== tutorId) || [];
                 return {
@@ -2800,7 +2809,7 @@ function useSchoolDataInternal() {
             return s;
         }));
 
-        setTutorSubscriptions(prev => [newSub, ...prev.filter(ts => !(ts.tutorId === tutorId && ts.studentId === student.id.toString()))]);
+        setTutorSubscriptions(prev => [newSub, ...prev.filter(ts => !(ts.tutorId === tutorId && ts.studentId.toString() === student.id.toString()))]);
 
         // Credit Tutor with 80% (Commission is 20%)
         const tutorEarnings = price * 0.8;
@@ -3073,7 +3082,7 @@ function useSchoolDataInternal() {
             if (configExists) return s;
 
             // Orphan found. Find the student.
-            const student = activeStudents.find(st => st.id === s.studentId);
+            const student = activeStudents.find(st => st.id.toString() === s.studentId.toString());
             if (!student) return s; // Can't help
 
             // Find valid configs for this student
@@ -3668,7 +3677,7 @@ function useSchoolDataInternal() {
         })));
     };
 
-    const updateStudent = (s: EnrolledStudent) => setStudents(prev => prev.map(st => st.id === s.id ? s : st));
+    const updateStudent = (s: EnrolledStudent) => setStudents(prev => prev.map(st => st.id.toString() === s.id.toString() ? s : st));
 
     const batchUpdateStudents = (updatedStudents: EnrolledStudent[], logAction?: string, logDetails?: string) => {
         if (updatedStudents.length === 0) return;
@@ -3752,7 +3761,7 @@ function useSchoolDataInternal() {
             return [...prev, b];
         });
         setStudents(prev => prev.map(s => {
-            if (s.id === b.studentId) {
+            if (s.id.toString() === b.studentId.toString()) {
                 return { ...s, totalFees: s.totalFees + b.amount, balance: s.balance + b.amount };
             }
             return s;
@@ -3785,7 +3794,7 @@ function useSchoolDataInternal() {
 
         // 3. Revert Student Balance (Crucial Fix)
         setStudents(prev => prev.map(s => {
-            if (s.id === bill.studentId) {
+            if (s.id.toString() === bill.studentId.toString()) {
                 return {
                     ...s,
                     totalFees: s.totalFees - bill.amount,
@@ -3800,7 +3809,7 @@ function useSchoolDataInternal() {
 
     const addPayment = (p: Payment) => {
         // If studentId is 0 or missing, it's an unclaimed digital payment
-        if (p.studentId === 0 || !p.studentId) {
+        if (p.studentId.toString() === '0' || !p.studentId) {
             setUnclaimedPayments(prev => {
                 if (prev.some(item => item.id === p.id || (p.reference && item.reference === p.reference))) return prev;
                 return [p, ...prev];
@@ -3820,7 +3829,7 @@ function useSchoolDataInternal() {
 
         // Update Student Balance
         setStudents(prev => prev.map(s => {
-            if (s.id === p.studentId) {
+            if (s.id.toString() === p.studentId.toString()) {
                 return { ...s, balance: (s.balance || 0) - p.amount };
             }
             return s;
@@ -3837,20 +3846,20 @@ function useSchoolDataInternal() {
         if (oldPayment) {
             // Revert old student balance if it was linked
             if (oldPayment.studentId) {
-                setStudents(prev => prev.map(s => s.id === oldPayment.studentId ? { ...s, balance: (s.balance || 0) + oldPayment.amount } : s));
+                setStudents(prev => prev.map(s => s.id.toString() === oldPayment.studentId.toString() ? { ...s, balance: (s.balance || 0) + oldPayment.amount } : s));
             }
             // Apply new student balance
             if (p.studentId) {
-                setStudents(prev => prev.map(s => s.id === p.studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s));
+                setStudents(prev => prev.map(s => s.id.toString() === p.studentId.toString() ? { ...s, balance: (s.balance || 0) - p.amount } : s));
             }
         }
     };
 
-    const linkPayment = async (paymentId: string, studentId: number) => {
+    const linkPayment = async (paymentId: string, studentId: number | string) => {
         const p = payments.find(pay => pay.id === paymentId) || unclaimedPayments.find(pay => pay.id === paymentId);
         if (!p) return;
 
-        const student = students.find(s => s.id === studentId);
+        const student = students.find(s => s.id.toString() === studentId.toString());
         if (!student) return;
 
         // SAFEGUARD: Lock the cloud pull for 15 seconds to allow the push to finish
@@ -3875,7 +3884,7 @@ function useSchoolDataInternal() {
         };
 
         // 1. Update Students Balance
-        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, balance: (s.balance || 0) - p.amount } : s));
+        setStudents(prev => prev.map(s => s.id.toString() === studentId.toString() ? { ...s, balance: (s.balance || 0) - p.amount } : s));
 
         // 2. Move from Unclaimed to Payments (Non-Nested)
         setPayments(prev => {
@@ -3952,7 +3961,7 @@ function useSchoolDataInternal() {
 
         // 4. Reverse Balance
         setStudents(prev => prev.map(s => {
-            if (s.id === payment.studentId) {
+            if (s.id.toString() === payment.studentId.toString()) {
                 return { ...s, balance: (s.balance || 0) + payment.amount };
             }
             return s;
@@ -3974,7 +3983,7 @@ function useSchoolDataInternal() {
 
         // 2. Re-apply Student Balance
         setStudents(prev => prev.map(s => {
-            if (s.id === bill.studentId) {
+            if (s.id.toString() === bill.studentId.toString()) {
                 return {
                     ...s,
                     totalFees: s.totalFees + bill.amount,
@@ -3997,7 +4006,7 @@ function useSchoolDataInternal() {
 
         // 2. Re-apply Student Balance
         setStudents(prev => prev.map(s => {
-            if (s.id === payment.studentId) {
+            if (s.id.toString() === payment.studentId.toString()) {
                 return {
                     ...s,
                     balance: (s.balance || 0) - payment.amount
@@ -4009,9 +4018,9 @@ function useSchoolDataInternal() {
         logGlobalAction('Payment Restored', `Restored payment for student ID ${payment.studentId}.`);
     };
 
-    const deleteStudent = (studentId: number) => deleteStudents([studentId]);
+    const deleteStudent = (studentId: number | string) => deleteStudents([studentId]);
 
-    const deleteStudents = (studentIds: number[]) => {
+    const deleteStudents = (studentIds: (number | string)[]) => {
         if (studentIds.length === 0) return;
 
         // 1. COLLECT PAYMENT ACTIONS (Batch)
@@ -4021,7 +4030,7 @@ function useSchoolDataInternal() {
 
         // Iterate updates
         payments.forEach(p => {
-            if (studentIds.includes(p.studentId)) {
+            if (studentIds.some(id => id.toString() === p.studentId.toString())) {
                 paymentIdsToRemove.add(p.id);
 
                 const methodLower = (p.method || '').toLowerCase().replace(/\s/g, '');
@@ -4058,7 +4067,7 @@ function useSchoolDataInternal() {
         const newDeletedBillings: Billing[] = [];
 
         billings.forEach(b => {
-            if (studentIds.includes(b.studentId)) {
+            if (studentIds.some(id => id.toString() === b.studentId.toString())) {
                 billingIdsToRemove.add(b.id);
                 newDeletedBillings.push({
                     ...b,
@@ -4085,14 +4094,17 @@ function useSchoolDataInternal() {
         if (billingIdsToRemove.size > 0) setBillings(prev => prev.filter(b => !billingIdsToRemove.has(b.id)));
 
         // Students
-        setStudents(prev => prev.filter(s => !studentIds.includes(s.id)));
-        setRegistrarStudents(prev => prev.filter(s => !studentIds.includes(Number(s.schoolPayCode || s.id)))); // Cast safely
+        setStudents(prev => prev.filter(s => !studentIds.some(id => id.toString() === s.id.toString())));
+        setRegistrarStudents(prev => prev.filter(s => {
+            const sid = s.schoolPayCode || s.id;
+            return !studentIds.some(id => id.toString() === (sid || '').toString());
+        }));
 
-        logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students.IDs: ${studentIds.join(', ')} `);
+        logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students. IDs: ${studentIds.join(', ')}`);
     };
 
-    const syncRequirementToInventory = (studentId: number, reqName: string, changeAmount: number) => {
-        const student = students.find(s => s.id === studentId);
+    const syncRequirementToInventory = (studentId: number | string, reqName: string, changeAmount: number) => {
+        const student = students.find(s => s.id.toString() === studentId.toString());
         if (!student) return;
 
         // Find the 'Requirements' list and its primary group
@@ -4144,7 +4156,7 @@ function useSchoolDataInternal() {
 
         // Check if billings already exist for this student and semester (duplicate prevention)
         const existingBillings = billings.filter(
-            b => b.studentId === student.id && b.term === student.semester && b.type !== 'Adjustment'
+            b => b.studentId.toString() === student.id.toString() && b.term === student.semester && b.type !== 'Adjustment'
         );
 
         if (existingBillings.length > 0) {
@@ -4224,7 +4236,7 @@ function useSchoolDataInternal() {
             // 4. Update student's totalFees and balance
             const totalAmount = newBillings.reduce((sum, b) => sum + b.amount, 0);
             setStudents(prev => prev.map(s => {
-                if (s.id === student.id) {
+                if (s.id.toString() === student.id.toString()) {
                     return {
                         ...s,
                         totalFees: s.totalFees + totalAmount,
@@ -4344,9 +4356,9 @@ function useSchoolDataInternal() {
     const updateResultPageConfig = (config: ResultPageConfig) => setResultPageConfigs(resultPageConfigs.map(c => c.id === config.id ? config : c));
     const deleteResultPageConfig = (id: string) => setResultPageConfigs(resultPageConfigs.filter(c => c.id !== id));
 
-    const deleteStudentResult = (studentId: number, courseUnitId: string, pageConfigId?: string) => {
+    const deleteStudentResult = (studentId: number | string, courseUnitId: string, pageConfigId?: string) => {
         setStudentResults(prev => prev.filter(r =>
-            !(r.studentId === studentId && r.courseUnitId === courseUnitId && (pageConfigId ? r.pageConfigId === pageConfigId : true))
+            !(r.studentId.toString() === studentId.toString() && r.courseUnitId === courseUnitId && (pageConfigId ? r.pageConfigId === pageConfigId : true))
         ));
     };
 
@@ -4355,7 +4367,7 @@ function useSchoolDataInternal() {
         setStudentResults(prev => {
             // Remove duplicates for this student/course unit AND pageConfigId (if present)
             const clean = prev.filter(r => {
-                const sameStudent = r.studentId === result.studentId;
+                const sameStudent = r.studentId.toString() === result.studentId.toString();
                 const sameCU = r.courseUnitId === result.courseUnitId;
 
                 if (!sameStudent || !sameCU) return true; // Keep unrelated records
@@ -4380,7 +4392,7 @@ function useSchoolDataInternal() {
 
     const saveStudentPageSummary = (summary: StudentPageSummary) => {
         const existingIndex = studentPageSummaries.findIndex(s =>
-            s.studentId === summary.studentId && s.pageConfigId === summary.pageConfigId
+            s.studentId.toString() === summary.studentId.toString() && s.pageConfigId === summary.pageConfigId
 
         );
 
@@ -5438,7 +5450,7 @@ export const calculateClearancePercentage = (
 
     // 2. Arrears Bills
     const arrearsBillings = billings.filter(b =>
-        b.studentId === financialAuthority.id &&
+        b.studentId.toString() === financialAuthority.id.toString() &&
         b.term === term &&
         (isArrears(b.description || "") || isArrears(b.type || ""))
     );
@@ -5451,7 +5463,7 @@ export const calculateClearancePercentage = (
 
     // 4. Payments
     const studentPayments = payments.filter(p =>
-        p.studentId === financialAuthority.id &&
+        p.studentId.toString() === financialAuthority.id.toString() &&
         (p.term === term || (!p.term && isCurrent))
     );
 
