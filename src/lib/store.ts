@@ -1866,28 +1866,43 @@ function useSchoolDataInternal() {
                         const merged = [...prev];
                         cloudStudents.forEach((cp: any) => {
                             const index = merged.findIndex(s => s.id.toString() === cp.id.toString() || s.payCode === cp.pay_code);
+
+                            // Merge Payment Requests (preserve local if cloud has none or is stale)
+                            const cloudRequests = cp.payment_requests || [];
+                            const localRequests = index >= 0 ? (merged[index].paymentRequests || []) : [];
+
+                            // Simple merge: Keep all unique IDs, prioritize cloud if present
+                            const requestMap = new Map();
+                            [...localRequests, ...cloudRequests].forEach(r => {
+                                if (!requestMap.has(r.id) || r.status !== 'Pending') {
+                                    requestMap.set(r.id, r);
+                                }
+                            });
+                            const mergedRequests = Array.from(requestMap.values())
+                                .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
                             const updatedStudent: EnrolledStudent = {
                                 id: index >= 0 ? merged[index].id : (isNaN(Number(cp.id)) ? merged.length + 1000 : Number(cp.id)),
                                 name: cp.full_name || 'Student',
                                 payCode: cp.pay_code || cp.id,
-                                programme: 'Independent Learner',
-                                level: 'N/A',
-                                semester: 'N/A',
-                                balance: 0,
-                                totalFees: 0,
-                                services: [],
-                                bursary: 'None',
-                                previousBalance: 0,
+                                programme: index >= 0 ? merged[index].programme : 'Independent Learner',
+                                level: index >= 0 ? merged[index].level : 'N/A',
+                                semester: index >= 0 ? merged[index].semester : 'N/A',
+                                balance: index >= 0 ? merged[index].balance : 0,
+                                totalFees: index >= 0 ? merged[index].totalFees : 0,
+                                services: index >= 0 ? merged[index].services : [],
+                                bursary: index >= 0 ? merged[index].bursary : 'None',
+                                previousBalance: index >= 0 ? merged[index].previousBalance : 0,
                                 status: cp.status || 'active',
                                 walletBalance: cp.wallet_balance || 0,
-                                paymentRequests: cp.payment_requests || [],
+                                paymentRequests: mergedRequests,
                                 tutorSubscriptions: cp.subscribed_tutors || [],
                                 subscriptionExpiry: cp.subscription_expiry,
                                 subscriptionStatus: cp.subscription_status
                             };
 
                             if (index >= 0) {
-                                merged[index] = { ...merged[index], ...updatedStudent };
+                                merged[index] = updatedStudent;
                             } else {
                                 merged.push(updatedStudent);
                             }
@@ -1915,18 +1930,34 @@ function useSchoolDataInternal() {
                 } catch (err) {
                     console.error("❌ Consolidated Sync Error (Developer):", err);
                 }
-            } else if (studentProfile.id !== 'std_user_1') {
-                // Secondary Student Sync (Optional: handled by verifyInstitutionalAccess too, but extra safety)
+            } else if (studentProfile.id && studentProfile.id !== 'std_user_1') {
+                // --- STUDENT SYNC (Smarter Merge) ---
                 try {
                     const { data: profile } = await supabase.from('profiles').select('*').eq('id', studentProfile.id).single();
                     if (profile) {
-                        setStudentProfile(prev => ({
-                            ...prev,
-                            walletBalance: profile.wallet_balance || 0,
-                            paymentRequests: profile.payment_requests || [],
-                            subscriptionStatus: profile.subscription_status || 'expired',
-                            subscriptionEndDate: profile.subscription_expiry || ''
-                        }));
+                        setStudentProfile(prev => {
+                            // Merge Payment Requests: Prioritize cloud status, but keep local uniques
+                            const cloudRequests = profile.payment_requests || [];
+                            const localRequests = prev.paymentRequests || [];
+                            const requestMap = new Map();
+
+                            // Load local first
+                            localRequests.forEach(r => requestMap.set(r.id, r));
+                            // Overwrite with cloud (cloud is source of truth for status)
+                            cloudRequests.forEach(r => requestMap.set(r.id, r));
+
+                            const mergedRequests = Array.from(requestMap.values())
+                                .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
+                            return {
+                                ...prev,
+                                walletBalance: profile.wallet_balance || 0,
+                                paymentRequests: mergedRequests,
+                                subscriptionStatus: profile.subscription_status || 'expired',
+                                subscriptionEndDate: profile.subscription_expiry || '',
+                                subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds
+                            };
+                        });
                     }
                 } catch (err) { }
             }
@@ -2655,28 +2686,26 @@ function useSchoolDataInternal() {
         let updatedExpiry = '';
         let targetUserId: string | null = null;
 
+        const currentBalance = studentProfile.walletBalance || 0;
+        if (currentBalance < cost) throw new Error("Insufficient wallet balance. Please top up your wallet first.");
+
+        const startDate = new Date();
+        const currentExpiry = studentProfile.subscriptionEndDate ? new Date(studentProfile.subscriptionEndDate) : new Date(0);
+        const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
+        const newExpiry = new Date(baseDate);
+        newExpiry.setMonth(newExpiry.getMonth() + months);
+
+        updatedBalance = currentBalance - cost;
+        updatedExpiry = newExpiry.toISOString();
+        targetUserId = studentProfile.id;
+
         // Update Global Profile
-        setStudentProfile(prev => {
-            if ((prev.walletBalance || 0) < cost) throw new Error("Insufficient wallet balance.");
-
-            const startDate = new Date();
-            const currentExpiry = prev.subscriptionEndDate ? new Date(prev.subscriptionEndDate) : new Date(0);
-            const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
-            const newExpiry = new Date(baseDate);
-            newExpiry.setMonth(newExpiry.getMonth() + months);
-
-            updatedBalance = (prev.walletBalance || 0) - cost;
-            updatedExpiry = newExpiry.toISOString();
-            targetUserId = prev.id;
-
-            return {
-                ...prev,
-                walletBalance: updatedBalance,
-                subscriptionEndDate: updatedExpiry,
-                subscriptionStatus: 'active'
-            };
-        });
-
+        setStudentProfile(prev => ({
+            ...prev,
+            walletBalance: updatedBalance,
+            subscriptionEndDate: updatedExpiry,
+            subscriptionStatus: 'active'
+        }));
         // Sync to Linked Student if applicable
         setStudents(prev => prev.map(s => {
             if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
