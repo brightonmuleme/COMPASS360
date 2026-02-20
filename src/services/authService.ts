@@ -65,21 +65,23 @@ export const authService = {
 
             if (data.user) {
                 // B. Create Public Profile (The "Real" User Record)
+                // We use upsert to handle cases where Auth user might exist but Profile doesn't
                 const { error: profileError } = await supabase
                     .from('profiles')
-                    .insert([
+                    .upsert([
                         {
                             id: data.user.id,
                             full_name: params.name,
-                            // email column missing in DB schema, omitting to prevent failure
                             role: params.role,
                             school_id: params.schoolId,
                             pay_code: params.payCode
                         }
-                    ]);
+                    ], { onConflict: 'id' });
 
                 if (profileError) {
-                    console.error("Profile creation failed!", profileError);
+                    console.error("Critical: Profile creation/sync failed!", profileError);
+                    // Rollback Auth user if profile fails (optional, but cleaner for retry)
+                    // await supabase.auth.admin.deleteUser(data.user.id); 
                     return { success: false, error: "Cloud profile synchronization failed. Please contact support." };
                 }
             }

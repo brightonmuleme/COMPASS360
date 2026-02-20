@@ -634,6 +634,9 @@ export default function TutorContentLibrary() {
                 if (thumbRes.success) {
                     finalThumbnailUrl = thumbRes.url!;
                 }
+            } else if (finalThumbnailUrl && finalThumbnailUrl.startsWith('blob:')) {
+                // SECURITY: Prevent blob URLs from persisting to cloud
+                finalThumbnailUrl = '';
             }
 
             // Flatten Programme & Level Selection

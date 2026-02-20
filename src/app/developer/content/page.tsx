@@ -219,8 +219,8 @@ export default function ContentManager() {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id
-                                ? 'bg-white text-slate-900 shadow-lg'
-                                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
+                            ? 'bg-white text-slate-900 shadow-lg'
+                            : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
                             }`}
                     >
                         <tab.icon size={14} />
@@ -319,8 +319,67 @@ export default function ContentManager() {
                 {/* --- TAB: SCHOOLS --- */}
                 {activeTab === 'Schools' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                        {/* Empty State */}
-                        {featuredSchools.length === 0 && (
+                        {/* Render New School Form if adding */}
+                        {editingSchoolId && !featuredSchools.find(s => s.id === editingSchoolId) && (
+                            <div className="bg-slate-900 rounded-2xl border border-emerald-500/50 overflow-hidden shadow-2xl shadow-emerald-500/10 animate-in fade-in slide-in-from-top-4 duration-300">
+                                <div className="p-4 space-y-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="px-2 py-1 bg-emerald-500 text-black text-[10px] font-black uppercase rounded">New Registration</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Logo</label>
+                                            <div className="w-16 h-16 bg-black rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden relative group/logo cursor-pointer">
+                                                {schoolFormData?.logo ? <img src={schoolFormData.logo} className="w-full h-full object-contain" /> : <ImageIcon size={20} className="text-slate-700" />}
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, true)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Cover</label>
+                                            <div className="h-16 bg-black rounded-xl border border-slate-800 overflow-hidden relative group/cover cursor-pointer">
+                                                <img src={schoolFormData?.image} className="w-full h-full object-cover opacity-50" />
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true, false)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <input
+                                            value={schoolFormData?.name}
+                                            onChange={(e) => setSchoolFormData({ ...schoolFormData!, name: e.target.value })}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-bold text-white placeholder-slate-600 focus:border-emerald-500 outline-none"
+                                            placeholder="School Name"
+                                        />
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={schoolFormData?.category}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, category: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                placeholder="Category"
+                                            />
+                                            <input
+                                                value={schoolFormData?.location}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, location: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                placeholder="Location"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-2 border-t border-slate-800">
+                                        <button onClick={handleSaveSchool} disabled={isSaving} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+                                            {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                                            {isSaving ? 'Saving...' : 'Establish School'}
+                                        </button>
+                                        <button onClick={() => { setEditingSchoolId(null); setSchoolFormData(null); }} className="px-3 bg-slate-800 text-slate-400 py-2 rounded-lg">
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {featuredSchools.length === 0 && !editingSchoolId && (
                             <div className="flex flex-col items-center justify-center h-64 text-slate-500 border border-dashed border-slate-800 rounded-2xl">
                                 <SchoolIcon size={48} className="mb-4 opacity-50" />
                                 <p className="text-sm font-medium">No schools configured</p>
@@ -427,7 +486,8 @@ export default function ContentManager() {
                                     </div>
                                 )}
                             </div>
-                        ))}
+                        ))
+                        }
                     </div>
                 )}
 
