@@ -2599,29 +2599,34 @@ function useSchoolDataInternal() {
             submittedAt: new Date().toISOString()
         };
 
-        // 1. Calculate values BEFORE state setters
-        const targetStudent = students.find(s => s.payCode === request.studentId || s.id.toString() === request.studentId);
-        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (studentProfile.id === request.studentId ? (studentProfile.paymentRequests || []) : []);
-        const updatedRequests = [newRequest, ...currentRequests];
+        // 1. Resolve Identity
+        const isSelf = studentProfile.id.toString() === request.studentId.toString() || studentProfile.payCode === request.studentId.toString();
+        const targetStudent = students.find(s => s.id.toString() === request.studentId.toString() || s.payCode === request.studentId.toString());
 
-        // 2. Update Local State
-        if (studentProfile.id === request.studentId) {
-            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
-        }
+        // 2. Prepare Updated Request List
+        const currentRequests = isSelf ? (studentProfile.paymentRequests || []) : (targetStudent ? (targetStudent.paymentRequests || []) : []);
+        const updatedRequests = [newRequest, ...currentRequests];
 
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
         if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
-        setStudents(prev => {
-            const exists = prev.some(s => s.payCode === request.studentId || s.id.toString() === request.studentId);
+        // 3. Update Local State (Immediate Visibility)
+        if (isSelf) {
+            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
+        }
 
-            if (exists) {
-                return prev.map(s => (s.payCode === request.studentId || s.id.toString() === request.studentId) ? { ...s, paymentRequests: updatedRequests } : s);
-            } else {
+        setStudents(prev => {
+            const index = prev.findIndex(s => s.id.toString() === request.studentId.toString() || s.payCode === request.studentId.toString());
+            if (index >= 0) {
+                const updated = [...prev];
+                updated[index] = { ...updated[index], paymentRequests: updatedRequests };
+                return updated;
+            } else if (isSelf) {
+                // If student is themselves but not in the 'students' list yet (Independent Learner)
                 const newStudent: EnrolledStudent = {
-                    id: isNaN(Number(studentProfile.id)) ? prev.length + 1000 : Number(studentProfile.id),
+                    id: studentProfile.id,
                     name: studentProfile.name,
-                    payCode: studentProfile.payCode || studentProfile.id,
+                    payCode: studentProfile.payCode || studentProfile.id.toString(),
                     programme: 'Independent Learner',
                     level: 'N/A',
                     semester: 'N/A',
@@ -2632,25 +2637,34 @@ function useSchoolDataInternal() {
                     previousBalance: 0,
                     status: 'active',
                     walletBalance: studentProfile.walletBalance || 0,
-                    paymentRequests: [newRequest],
+                    paymentRequests: updatedRequests,
                     tutorSubscriptions: [],
-                    subscriptionExpiry: studentProfile.subscriptionEndDate
+                    subscriptionExpiry: studentProfile.subscriptionEndDate,
+                    subscriptionStatus: studentProfile.subscriptionStatus
                 };
                 return [newStudent, ...prev];
             }
+            return prev;
         });
 
         // 4. PERSIST TO CLOUD
-        try {
-            await developerService.updateUserProfile(request.studentId, {
-                payment_requests: updatedRequests
-            });
-            console.log("✅ Cloud Sync Success: Payment request submitted.");
-        } catch (err) {
-            console.error("❌ Cloud Sync Error (Submit Payment):", err);
+        // We MUST use the UUID for the cloud update to work.
+        const cloudUserId = (typeof request.studentId === 'string' && request.studentId.length > 20)
+            ? request.studentId
+            : (studentProfile.id.toString().length > 20 ? studentProfile.id.toString() : (targetStudent && targetStudent.id.toString().length > 20 ? targetStudent.id.toString() : null));
+
+        if (cloudUserId) {
+            try {
+                await developerService.updateUserProfile(cloudUserId, {
+                    payment_requests: updatedRequests
+                });
+                console.log("✅ Cloud Sync Success: Payment request submitted to UUID.");
+            } catch (err) {
+                console.error("❌ Cloud Sync Error (Submit Payment):", err);
+            }
         }
 
-        logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.reference}`, 'platform');
+        logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.transactionId || request.reference}`, 'platform');
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
