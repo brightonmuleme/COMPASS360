@@ -163,7 +163,7 @@ function AuthContent() {
 
             const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+256${phoneNumber.replace(/^0/, '')}`;
             // Normalize role to Uppercase for easier filtering in Registrar
-            const normalizedRole = role === 'school' ? 'Director' : (role === 'accountant' ? 'Bursar' : (role === 'tutor' ? 'Tutor' : role));
+            const normalizedRole = role === 'school' ? 'Director' : (role === 'accountant' ? 'Bursar' : (role === 'tutor' ? 'Tutor' : 'Student'));
 
             const signupData = {
                 username: email,

@@ -89,5 +89,15 @@ export const developerService = {
 
         if (error) throw error;
         return true;
+    },
+
+    updateUserProfile: async (userId: string, updates: any) => {
+        const { error } = await supabase
+            .from('profiles')
+            .update(updates)
+            .eq('id', userId);
+
+        if (error) throw error;
+        return true;
     }
 };

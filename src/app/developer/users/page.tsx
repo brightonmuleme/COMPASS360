@@ -40,7 +40,8 @@ export default function UserManagerPage() {
         const matchesSearch =
             (user.full_name || user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesRole = roleFilter === 'All' || user.role === roleFilter;
+        const matchesRole = roleFilter === 'All' ||
+            (user.role?.toLowerCase() === roleFilter.toLowerCase());
         return matchesSearch && matchesRole;
     });
 

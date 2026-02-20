@@ -2528,11 +2528,15 @@ function useSchoolDataInternal() {
         logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.reference}`, 'platform');
     };
 
-    const verifySubscriptionRequest = (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        // 1. Update Global List
+    const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
+        let updatedRequests: SubscriptionRequest[] = [];
+        let updatedBalance = 0;
+        let targetUserId: string | null = null;
+
+        // 1. Update Global List (and find target user ID if it's a UUID)
         setStudents(prev => prev.map(s => {
             if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
-                const updatedRequests = (s.paymentRequests || []).map(r => {
+                updatedRequests = (s.paymentRequests || []).map(r => {
                     if (r.id === requestId) {
                         return {
                             ...r,
@@ -2545,12 +2549,17 @@ function useSchoolDataInternal() {
                     return r;
                 });
 
-                let newWalletBalance = s.walletBalance || 0;
+                updatedBalance = s.walletBalance || 0;
                 if (status === 'Approved') {
-                    newWalletBalance += amount;
+                    updatedBalance += amount;
                 }
 
-                return { ...s, paymentRequests: updatedRequests, walletBalance: newWalletBalance };
+                // If studentId is a UUID string, it's likely the profile ID
+                if (typeof studentId === 'string' && studentId.length > 20) {
+                    targetUserId = studentId;
+                }
+
+                return { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance };
             }
             return s;
         }));
@@ -2558,7 +2567,7 @@ function useSchoolDataInternal() {
         // 2. Update Current Profile (If matching)
         if (studentProfile.id.toString() === studentId.toString()) {
             setStudentProfile(prev => {
-                const updatedRequests = (prev.paymentRequests || []).map(r => {
+                updatedRequests = (prev.paymentRequests || []).map(r => {
                     if (r.id === requestId) {
                         return {
                             ...r,
@@ -2571,21 +2580,41 @@ function useSchoolDataInternal() {
                     return r;
                 });
 
-                let newWalletBalance = prev.walletBalance || 0;
+                updatedBalance = prev.walletBalance || 0;
                 if (status === 'Approved') {
-                    newWalletBalance += amount;
+                    updatedBalance += amount;
                 }
 
-                return { ...prev, paymentRequests: updatedRequests, walletBalance: newWalletBalance };
+                targetUserId = prev.id;
+
+                return { ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance };
             });
+        }
+
+        // 3. PERSIST TO CLOUD (Supabase)
+        if (targetUserId) {
+            try {
+                // We store the requests and balance in the profiles table for non-institutional students
+                await developerService.updateUserProfile(targetUserId, {
+                    wallet_balance: updatedBalance,
+                    payment_requests: updatedRequests
+                });
+                console.log("✅ Cloud Sync Success: Student balance updated.");
+            } catch (err) {
+                console.error("❌ Cloud Sync Error (Verify Payment):", err);
+            }
         }
 
         logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
     };
 
-    const purchasePlatformPass = (studentId: string | number, type: '6 Months' | '1 Year') => {
+    const purchasePlatformPass = async (studentId: string | number, type: '6 Months' | '1 Year') => {
         const cost = type === '6 Months' ? 5000 : 9000;
         const months = type === '6 Months' ? 6 : 12;
+
+        let updatedBalance = 0;
+        let updatedExpiry = '';
+        let targetUserId: string | null = null;
 
         // Update Global Profile
         setStudentProfile(prev => {
@@ -2597,23 +2626,29 @@ function useSchoolDataInternal() {
             const newExpiry = new Date(baseDate);
             newExpiry.setMonth(newExpiry.getMonth() + months);
 
+            updatedBalance = (prev.walletBalance || 0) - cost;
+            updatedExpiry = newExpiry.toISOString();
+            targetUserId = prev.id;
+
             return {
                 ...prev,
-                walletBalance: (prev.walletBalance || 0) - cost,
-                subscriptionEndDate: newExpiry.toISOString(),
+                walletBalance: updatedBalance,
+                subscriptionEndDate: updatedExpiry,
                 subscriptionStatus: 'active'
             };
         });
 
         // Sync to Linked Student if applicable
         setStudents(prev => prev.map(s => {
-            if (s.id === studentId || s.payCode === studentId) {
+            if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
                 if ((s.walletBalance || 0) < cost) return s;
                 const startDate = new Date();
                 const currentExpiry = s.subscriptionExpiry ? new Date(s.subscriptionExpiry) : new Date(0);
                 const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
                 const newExpiry = new Date(baseDate);
                 newExpiry.setMonth(newExpiry.getMonth() + months);
+
+                if (typeof studentId === 'string' && studentId.length > 20) targetUserId = studentId;
 
                 return {
                     ...s,
@@ -2624,6 +2659,21 @@ function useSchoolDataInternal() {
             }
             return s;
         }));
+
+        // PERSIST TO CLOUD
+        if (targetUserId) {
+            try {
+                await developerService.updateUserProfile(targetUserId, {
+                    wallet_balance: updatedBalance,
+                    subscription_expiry: updatedExpiry,
+                    subscription_status: 'active'
+                });
+                console.log("✅ Cloud Sync Success: Subscription Purchased.");
+            } catch (err) {
+                console.error("❌ Cloud Sync Error (Purchase Pass):", err);
+            }
+        }
+
         logGlobalAction('Plan Purchase', `User ${studentId} purchased ${type} pass.`, 'platform');
     };
 
@@ -3131,9 +3181,7 @@ function useSchoolDataInternal() {
     const [featuredSchools, setFeaturedSchools] = useState<FeaturedSchool[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('app_featured_schools_v4');
-            const data = saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
-            const APPROVED_SCHOOL_IDS = ['sami_health'];
-            return data.filter((s: any) => APPROVED_SCHOOL_IDS.includes(s.id));
+            return saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
         }
         return INITIAL_FEATURED_SCHOOLS;
     });
@@ -3190,12 +3238,37 @@ function useSchoolDataInternal() {
                                 name: profile.full_name || user.user_metadata?.full_name || 'Tutor',
                                 email: userEmail || profile.email || '',
                                 role: 'Tutor',
-                                subscriptionDaysLeft: 30 // Default or fetch from a tutor_stats table later
+                                subscriptionDaysLeft: 30
                             });
                         }
                     }
                     setCheckingAccess(false);
-                    return; // Tutors skip institutional/school checks
+                    return;
+                }
+
+                // --- STUDENT AUTO-HYDRATION ---
+                if (userRole === 'student' || userRole === 'Student') {
+                    if (!studentProfile || studentProfile.id !== user.id || studentProfile.id === 'std_user_1') {
+                        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                        if (profile) {
+                            setStudentProfile(prev => ({
+                                ...prev,
+                                id: user.id,
+                                name: profile.full_name || user.user_metadata?.full_name || 'Student',
+                                email: userEmail || profile.email || '',
+                                role: 'Student',
+                                walletBalance: profile.wallet_balance || 0,
+                                paymentRequests: profile.payment_requests || [],
+                                payCode: profile.pay_code || prev.payCode,
+                                phoneNumber: profile.phone || prev.phoneNumber,
+                                subscriptionStatus: profile.subscription_status || prev.subscriptionStatus || 'expired',
+                                subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate || '',
+                                subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds || []
+                            }));
+                        }
+                    }
+                    setCheckingAccess(false);
+                    return;
                 }
 
                 // 2. Check for Pending Application by Email (The "Sami" Lock)
@@ -3290,9 +3363,7 @@ function useSchoolDataInternal() {
                         setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
                     }
                     if (config.featured_schools && config.featured_schools.length > 0) {
-                        const APPROVED_SCHOOL_IDS = ['sami_health'];
-                        const filtered = config.featured_schools.filter((s: any) => APPROVED_SCHOOL_IDS.includes(s.id));
-                        setFeaturedSchools(filtered.length > 0 ? filtered : INITIAL_FEATURED_SCHOOLS);
+                        setFeaturedSchools(config.featured_schools);
                     }
                 }
             } catch (err) {
