@@ -1587,6 +1587,73 @@ function useSchoolDataInternal() {
     const [checkingAccess, setCheckingAccess] = useState(true);
     const [hydrated, setHydrated] = useState(false);
 
+    const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
+        if (typeof window !== 'undefined') {
+            // Priority 1: Check sessionStorage (tab-specific)
+            let saved = sessionStorage.getItem('school_active_role');
+
+            // Priority 2: Fallback to localStorage (existing legacy sessions)
+            if (!saved) {
+                saved = localStorage.getItem('school_active_role');
+            }
+
+            if (saved) {
+                try {
+                    // Simple obfuscation decode
+                    const decoded = window.atob(saved);
+                    return decoded as AccountantRole;
+                } catch (e) {
+                    return saved as AccountantRole;
+                }
+            }
+        }
+        return null;
+    });
+
+    const [studentProfile, setStudentProfile] = useState<StudentProfile>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('school_student_profile_v1');
+            return saved ? JSON.parse(saved) : {
+                id: 'std_user_1',
+                name: 'Student User',
+                email: 'student@vine.ac.ug',
+                likedContentIds: [],
+                subscribedTutorIds: [],
+                subscriptionStatus: 'active',
+                subscriptionEndDate: '2026-12-31',
+                walletBalance: 0,
+                paymentRequests: []
+            };
+        }
+        return {
+            id: 'std_user_1',
+            name: 'Student User',
+            email: 'student@vine.ac.ug',
+            likedContentIds: [],
+            subscribedTutorIds: [],
+            subscriptionStatus: 'active',
+            subscriptionEndDate: '2026-12-31',
+            walletBalance: 0,
+            paymentRequests: []
+        };
+    });
+
+    const [tutorProfile, setTutorProfile] = useState<TutorProfile | null>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('school_tutor_profile_v1');
+            return saved ? JSON.parse(saved) : null;
+        }
+        return null;
+    });
+
+    const [developerProfile, setDeveloperProfile] = useState<DeveloperProfile | null>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('school_developer_profile_v1');
+            return saved ? JSON.parse(saved) : null;
+        }
+        return null;
+    });
+
     const loadFromStorage = (key: string, initial: any) => {
         if (typeof window === 'undefined') return initial;
         try {
@@ -2117,49 +2184,6 @@ function useSchoolDataInternal() {
         return [];
     });
 
-    const [studentProfile, setStudentProfile] = useState<StudentProfile>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_student_profile_v1');
-            return saved ? JSON.parse(saved) : {
-                id: 'std_user_1',
-                name: 'Student User',
-                email: 'student@vine.ac.ug',
-                likedContentIds: [],
-                subscribedTutorIds: [],
-                subscriptionStatus: 'active',
-                subscriptionEndDate: '2026-12-31',
-                walletBalance: 0,
-                paymentRequests: []
-            };
-        }
-        return {
-            id: 'std_user_1',
-            name: 'Student User',
-            email: 'student@vine.ac.ug',
-            likedContentIds: [],
-            subscribedTutorIds: [],
-            subscriptionStatus: 'active',
-            subscriptionEndDate: '2026-12-31',
-            walletBalance: 0,
-            paymentRequests: []
-        };
-    });
-
-    const [tutorProfile, setTutorProfile] = useState<TutorProfile | null>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_tutor_profile_v1');
-            return saved ? JSON.parse(saved) : null;
-        }
-        return null;
-    });
-
-    const [developerProfile, setDeveloperProfile] = useState<DeveloperProfile | null>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_developer_profile_v1');
-            return saved ? JSON.parse(saved) : null;
-        }
-        return null;
-    });
 
 
 
@@ -2443,28 +2467,7 @@ function useSchoolDataInternal() {
         administrator: 'Admin',
         status: 'Active'
     });
-    const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
-        if (typeof window !== 'undefined') {
-            // Priority 1: Check sessionStorage (tab-specific)
-            let saved = sessionStorage.getItem('school_active_role');
 
-            // Priority 2: Fallback to localStorage (existing legacy sessions)
-            if (!saved) {
-                saved = localStorage.getItem('school_active_role');
-            }
-
-            if (saved) {
-                try {
-                    // Simple obfuscation decode
-                    const decoded = window.atob(saved);
-                    return decoded as AccountantRole;
-                } catch (e) {
-                    return saved as AccountantRole;
-                }
-            }
-        }
-        return null;
-    });
 
     const [activeAccountId, setActiveAccountId] = useState<string | null>(() => {
         if (typeof window !== 'undefined') {
@@ -2676,7 +2679,7 @@ function useSchoolDataInternal() {
         logGlobalAction('Plan Purchase', `User ${studentId} purchased ${type} pass.`, 'platform');
     };
 
-    const subscribeToTutor = (studentId: string | number, tutorId: string) => {
+    const subscribeToTutor = async (studentId: string | number, tutorId: string) => {
         const tutor = tutors.find(t => t.id === tutorId);
         if (!tutor) throw new Error("Tutor not found.");
         const price = tutor.subscriptionPrice || 3000;
@@ -2733,33 +2736,64 @@ function useSchoolDataInternal() {
         } : t));
 
         logGlobalAction('Tutor Subscription', `Student ${studentId} subscribed to Tutor ${tutorId}`, 'platform');
+
+        // 3. PERSIST TO CLOUD
+        try {
+            // Update Student
+            await developerService.updateUserProfile(student.id.toString(), {
+                wallet_balance: (student.walletBalance || 0) - price,
+                subscribed_tutors: [newSub, ...(student.tutorSubscriptions || [])]
+            });
+            // Update Tutor
+            await developerService.updateUserProfile(tutorId, {
+                wallet_balance: (tutor.walletBalance || 0) + tutorEarnings
+            });
+            console.log("✅ Cloud Sync Success: Tutor Subscription complete.");
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Tutor Sub):", err);
+        }
     };
 
-    const claimTutorEarnings = (tutorId: string, amount: number) => {
+    const claimTutorEarnings = async (tutorId: string, amount: number) => {
+        const newRequest: PayoutRequest = {
+            id: generateId(),
+            tutorId,
+            amount,
+            status: 'Pending',
+            requestedAt: new Date().toISOString()
+        };
+
         setTutors(prev => prev.map(t => {
             if (t.id === tutorId) {
                 if ((t.walletBalance || 0) < amount) throw new Error("Insufficient earnings balance.");
 
-                const request: PayoutRequest = {
-                    id: generateId(),
-                    tutorId,
-                    amount,
-                    status: 'Pending',
-                    requestedAt: new Date().toISOString()
-                };
-
                 return {
                     ...t,
                     walletBalance: (t.walletBalance || 0) - amount,
-                    payoutRequests: [request, ...(t.payoutRequests || [])]
+                    payoutRequests: [newRequest, ...(t.payoutRequests || [])]
                 };
             }
             return t;
         }));
+
         logGlobalAction('Payout Claim', `Tutor ${tutorId} claimed ${amount} UGX`);
+
+        // 3. PERSIST TO CLOUD
+        try {
+            const targetTutor = tutors.find(t => t.id === tutorId);
+            if (targetTutor) {
+                await developerService.updateUserProfile(tutorId, {
+                    wallet_balance: (targetTutor.walletBalance || 0) - amount,
+                    payout_requests: [newRequest, ...(targetTutor.payoutRequests || [])]
+                });
+                console.log("✅ Cloud Sync Success: Payout request recorded.");
+            }
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Claim Payout):", err);
+        }
     };
 
-    const processPayout = (tutorId: string, requestId: string, reference: string) => {
+    const processPayout = async (tutorId: string, requestId: string, reference: string) => {
         setTutors(prev => prev.map(t => {
             if (t.id === tutorId) {
                 const requests: PayoutRequest[] = (t.payoutRequests || []).map(r =>
@@ -2769,7 +2803,24 @@ function useSchoolDataInternal() {
             }
             return t;
         }));
+
         logGlobalAction('Payout Processed', `Tutor ${tutorId} payout ${requestId} marked as Paid. Ref: ${reference}`);
+
+        // 3. PERSIST TO CLOUD
+        try {
+            const targetTutor = tutors.find(t => t.id === tutorId);
+            if (targetTutor) {
+                const requests: PayoutRequest[] = (targetTutor.payoutRequests || []).map(r =>
+                    r.id === requestId ? { ...r, status: 'Paid' as const, paidAt: new Date().toISOString(), paymentReference: reference } : r
+                );
+                await developerService.updateUserProfile(tutorId, {
+                    payout_requests: requests
+                });
+                console.log("✅ Cloud Sync Success: Payout status updated.");
+            }
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Process Payout):", err);
+        }
     };
 
     // Load once on mount
@@ -2902,7 +2953,7 @@ function useSchoolDataInternal() {
         // 1. Map existing Page Configs (Cleaned)
         const validConfigMap = new Map(); // key -> configId
         resultPageConfigs.forEach(c => {
-            const key = `${c.programmeId}-${c.level}-${c.name}`;
+            const key = `${c.programmeId} - ${c.level} - ${c.name}`;
             validConfigMap.set(key, c.id);
         });
 
@@ -2965,7 +3016,7 @@ function useSchoolDataInternal() {
                 // This is risky but better than data loss.
                 // Only do it if we are sure.
                 const target = studentConfigs[0];
-                console.log(`Rescuing orphaned score [${s.overallScore}] for ${student.name} -> ${target.name}`);
+                console.log(`Rescuing orphaned score[${s.overallScore}] for ${student.name} -> ${target.name}`);
                 hasChanges = true;
                 return { ...s, pageConfigId: target.id };
             }
@@ -3030,24 +3081,24 @@ function useSchoolDataInternal() {
                             localStorage.removeItem(k);
                             console.log(`🧹 Emergency Storage: Removed ${k} to free space.`);
                         } catch (err) {
-                            console.error(`Failed to clear ${k}`, err);
+                            console.error(`Failed to clear ${k} `, err);
                         }
                     });
 
                     // If value is a huge object/string (like Base64 content), don't save it if we're still failing
                     const contentSize = JSON.stringify(value).length;
                     if (contentSize > 1000000) { // 1MB threshold
-                        console.warn(`⚠️ skipping save of huge item (${(contentSize / 1024 / 1024).toFixed(2)} MB): ${key}`);
+                        console.warn(`⚠️ skipping save of huge item(${(contentSize / 1024 / 1024).toFixed(2)} MB): ${key}`);
                         return;
                     }
 
                     localStorage.setItem(key, JSON.stringify(value));
                 } catch (purgeError) {
                     console.error("Emergency purge failed", purgeError);
-                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data to local storage. Please ensure your cloud connection is active and contact support.`);
+                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data to local storage.Please ensure your cloud connection is active and contact support.`);
                 }
             } else {
-                console.error(`Storage Error for ${key}:`, e);
+                console.error(`Storage Error for ${key}: `, e);
             }
         }
     };
@@ -3222,6 +3273,62 @@ function useSchoolDataInternal() {
                     if (!developerProfile || developerProfile.id !== user.id) {
                         setDeveloperProfile({ id: user.id, name: user.user_metadata?.full_name || 'Admin', role: 'Developer' });
                     }
+
+                    // --- GLOBAL HYDRATION FOR DEVELOPERS ---
+                    // This ensures the Financial Center and User Manager see live data from Supabase
+                    try {
+                        const { data: profiles } = await supabase.from('profiles').select('*');
+                        if (profiles) {
+                            // Map profiles to EnrolledStudent format for the Financial Center
+                            const independentStudents: EnrolledStudent[] = profiles
+                                .filter(p => p.role?.toLowerCase() === 'student')
+                                .map(p => ({
+                                    id: p.id,
+                                    name: p.full_name || 'Student',
+                                    payCode: p.pay_code || p.id,
+                                    programme: 'Independent Learner',
+                                    level: 'N/A',
+                                    semester: 'N/A',
+                                    balance: 0,
+                                    totalFees: 0,
+                                    services: [],
+                                    bursary: 'None',
+                                    previousBalance: 0,
+                                    status: 'active',
+                                    walletBalance: p.wallet_balance || 0,
+                                    paymentRequests: p.payment_requests || [],
+                                    tutorSubscriptions: [],
+                                    subscriptionExpiry: p.subscription_expiry
+                                }));
+
+                            // Map profiles to Tutor format
+                            const tutorList: Tutor[] = profiles
+                                .filter(p => p.role?.toLowerCase() === 'tutor')
+                                .map(p => ({
+                                    id: p.id,
+                                    name: p.full_name || 'Tutor',
+                                    email: p.email || '',
+                                    phone: p.phone || '',
+                                    role: 'Tutor',
+                                    walletBalance: p.wallet_balance || 0,
+                                    payoutRequests: p.payout_requests || [],
+                                    subscriptionDaysLeft: 30,
+                                    status: 'active',
+                                    type: 'independent',
+                                    programmeIds: []
+                                }));
+
+                            setStudents(prev => {
+                                // Filter out old independent learners to avoid duplicates, keep institutional students
+                                const institutional = prev.filter(s => s.programme !== 'Independent Learner');
+                                return [...institutional, ...independentStudents];
+                            });
+                            setTutors(tutorList);
+                        }
+                    } catch (err) {
+                        console.error("❌ Global Hydration Error (Developer):", err);
+                    }
+
                     setCheckingAccess(false);
                     return;
                 }
@@ -3668,7 +3775,7 @@ function useSchoolDataInternal() {
             return s;
         }));
 
-        logGlobalAction('Billing Deleted', `Deleted billing "${bill.description}" for student ID ${bill.studentId}. Reason: ${reason}`);
+        logGlobalAction('Billing Deleted', `Deleted billing "${bill.description}" for student ID ${bill.studentId}.Reason: ${reason} `);
     };
 
     const addPayment = (p: Payment) => {
@@ -3678,7 +3785,7 @@ function useSchoolDataInternal() {
                 if (prev.some(item => item.id === p.id || (p.reference && item.reference === p.reference))) return prev;
                 return [p, ...prev];
             });
-            logGlobalAction('Unclaimed Payment', `Synchronized unclaimed payment (Ref: ${p.reference}) totaling ${p.amount}. It will be auto-linked when a student with this PayCode is enrolled.`);
+            logGlobalAction('Unclaimed Payment', `Synchronized unclaimed payment(Ref: ${p.reference}) totaling ${p.amount}. It will be auto - linked when a student with this PayCode is enrolled.`);
             return;
         }
 
@@ -3784,7 +3891,7 @@ function useSchoolDataInternal() {
             history: [...(payment.history || []), {
                 id: generateId(),
                 action: 'Deleted',
-                details: isDigitalIntegration ? `Unlinked digital payment: ${reason}` : reason,
+                details: isDigitalIntegration ? `Unlinked digital payment: ${reason} ` : reason,
                 user: activeRole || 'Bursar',
                 timestamp: new Date().toISOString()
             }]
@@ -3808,7 +3915,7 @@ function useSchoolDataInternal() {
                 history: [...(payment.history || []), {
                     id: generateId(),
                     action: 'Unlinked',
-                    details: `Unlinked from Student ID ${payment.studentId} and moved to Unclaimed Store. Reason: ${reason}`,
+                    details: `Unlinked from Student ID ${payment.studentId} and moved to Unclaimed Store.Reason: ${reason} `,
                     user: activeRole || 'Bursar',
                     timestamp: new Date().toISOString()
                 }]
@@ -3833,7 +3940,7 @@ function useSchoolDataInternal() {
 
         logGlobalAction(
             isDigitalIntegration ? 'Payment Unlinked' : 'Payment Deleted',
-            `${isDigitalIntegration ? 'Unlinked' : 'Deleted'} payment "${payment.description}" (Ref: ${payment.reference}) for student ID ${payment.studentId}. Reason: ${reason}`
+            `${isDigitalIntegration ? 'Unlinked' : 'Deleted'} payment "${payment.description}"(Ref: ${payment.reference}) for student ID ${payment.studentId}.Reason: ${reason} `
         );
     };
 
@@ -3961,7 +4068,7 @@ function useSchoolDataInternal() {
         setStudents(prev => prev.filter(s => !studentIds.includes(s.id)));
         setRegistrarStudents(prev => prev.filter(s => !studentIds.includes(Number(s.schoolPayCode || s.id)))); // Cast safely
 
-        logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students. IDs: ${studentIds.join(', ')}`);
+        logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students.IDs: ${studentIds.join(', ')} `);
     };
 
     const syncRequirementToInventory = (studentId: number, reqName: string, changeAmount: number) => {
@@ -4004,14 +4111,14 @@ function useSchoolDataInternal() {
         // Find the student's programme
         const programme = programmes.find(p => p.name === student.programme || p.id === student.programme);
         if (!programme || !programme.feeStructure || programme.feeStructure.length === 0) {
-            console.warn(`No fee structure found for programme: ${student.programme}`);
+            console.warn(`No fee structure found for programme: ${student.programme} `);
             return;
         }
 
         // Find the fee configuration for the student's level
         const levelConfig = programme.feeStructure.find(fs => fs.level === student.level);
         if (!levelConfig) {
-            console.warn(`No fee configuration found for level: ${student.level} in programme: ${student.programme}`);
+            console.warn(`No fee configuration found for level: ${student.level} in programme: ${student.programme} `);
             return;
         }
 
@@ -4037,7 +4144,7 @@ function useSchoolDataInternal() {
                 level: student.level,
                 term: student.semester,
                 type: 'Tuition',
-                description: `Tuition Fee - ${student.level}, ${student.semester}`,
+                description: `Tuition Fee - ${student.level}, ${student.semester} `,
                 amount: levelConfig.tuitionFee,
                 paidAmount: 0,
                 balance: levelConfig.tuitionFee,
@@ -4060,7 +4167,7 @@ function useSchoolDataInternal() {
             student.services.forEach(serviceId => {
                 const service = services.find(s => s.id === serviceId);
                 if (!service) {
-                    console.warn(`Service not found: ${serviceId}`);
+                    console.warn(`Service not found: ${serviceId} `);
                     return;
                 }
 
@@ -4071,7 +4178,7 @@ function useSchoolDataInternal() {
                     level: student.level,
                     term: student.semester,
                     type: 'Service',
-                    description: `${service.name} - ${student.semester}`,
+                    description: `${service.name} - ${student.semester} `,
                     amount: (student.serviceMetadata?.[serviceId]?.quantity || 1) * service.cost,
                     paidAmount: 0,
                     balance: (student.serviceMetadata?.[serviceId]?.quantity || 1) * service.cost,
@@ -4107,7 +4214,7 @@ function useSchoolDataInternal() {
                 return s;
             }));
 
-            console.log(`Generated ${newBillings.length} automatic billings for ${student.name} totaling UGX ${totalAmount.toLocaleString()}`);
+            console.log(`Generated ${newBillings.length} automatic billings for ${student.name} totaling UGX ${totalAmount.toLocaleString()} `);
         }
     };
 
@@ -4270,7 +4377,7 @@ function useSchoolDataInternal() {
 
     const addRequisition = (req: Requisition) => {
         // Generate Human Readable ID if not present
-        const nextId = `REQ-${(requisitions.length + 1).toString().padStart(3, '0')}`;
+        const nextId = `REQ - ${(requisitions.length + 1).toString().padStart(3, '0')} `;
         const newReq = { ...req, readableId: nextId };
         setRequisitions(prev => [newReq, ...prev]);
     };
@@ -4422,7 +4529,7 @@ function useSchoolDataInternal() {
         if (typeof window === 'undefined') return;
 
         console.log("STARTING DEEP REPAIR...");
-        const backupKey = `backup_${Date.now()}`;
+        const backupKey = `backup_${Date.now()} `;
         localStorage.setItem(backupKey + '_results', JSON.stringify(studentResults));
         localStorage.setItem(backupKey + '_configs', JSON.stringify(resultPageConfigs));
         localStorage.setItem(backupKey + '_cus', JSON.stringify(courseUnits));
@@ -4435,7 +4542,7 @@ function useSchoolDataInternal() {
         const cleanCUs: CourseUnit[] = [];
 
         courseUnits.forEach(cu => {
-            const key = `${cu.code.trim().toUpperCase()}-${cu.programmeId}-${cu.level}`;
+            const key = `${cu.code.trim().toUpperCase()} -${cu.programmeId} -${cu.level} `;
             if (cuMap.has(key)) {
                 // Duplicate found
                 const master = cuMap.get(key)!;
@@ -4447,7 +4554,7 @@ function useSchoolDataInternal() {
             }
         });
 
-        console.log(`Consolidated CUs: ${courseUnits.length} -> ${cleanCUs.length}`);
+        console.log(`Consolidated CUs: ${courseUnits.length} -> ${cleanCUs.length} `);
         setCourseUnits(cleanCUs);
 
         // 2. REMAP RESULTS (MARKS)
@@ -4461,12 +4568,12 @@ function useSchoolDataInternal() {
         // Deduplicate Results (if merging caused double entries for same student+cu)
         const uniqueResultsMap = new Map<string, StudentResult>();
         cleanResults.forEach(r => {
-            const key = `${r.studentId}-${r.courseUnitId}`;
+            const key = `${r.studentId} -${r.courseUnitId} `;
             // If duplicate, overwrite (assuming latest is best, or keep first? latest at end of array usually)
             uniqueResultsMap.set(key, r);
         });
         const finalResults = Array.from(uniqueResultsMap.values());
-        console.log(`Consolidated Results: ${studentResults.length} -> ${finalResults.length}`);
+        console.log(`Consolidated Results: ${studentResults.length} -> ${finalResults.length} `);
         setStudentResults(finalResults);
 
         // 3. DEDUPLICATE PAGE CONFIGS (FROM RAW STORAGE)
@@ -4479,7 +4586,7 @@ function useSchoolDataInternal() {
         const cleanConfigs: ResultPageConfig[] = [];
 
         allConfigs.forEach(conf => {
-            const key = `${conf.programmeId}-${conf.level}-${conf.name.trim()}`;
+            const key = `${conf.programmeId} -${conf.level} -${conf.name.trim()} `;
             if (configMap.has(key)) {
                 const master = configMap.get(key)!;
                 configReplacementMap.set(conf.id, master.id);
@@ -4496,7 +4603,7 @@ function useSchoolDataInternal() {
             return { ...conf, courseUnitIds: uniqueIds };
         });
 
-        console.log(`Consolidated Configs (Raw): ${allConfigs.length} -> ${finalConfigs.length}`);
+        console.log(`Consolidated Configs(Raw): ${allConfigs.length} -> ${finalConfigs.length} `);
         setResultPageConfigs(finalConfigs);
 
         // 4. REMAP SUMMARIES
@@ -4519,7 +4626,7 @@ function useSchoolDataInternal() {
         // Let's just use the last one mapped (usually latest).
         const uniqueSummariesMap = new Map<string, StudentPageSummary>();
         finalSummaries.forEach(s => {
-            const key = `${s.studentId}-${s.pageConfigId}`;
+            const key = `${s.studentId} -${s.pageConfigId} `;
             if (uniqueSummariesMap.has(key)) {
                 const existing = uniqueSummariesMap.get(key)!;
                 // Optimization: Update if new one has score and existing doesn't, or simply overwrite.
@@ -4844,7 +4951,7 @@ function useSchoolDataInternal() {
                         });
 
                         if (linksToMake.length > 0) {
-                            console.log(`🔍 Compass Sync: Found ${linksToMake.length} potential auto-links in fresh cloud data.`);
+                            console.log(`🔍 Compass Sync: Found ${linksToMake.length} potential auto - links in fresh cloud data.`);
                             // We don't call linkPayment here to avoid multiple pulls/pushes
                             // Instead we just note them for the next render cycle or manual action
                         }
@@ -4990,14 +5097,14 @@ function useSchoolDataInternal() {
             let releasedCount = 0;
 
             console.log("👻 RELEASE GHOSTS: Starting scan...");
-            console.log(`📊 Active Students: ${activeStudentIds.size}`);
+            console.log(`📊 Active Students: ${activeStudentIds.size} `);
 
             setPayments(prev => prev.map(p => {
                 // If payment is linked (status LINKED or Approved/Paid) AND has a studentId that is NOT in the active set
                 // We must handle cases where studentId might be 0 or null safely
                 if (p.studentId && !activeStudentIds.has(p.studentId)) {
                     // This is a GHOST LINK
-                    console.log(`🔓 Releasing Payment ${p.id} (PayCode: ${p.metadata?.payCode}) from dead ID: ${p.studentId}`);
+                    console.log(`🔓 Releasing Payment ${p.id} (PayCode: ${p.metadata?.payCode}) from dead ID: ${p.studentId} `);
                     releasedCount++;
                     return {
                         ...p,
@@ -5110,16 +5217,16 @@ function useSchoolDataInternal() {
         incomeCategories,
 
         // Specific Actions for Full Object Updates (Fixes Edit Modal & Page Requirements)
-        addExpenseCategory: (cat: TransactionCategoryItem) => setExpenseCategories(prev => [...prev, { ...cat, id: cat.id || `exp_${Date.now()}` }]),
+        addExpenseCategory: (cat: TransactionCategoryItem) => setExpenseCategories(prev => [...prev, { ...cat, id: cat.id || `exp_${Date.now()} ` }]),
         updateExpenseCategory: (cat: TransactionCategoryItem) => setExpenseCategories(prev => prev.map(c => c.id === cat.id ? cat : c)),
         deleteExpenseCategory: (id: string) => setExpenseCategories(prev => prev.filter(c => c.id !== id)),
 
-        addIncomeCategory: (cat: TransactionCategoryItem) => setIncomeCategories(prev => [...prev, { ...cat, id: cat.id || `inc_${Date.now()}` }]),
+        addIncomeCategory: (cat: TransactionCategoryItem) => setIncomeCategories(prev => [...prev, { ...cat, id: cat.id || `inc_${Date.now()} ` }]),
         updateIncomeCategory: (cat: TransactionCategoryItem) => setIncomeCategories(prev => prev.map(c => c.id === cat.id ? cat : c)),
         deleteIncomeCategory: (id: string) => setIncomeCategories(prev => prev.filter(c => c.id !== id)),
 
         addCategory: (type: string, name: string) => {
-            const newItem = { id: `${type.toLowerCase()}_${Date.now()}`, name, subcategories: [] };
+            const newItem = { id: `${type.toLowerCase()}_${Date.now()} `, name, subcategories: [] };
             if (type === 'Expense') setExpenseCategories(prev => [...prev, newItem]);
             else setIncomeCategories(prev => [...prev, newItem]);
         },
