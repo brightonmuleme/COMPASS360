@@ -23,8 +23,18 @@ export default function FinancialCenter() {
     const { students, tutors, verifySubscriptionRequest, processPayout } = useSchoolData();
     const [activeTab, setActiveTab] = useState<'deposits' | 'payouts' | 'analytics'>('deposits');
     const [searchQuery, setSearchQuery] = useState('');
+    const [showRegistry, setShowRegistry] = useState(false);
 
     // --- DATA AGGREGATION ---
+    const approvedTransactions = useMemo(() => {
+        const all: (SubscriptionRequest & { studentName: string })[] = [];
+        students.forEach(s => {
+            (s.paymentRequests || []).forEach(r => {
+                if (r.status === 'Approved') all.push({ ...r, studentName: s.name });
+            });
+        });
+        return all.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    }, [students]);
     const pendingDeposits = useMemo(() => {
         const all: (SubscriptionRequest & { studentId: string; studentName: string })[] = [];
         students.forEach(s => {
@@ -143,10 +153,13 @@ export default function FinancialCenter() {
                     </div>
                 </div>
 
-                <div className="bg-[#0d0d0d] p-8 rounded-[2.5rem] text-white shadow-2xl shadow-slate-900/20 group overflow-hidden relative sm:col-span-2 lg:col-span-1">
+                <div
+                    onClick={() => setShowRegistry(true)}
+                    className="bg-[#0d0d0d] p-8 rounded-[2.5rem] text-white shadow-2xl shadow-slate-900/20 group overflow-hidden relative sm:col-span-2 lg:col-span-1 cursor-pointer hover:scale-[1.02] transition-transform active:scale-95"
+                >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-bl-full -z-0" />
                     <div className="relative z-10 flex items-center gap-5">
-                        <div className="w-14 h-14 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-red-600/40 group-hover:animate-pulse">
+                        <div className="w-14 h-14 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-red-600/40 group-hover:animate-pulse group-hover:rotate-6 transition-all">
                             <Wallet size={28} />
                         </div>
                         <div>
@@ -325,6 +338,67 @@ export default function FinancialCenter() {
                     </div>
                 )}
             </div>
+
+            {/* Transaction Registry Modal */}
+            {showRegistry && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+                    <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" onClick={() => setShowRegistry(false)} />
+                    <div className="w-full max-w-4xl bg-white rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+                        {/* Modal Header */}
+                        <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter flex items-center gap-3">
+                                    <ShieldCheck className="text-red-600" size={28} />
+                                    Transaction <span className="text-red-600">Registry</span>
+                                </h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Audit Log of all Approved Inbound Signals</p>
+                            </div>
+                            <button
+                                onClick={() => setShowRegistry(false)}
+                                className="p-3 hover:bg-white rounded-2xl text-slate-400 hover:text-slate-900 transition-all border border-transparent hover:border-slate-100"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4">
+                            {approvedTransactions.length === 0 ? (
+                                <div className="py-20 text-center text-slate-400 font-black uppercase tracking-widest text-xs italic">
+                                    No Proven Transactions Found
+                                </div>
+                            ) : (
+                                approvedTransactions.map((txn, idx) => (
+                                    <div key={txn.id || idx} className="bg-white p-6 rounded-[2rem] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:border-red-500/20 hover:shadow-lg transition-all">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center font-black text-red-600 border border-slate-100 group-hover:bg-red-600 group-hover:text-white transition-all transform group-hover:scale-110">
+                                                <CreditCard size={20} />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-slate-900 uppercase text-sm tracking-tight">{txn.studentName}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[10px] font-mono font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase">TXN: {txn.transactionId}</span>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase italic tracking-tighter">{new Date(txn.submittedAt).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xl font-black text-slate-900 tracking-tighter">{formatMoney(txn.amount || 0)}</div>
+                                            <div className="text-[10px] font-black text-green-600 uppercase tracking-widest italic">Signal Verified</div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Verified Reseve:</div>
+                            <div className="text-2xl font-black text-red-600 tracking-tight">{formatMoney(stats.platformBalance)}</div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

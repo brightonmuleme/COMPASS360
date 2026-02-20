@@ -1846,7 +1846,7 @@ function useSchoolDataInternal() {
         setHydrated(true);
     }, []);
 
-    // --- CLOUD-SYNC FOR MANAGEMENT PORTALS ---
+    // --- CLOUD-SYNC FOR MANAGEMENT PORTALS (Consolidated) ---
     useEffect(() => {
         const syncPlatformData = async () => {
             if (!hydrated) return;
@@ -1854,16 +1854,20 @@ function useSchoolDataInternal() {
 
             if (isAdmin) {
                 try {
-                    // Fetch all profiles to find independent students and들의 requests
-                    const profiles = await developerService.getAllUsers();
-                    const cloudStudents = profiles.filter((p: any) => p.role?.toLowerCase() === 'student');
+                    // Fetch all profiles to find independent students and their requests
+                    const { data: profiles, error } = await supabase.from('profiles').select('*');
+                    if (error) throw error;
 
+                    const cloudStudents = profiles.filter((p: any) => p.role?.toLowerCase() === 'student');
+                    const tutorList = profiles.filter((p: any) => p.role?.toLowerCase() === 'tutor');
+
+                    // Sync Students
                     setStudents(prev => {
                         const merged = [...prev];
                         cloudStudents.forEach((cp: any) => {
                             const index = merged.findIndex(s => s.id.toString() === cp.id.toString() || s.payCode === cp.pay_code);
                             const updatedStudent: EnrolledStudent = {
-                                id: cp.id,
+                                id: index >= 0 ? merged[index].id : (isNaN(Number(cp.id)) ? merged.length + 1000 : Number(cp.id)),
                                 name: cp.full_name || 'Student',
                                 payCode: cp.pay_code || cp.id,
                                 programme: 'Independent Learner',
@@ -1877,11 +1881,12 @@ function useSchoolDataInternal() {
                                 status: cp.status || 'active',
                                 walletBalance: cp.wallet_balance || 0,
                                 paymentRequests: cp.payment_requests || [],
-                                subscriptionExpiry: cp.subscription_expiry
+                                tutorSubscriptions: cp.subscribed_tutors || [],
+                                subscriptionExpiry: cp.subscription_expiry,
+                                subscriptionStatus: cp.subscription_status
                             };
 
                             if (index >= 0) {
-                                // Update existing but preserve school-specific data if any
                                 merged[index] = { ...merged[index], ...updatedStudent };
                             } else {
                                 merged.push(updatedStudent);
@@ -1889,16 +1894,48 @@ function useSchoolDataInternal() {
                         });
                         return merged;
                     });
+
+                    // Sync Tutors
+                    setTutors(prev => {
+                        return tutorList.map(p => ({
+                            id: p.id,
+                            name: p.full_name || 'Tutor',
+                            email: p.email || '',
+                            phone: p.phone || '',
+                            role: 'Tutor',
+                            walletBalance: p.wallet_balance || 0,
+                            payoutRequests: p.payout_requests || [],
+                            subscriptionDaysLeft: 30,
+                            status: 'active',
+                            type: 'independent',
+                            programmeIds: []
+                        }));
+                    });
+
                 } catch (err) {
-                    console.error("Failed to sync platform students:", err);
+                    console.error("❌ Consolidated Sync Error (Developer):", err);
                 }
+            } else if (studentProfile.id !== 'std_user_1') {
+                // Secondary Student Sync (Optional: handled by verifyInstitutionalAccess too, but extra safety)
+                try {
+                    const { data: profile } = await supabase.from('profiles').select('*').eq('id', studentProfile.id).single();
+                    if (profile) {
+                        setStudentProfile(prev => ({
+                            ...prev,
+                            walletBalance: profile.wallet_balance || 0,
+                            paymentRequests: profile.payment_requests || [],
+                            subscriptionStatus: profile.subscription_status || 'expired',
+                            subscriptionEndDate: profile.subscription_expiry || ''
+                        }));
+                    }
+                } catch (err) { }
             }
         };
 
         syncPlatformData();
-        const interval = setInterval(syncPlatformData, 15000); // Sync every 15s for live dashboard
+        const interval = setInterval(syncPlatformData, 15000); // 15s refresh for live data
         return () => clearInterval(interval);
-    }, [hydrated, activeRole]);
+    }, [hydrated, activeRole, studentProfile.id]);
 
     const getSyncedDate = () => new Date(Date.now() + serverTimeOffset);
 
@@ -3274,61 +3311,7 @@ function useSchoolDataInternal() {
                         setDeveloperProfile({ id: user.id, name: user.user_metadata?.full_name || 'Admin', role: 'Developer' });
                     }
 
-                    // --- GLOBAL HYDRATION FOR DEVELOPERS ---
-                    // This ensures the Financial Center and User Manager see live data from Supabase
-                    try {
-                        const { data: profiles } = await supabase.from('profiles').select('*');
-                        if (profiles) {
-                            // Map profiles to EnrolledStudent format for the Financial Center
-                            const independentStudents: EnrolledStudent[] = profiles
-                                .filter(p => p.role?.toLowerCase() === 'student')
-                                .map(p => ({
-                                    id: p.id,
-                                    name: p.full_name || 'Student',
-                                    payCode: p.pay_code || p.id,
-                                    programme: 'Independent Learner',
-                                    level: 'N/A',
-                                    semester: 'N/A',
-                                    balance: 0,
-                                    totalFees: 0,
-                                    services: [],
-                                    bursary: 'None',
-                                    previousBalance: 0,
-                                    status: 'active',
-                                    walletBalance: p.wallet_balance || 0,
-                                    paymentRequests: p.payment_requests || [],
-                                    tutorSubscriptions: [],
-                                    subscriptionExpiry: p.subscription_expiry
-                                }));
-
-                            // Map profiles to Tutor format
-                            const tutorList: Tutor[] = profiles
-                                .filter(p => p.role?.toLowerCase() === 'tutor')
-                                .map(p => ({
-                                    id: p.id,
-                                    name: p.full_name || 'Tutor',
-                                    email: p.email || '',
-                                    phone: p.phone || '',
-                                    role: 'Tutor',
-                                    walletBalance: p.wallet_balance || 0,
-                                    payoutRequests: p.payout_requests || [],
-                                    subscriptionDaysLeft: 30,
-                                    status: 'active',
-                                    type: 'independent',
-                                    programmeIds: []
-                                }));
-
-                            setStudents(prev => {
-                                // Filter out old independent learners to avoid duplicates, keep institutional students
-                                const institutional = prev.filter(s => s.programme !== 'Independent Learner');
-                                return [...institutional, ...independentStudents];
-                            });
-                            setTutors(tutorList);
-                        }
-                    } catch (err) {
-                        console.error("❌ Global Hydration Error (Developer):", err);
-                    }
-
+                    // Global hydration is now handled by the consolidated syncPlatformData effect
                     setCheckingAccess(false);
                     return;
                 }
