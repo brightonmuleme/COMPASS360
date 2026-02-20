@@ -1779,6 +1779,60 @@ function useSchoolDataInternal() {
         setHydrated(true);
     }, []);
 
+    // --- CLOUD-SYNC FOR MANAGEMENT PORTALS ---
+    useEffect(() => {
+        const syncPlatformData = async () => {
+            if (!hydrated) return;
+            const isAdmin = ['developer', 'director', 'bursar'].includes((activeRole || '').toLowerCase());
+
+            if (isAdmin) {
+                try {
+                    // Fetch all profiles to find independent students and들의 requests
+                    const profiles = await developerService.getAllUsers();
+                    const cloudStudents = profiles.filter((p: any) => p.role?.toLowerCase() === 'student');
+
+                    setStudents(prev => {
+                        const merged = [...prev];
+                        cloudStudents.forEach((cp: any) => {
+                            const index = merged.findIndex(s => s.id.toString() === cp.id.toString() || s.payCode === cp.pay_code);
+                            const updatedStudent: EnrolledStudent = {
+                                id: cp.id,
+                                name: cp.full_name || 'Student',
+                                payCode: cp.pay_code || cp.id,
+                                programme: 'Independent Learner',
+                                level: 'N/A',
+                                semester: 'N/A',
+                                balance: 0,
+                                totalFees: 0,
+                                services: [],
+                                bursary: 'None',
+                                previousBalance: 0,
+                                status: cp.status || 'active',
+                                walletBalance: cp.wallet_balance || 0,
+                                paymentRequests: cp.payment_requests || [],
+                                subscriptionExpiry: cp.subscription_expiry
+                            };
+
+                            if (index >= 0) {
+                                // Update existing but preserve school-specific data if any
+                                merged[index] = { ...merged[index], ...updatedStudent };
+                            } else {
+                                merged.push(updatedStudent);
+                            }
+                        });
+                        return merged;
+                    });
+                } catch (err) {
+                    console.error("Failed to sync platform students:", err);
+                }
+            }
+        };
+
+        syncPlatformData();
+        const interval = setInterval(syncPlatformData, 15000); // Sync every 15s for live dashboard
+        return () => clearInterval(interval);
+    }, [hydrated, activeRole]);
+
     const getSyncedDate = () => new Date(Date.now() + serverTimeOffset);
 
     const logGlobalAction = (action: string, details: string, scope: 'school' | 'platform' = 'school') => {
@@ -2457,7 +2511,7 @@ function useSchoolDataInternal() {
         });
     };
 
-    const submitSubscriptionRequest = (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
+    const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
         const newRequest: SubscriptionRequest = {
             ...request,
             id: generateId(),
@@ -2465,36 +2519,25 @@ function useSchoolDataInternal() {
             submittedAt: new Date().toISOString()
         };
 
-        // 1. Update Current Student Profile (For immediate UI feedback)
+        // 1. Calculate values BEFORE state setters
+        const targetStudent = students.find(s => s.payCode === request.studentId || s.id.toString() === request.studentId);
+        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (studentProfile.id === request.studentId ? (studentProfile.paymentRequests || []) : []);
+        const updatedRequests = [newRequest, ...currentRequests];
+
+        // 2. Update Local State
         if (studentProfile.id === request.studentId) {
-            setStudentProfile(prev => ({
-                ...prev,
-                paymentRequests: [newRequest, ...(prev.paymentRequests || [])]
-            }));
+            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
         }
 
-        // 2. Check for duplicate transaction ID in global list
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
-        if (duplicate) {
-            throw new Error("This Transaction ID has already been submitted.");
-        }
+        if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
-        // 3. Update Global Students List (For Developer Portal visibility)
         setStudents(prev => {
             const exists = prev.some(s => s.payCode === request.studentId || s.id.toString() === request.studentId);
 
             if (exists) {
-                return prev.map(s => {
-                    if (s.payCode === request.studentId || s.id.toString() === request.studentId) {
-                        return {
-                            ...s,
-                            paymentRequests: [newRequest, ...(s.paymentRequests || [])]
-                        };
-                    }
-                    return s;
-                });
+                return prev.map(s => (s.payCode === request.studentId || s.id.toString() === request.studentId) ? { ...s, paymentRequests: updatedRequests } : s);
             } else {
-                // Add independent student to the list so developers can see their requests
                 const newStudent: EnrolledStudent = {
                     id: isNaN(Number(studentProfile.id)) ? prev.length + 1000 : Number(studentProfile.id),
                     name: studentProfile.name,
@@ -2510,95 +2553,47 @@ function useSchoolDataInternal() {
                     status: 'active',
                     walletBalance: studentProfile.walletBalance || 0,
                     paymentRequests: [newRequest],
-                    tutorSubscriptions: studentProfile.subscribedTutorIds.map(tid => ({
-                        id: generateId(),
-                        tutorId: tid,
-                        studentId: studentProfile.id,
-                        amount: 0,
-                        status: 'Active',
-                        expiryDate: studentProfile.subscriptionEndDate,
-                        purchasedAt: new Date().toISOString()
-                    })),
+                    tutorSubscriptions: [],
                     subscriptionExpiry: studentProfile.subscriptionEndDate
                 };
                 return [newStudent, ...prev];
             }
         });
 
+        // 4. PERSIST TO CLOUD
+        try {
+            await developerService.updateUserProfile(request.studentId, {
+                payment_requests: updatedRequests
+            });
+            console.log("✅ Cloud Sync Success: Payment request submitted.");
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Submit Payment):", err);
+        }
+
         logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.reference}`, 'platform');
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        let updatedRequests: SubscriptionRequest[] = [];
-        let updatedBalance = 0;
-        let targetUserId: string | null = null;
+        // 1. Calculate values BEFORE state setters
+        const targetStudent = students.find(s => s.id.toString() === studentId.toString() || s.payCode === studentId);
+        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (studentProfile.id.toString() === studentId.toString() ? (studentProfile.paymentRequests || []) : []);
+        const currentBalance = targetStudent ? (targetStudent.walletBalance || 0) : (studentProfile.id.toString() === studentId.toString() ? (studentProfile.walletBalance || 0) : 0);
 
-        // 1. Update Global List (and find target user ID if it's a UUID)
-        setStudents(prev => prev.map(s => {
-            if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
-                updatedRequests = (s.paymentRequests || []).map(r => {
-                    if (r.id === requestId) {
-                        return {
-                            ...r,
-                            status,
-                            amount,
-                            rejectionReason: reason,
-                            verifiedAt: new Date().toISOString()
-                        };
-                    }
-                    return r;
-                });
+        const updatedRequests = currentRequests.map(r => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
+        const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
+        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : (studentProfile.id.toString() === studentId.toString() ? studentProfile.id : null);
 
-                updatedBalance = s.walletBalance || 0;
-                if (status === 'Approved') {
-                    updatedBalance += amount;
-                }
+        // 2. Update Local State
+        setStudents(prev => prev.map(s => (s.id.toString() === studentId.toString() || s.payCode === studentId) ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s));
 
-                // If studentId is a UUID string, it's likely the profile ID
-                if (typeof studentId === 'string' && studentId.length > 20) {
-                    targetUserId = studentId;
-                }
-
-                return { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance };
-            }
-            return s;
-        }));
-
-        // 2. Update Current Profile (If matching)
         if (studentProfile.id.toString() === studentId.toString()) {
-            setStudentProfile(prev => {
-                updatedRequests = (prev.paymentRequests || []).map(r => {
-                    if (r.id === requestId) {
-                        return {
-                            ...r,
-                            status,
-                            amount,
-                            rejectionReason: reason,
-                            verifiedAt: new Date().toISOString()
-                        };
-                    }
-                    return r;
-                });
-
-                updatedBalance = prev.walletBalance || 0;
-                if (status === 'Approved') {
-                    updatedBalance += amount;
-                }
-
-                targetUserId = prev.id;
-
-                return { ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance };
-            });
+            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
-        // 3. PERSIST TO CLOUD (Supabase)
+        // 3. PERSIST TO CLOUD
         if (targetUserId) {
             try {
-                // We store the requests and balance in the profiles table for non-institutional students
-                await developerService.updateUserProfile(targetUserId, {
-                    wallet_balance: updatedBalance,
-                    payment_requests: updatedRequests
-                });
+                await developerService.updateUserProfile(targetUserId, { wallet_balance: updatedBalance, payment_requests: updatedRequests });
                 console.log("✅ Cloud Sync Success: Student balance updated.");
             } catch (err) {
                 console.error("❌ Cloud Sync Error (Verify Payment):", err);
@@ -2607,6 +2602,10 @@ function useSchoolDataInternal() {
 
         logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
     };
+
+
+
+
 
     const purchasePlatformPass = async (studentId: string | number, type: '6 Months' | '1 Year') => {
         const cost = type === '6 Months' ? 5000 : 9000;
@@ -3195,13 +3194,12 @@ function useSchoolDataInternal() {
 
             // 1. Identify User Role & Identity
             // If they are a tutor or student, they only need email verification (no developer approval lock)
+            // We NO LONGER return early here so that the auto-hydration logic below can refresh the profile data from cloud
             if (tutorProfile || (studentProfile && studentProfile.id !== 'std_user_1')) {
                 // Ensure they are not blocked by institutional global state
                 if (schoolProfile.status !== 'Active' && schoolProfile.id === 'vine_intl') {
                     setSchoolProfile({ ...schoolProfile, status: 'Active' });
                 }
-                setCheckingAccess(false);
-                return;
             };
 
             try {
@@ -3230,17 +3228,15 @@ function useSchoolDataInternal() {
 
                 // --- TUTOR AUTO-HYDRATION ---
                 if (userRole === 'tutor') {
-                    if (!tutorProfile || tutorProfile.id !== user.id) {
-                        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                        if (profile) {
-                            setTutorProfile({
-                                id: user.id,
-                                name: profile.full_name || user.user_metadata?.full_name || 'Tutor',
-                                email: userEmail || profile.email || '',
-                                role: 'Tutor',
-                                subscriptionDaysLeft: 30
-                            });
-                        }
+                    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    if (profile) {
+                        setTutorProfile({
+                            id: user.id,
+                            name: profile.full_name || user.user_metadata?.full_name || 'Tutor',
+                            email: userEmail || profile.email || '',
+                            role: 'Tutor',
+                            subscriptionDaysLeft: 30
+                        });
                     }
                     setCheckingAccess(false);
                     return;
@@ -3248,24 +3244,22 @@ function useSchoolDataInternal() {
 
                 // --- STUDENT AUTO-HYDRATION ---
                 if (userRole === 'student' || userRole === 'Student') {
-                    if (!studentProfile || studentProfile.id !== user.id || studentProfile.id === 'std_user_1') {
-                        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                        if (profile) {
-                            setStudentProfile(prev => ({
-                                ...prev,
-                                id: user.id,
-                                name: profile.full_name || user.user_metadata?.full_name || 'Student',
-                                email: userEmail || profile.email || '',
-                                role: 'Student',
-                                walletBalance: profile.wallet_balance || 0,
-                                paymentRequests: profile.payment_requests || [],
-                                payCode: profile.pay_code || prev.payCode,
-                                phoneNumber: profile.phone || prev.phoneNumber,
-                                subscriptionStatus: profile.subscription_status || prev.subscriptionStatus || 'expired',
-                                subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate || '',
-                                subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds || []
-                            }));
-                        }
+                    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    if (profile) {
+                        setStudentProfile(prev => ({
+                            ...prev,
+                            id: user.id,
+                            name: profile.full_name || user.user_metadata?.full_name || 'Student',
+                            email: userEmail || profile.email || '',
+                            role: 'Student',
+                            walletBalance: profile.wallet_balance || 0,
+                            paymentRequests: profile.payment_requests || [],
+                            payCode: profile.pay_code || prev.payCode,
+                            phoneNumber: profile.phone || prev.phoneNumber,
+                            subscriptionStatus: profile.subscription_status || prev.subscriptionStatus || 'expired',
+                            subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate || '',
+                            subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds || []
+                        }));
                     }
                     setCheckingAccess(false);
                     return;

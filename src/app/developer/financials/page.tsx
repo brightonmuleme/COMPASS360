@@ -66,14 +66,14 @@ export default function FinancialCenter() {
     }, [students, tutors]);
 
     // --- ACTIONS ---
-    const handleVerifyDeposit = (req: any, status: 'Approved' | 'Rejected') => {
+    const handleVerifyDeposit = async (req: any, status: 'Approved' | 'Rejected') => {
         const amount = status === 'Approved' ? prompt('Enter verified amount (UGX):', '5000') : '0';
         if (status === 'Approved' && !amount) return;
 
         const reason = status === 'Rejected' ? prompt('Reason for rejection:') : undefined;
 
         try {
-            verifySubscriptionRequest(req.id, req.studentId, Number(amount), status, reason || undefined);
+            await verifySubscriptionRequest(req.id, req.studentId, Number(amount), status, reason || undefined);
         } catch (err: any) {
             alert(err.message);
         }
