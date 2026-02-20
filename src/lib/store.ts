@@ -86,9 +86,9 @@ export interface Tutor {
     email: string;
     phone: string;
     staffId?: string;
-    type: 'Full-time' | 'Part-time' | 'Visiting';
+    type: 'Full-time' | 'Part-time' | 'Visiting' | 'independent';
     programmeIds: string[]; // Linked programmes
-    status: 'Active' | 'Inactive';
+    status: 'Active' | 'Inactive' | 'active';
     // Extended Profile for Student Portal
     department?: string;
     specialization?: string;
@@ -196,7 +196,7 @@ export interface PayoutRequest {
 }
 
 export interface EnrolledStudent {
-    id: number;
+    id: number | string;
     name: string;
     origin?: 'bursar' | 'registrar'; // Tag as Bursar or Registrar Enrollment
     payCode: string;
@@ -210,6 +210,7 @@ export interface EnrolledStudent {
     bursary: string; // ID of bursary scheme
     previousBalance: number;
     status: 'active' | 'deactivated' | 'graduated' | 'enrolled' | 'suspended';
+    subscriptionStatus?: SubscriptionRequestStatus | 'active' | 'expired';
     accountStatus?: 'clearance' | 'defaulter' | 'probation';
     tuitionStatus?: 'cleared' | 'probation' | 'defaulter';
     enrollmentDate?: string;
@@ -1882,7 +1883,7 @@ function useSchoolDataInternal() {
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
                             const updatedStudent: EnrolledStudent = {
-                                id: index >= 0 ? merged[index].id : (isNaN(Number(cp.id)) ? merged.length + 1000 : Number(cp.id)),
+                                id: cp.id, // Preserve Supabase UUID as the primary ID
                                 name: cp.full_name || 'Student',
                                 payCode: cp.pay_code || cp.id,
                                 programme: index >= 0 ? merged[index].programme : 'Independent Learner',
@@ -1942,9 +1943,9 @@ function useSchoolDataInternal() {
                             const requestMap = new Map();
 
                             // Load local first
-                            localRequests.forEach(r => requestMap.set(r.id, r));
+                            localRequests.forEach((r: any) => requestMap.set(r.id, r));
                             // Overwrite with cloud (cloud is source of truth for status)
-                            cloudRequests.forEach(r => requestMap.set(r.id, r));
+                            cloudRequests.forEach((r: any) => requestMap.set(r.id, r));
 
                             const mergedRequests = Array.from(requestMap.values())
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
@@ -1953,7 +1954,7 @@ function useSchoolDataInternal() {
                                 ...prev,
                                 walletBalance: profile.wallet_balance || 0,
                                 paymentRequests: mergedRequests,
-                                subscriptionStatus: profile.subscription_status || 'expired',
+                                subscriptionStatus: (profile.subscription_status as any) || 'expired',
                                 subscriptionEndDate: profile.subscription_expiry || '',
                                 subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds
                             };
@@ -2571,15 +2572,18 @@ function useSchoolDataInternal() {
             localStorage.removeItem('school_student_profile_v1');
         }
         // Reset student profile to initial state in memory to prevent layout loops
-        setStudentProfile({
+        const initialState: StudentProfile = {
             id: 'std_user_1',
             name: 'Student User',
             email: 'student@vine.ac.ug',
             likedContentIds: [],
             subscribedTutorIds: [],
-            subscriptionStatus: 'expired',
-            subscriptionEndDate: '2020-01-01'
-        });
+            subscriptionStatus: 'active',
+            subscriptionEndDate: '2026-12-31',
+            walletBalance: 0,
+            paymentRequests: []
+        };
+        setStudentProfile(initialState);
     };
 
     const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
@@ -2652,11 +2656,15 @@ function useSchoolDataInternal() {
 
         const updatedRequests = currentRequests.map(r => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
         const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
-        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : (studentProfile.id.toString() === studentId.toString() ? studentProfile.id : null);
+        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
 
         // 2. Update Local State
-        setStudents(prev => prev.map(s => (s.id.toString() === studentId.toString() || s.payCode === studentId) ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s));
+        setStudents(prev => prev.map(s => {
+            const isMatch = s.id.toString() === studentId.toString() || s.payCode === studentId;
+            return isMatch ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
+        }));
 
+        // If the person logged in IS the student (rare in dev portal but possible if testing)
         if (studentProfile.id.toString() === studentId.toString()) {
             setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
@@ -3665,7 +3673,7 @@ function useSchoolDataInternal() {
     const batchUpdateStudents = (updatedStudents: EnrolledStudent[], logAction?: string, logDetails?: string) => {
         if (updatedStudents.length === 0) return;
 
-        const updatesMap = new Map<number, EnrolledStudent>();
+        const updatesMap = new Map<number | string, EnrolledStudent>();
         updatedStudents.forEach(s => updatesMap.set(s.id, s));
 
         setStudents(prev => prev.map(s => {
