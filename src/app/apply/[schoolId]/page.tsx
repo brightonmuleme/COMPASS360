@@ -207,7 +207,7 @@ export default function SchoolApplicationPage() {
                             <div className="flex items-center gap-3 mb-3">
                                 <span className="inline-block px-3 py-1 rounded-full bg-blue-600 text-white text-[9px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-200">{school.category}</span>
                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enrolling for 2026</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{school.enrollmentStatus || 'Enrolling for 2026'}</span>
                             </div>
                             <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-tight tracking-tight mb-2">{school.name}</h1>
                             <p className="text-slate-500 font-semibold text-lg max-w-xl leading-relaxed italic opacity-80">"{school.tagline}"</p>
@@ -242,14 +242,32 @@ export default function SchoolApplicationPage() {
                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl -mr-32 -mt-32 transition-transform duration-700 group-hover:scale-110" />
                     <h3 className="text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4 relative z-10">Introduction</h3>
                     <p className="text-slate-600 leading-relaxed font-semibold text-lg relative z-10">{school.description}</p>
-                    {school.location && (
-                        <div className="flex items-center gap-3 mt-6 text-slate-400 font-black text-xs uppercase tracking-widest relative z-10">
-                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-blue-500">
-                                <MapPin size={14} />
+                    <div className="flex flex-wrap items-center gap-6 mt-6 relative z-10">
+                        {school.location && (
+                            <div className="flex items-center gap-3 text-slate-400 font-black text-xs uppercase tracking-widest">
+                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-blue-500">
+                                    <MapPin size={14} />
+                                </div>
+                                {school.location}
                             </div>
-                            {school.location}
-                        </div>
-                    )}
+                        )}
+                        {school.contact && (
+                            <div className="flex items-center gap-3 text-slate-400 font-black text-xs uppercase tracking-widest">
+                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-blue-500">
+                                    <Phone size={14} />
+                                </div>
+                                {school.contact}
+                            </div>
+                        )}
+                        {school.email && (
+                            <div className="flex items-center gap-3 text-slate-400 font-black text-xs uppercase tracking-widest">
+                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-blue-500">
+                                    <Mail size={14} />
+                                </div>
+                                {school.email}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

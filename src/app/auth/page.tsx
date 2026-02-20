@@ -121,6 +121,8 @@ function AuthContent() {
                     setDeveloperProfile({ id: user!.id, name: 'Admin', role: 'Developer' });
                     setSchoolProfile({ status: 'Active' });
                     router.push('/developer');
+                } else if (userRole === 'student') {
+                    router.push('/student');
                 } else {
                     router.push('/portal');
                 }

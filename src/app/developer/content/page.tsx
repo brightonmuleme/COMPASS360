@@ -88,9 +88,12 @@ export default function ContentManager() {
             category: 'Academy',
             image: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=800',
             tagline: 'Excellence in Education',
-            description: 'A brief description of the school.',
+            description: 'A leading educational institution dedicated to academic excellence.',
             status: 'Active',
             location: 'Uganda',
+            contact: '',
+            email: '',
+            enrollmentStatus: 'Enrolling for 2026',
             gallery: []
         };
         setEditingSchoolId(newSchool.id);
@@ -358,12 +361,46 @@ export default function ContentManager() {
                                                 placeholder="Category"
                                             />
                                             <input
+                                                value={schoolFormData?.enrollmentStatus}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, enrollmentStatus: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-emerald-400 placeholder-slate-600 outline-none"
+                                                placeholder="Enrollment (e.g. Enrolling for 2026)"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
                                                 value={schoolFormData?.location}
                                                 onChange={(e) => setSchoolFormData({ ...schoolFormData!, location: e.target.value })}
                                                 className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
                                                 placeholder="Location"
                                             />
+                                            <input
+                                                value={schoolFormData?.tagline}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, tagline: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                placeholder="Tagline (motto)"
+                                            />
                                         </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={schoolFormData?.contact}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, contact: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                placeholder="Phone Contact"
+                                            />
+                                            <input
+                                                value={schoolFormData?.email}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, email: e.target.value })}
+                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                placeholder="Email Address"
+                                            />
+                                        </div>
+                                        <textarea
+                                            value={schoolFormData?.description}
+                                            onChange={(e) => setSchoolFormData({ ...schoolFormData!, description: e.target.value })}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:border-emerald-500 outline-none min-h-[80px]"
+                                            placeholder="Brief Introduction for Admission Form"
+                                        />
                                     </div>
 
                                     <div className="flex gap-2 pt-2 border-t border-slate-800">
@@ -425,12 +462,46 @@ export default function ContentManager() {
                                                     placeholder="Category"
                                                 />
                                                 <input
+                                                    value={schoolFormData?.enrollmentStatus}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, enrollmentStatus: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-emerald-400 placeholder-slate-600 outline-none"
+                                                    placeholder="Enrollment (e.g. Enrolling for 2026)"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input
                                                     value={schoolFormData?.location}
                                                     onChange={(e) => setSchoolFormData({ ...schoolFormData!, location: e.target.value })}
                                                     className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
                                                     placeholder="Location"
                                                 />
+                                                <input
+                                                    value={schoolFormData?.tagline}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, tagline: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                    placeholder="Tagline (motto)"
+                                                />
                                             </div>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={schoolFormData?.contact}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, contact: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                    placeholder="Phone Contact"
+                                                />
+                                                <input
+                                                    value={schoolFormData?.email}
+                                                    onChange={(e) => setSchoolFormData({ ...schoolFormData!, email: e.target.value })}
+                                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 placeholder-slate-600 outline-none"
+                                                    placeholder="Email Address"
+                                                />
+                                            </div>
+                                            <textarea
+                                                value={schoolFormData?.description}
+                                                onChange={(e) => setSchoolFormData({ ...schoolFormData!, description: e.target.value })}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:border-emerald-500 outline-none min-h-[80px]"
+                                                placeholder="Brief Introduction for Admission Form"
+                                            />
                                         </div>
 
                                         <div className="pt-2 flex flex-col gap-2">

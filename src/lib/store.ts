@@ -754,6 +754,7 @@ export interface FeaturedSchool {
     location?: string;
     gallery?: string[]; // Added: array of showcase image URLs
     status: 'Pending' | 'Active' | 'Rejected';
+    enrollmentStatus?: string;
 }
 
 export interface SchoolApplication {
