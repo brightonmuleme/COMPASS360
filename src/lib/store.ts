@@ -2464,27 +2464,74 @@ function useSchoolDataInternal() {
             status: 'Pending',
             submittedAt: new Date().toISOString()
         };
-        // Check for duplicate transaction ID
+
+        // 1. Update Current Student Profile (For immediate UI feedback)
+        if (studentProfile.id === request.studentId) {
+            setStudentProfile(prev => ({
+                ...prev,
+                paymentRequests: [newRequest, ...(prev.paymentRequests || [])]
+            }));
+        }
+
+        // 2. Check for duplicate transaction ID in global list
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
         if (duplicate) {
             throw new Error("This Transaction ID has already been submitted.");
         }
 
-        setStudents(prev => prev.map(s => {
-            if (s.payCode === request.studentId || s.id.toString() === request.studentId) {
-                return {
-                    ...s,
-                    paymentRequests: [newRequest, ...(s.paymentRequests || [])]
+        // 3. Update Global Students List (For Developer Portal visibility)
+        setStudents(prev => {
+            const exists = prev.some(s => s.payCode === request.studentId || s.id.toString() === request.studentId);
+
+            if (exists) {
+                return prev.map(s => {
+                    if (s.payCode === request.studentId || s.id.toString() === request.studentId) {
+                        return {
+                            ...s,
+                            paymentRequests: [newRequest, ...(s.paymentRequests || [])]
+                        };
+                    }
+                    return s;
+                });
+            } else {
+                // Add independent student to the list so developers can see their requests
+                const newStudent: EnrolledStudent = {
+                    id: isNaN(Number(studentProfile.id)) ? prev.length + 1000 : Number(studentProfile.id),
+                    name: studentProfile.name,
+                    payCode: studentProfile.payCode || studentProfile.id,
+                    programme: 'Independent Learner',
+                    level: 'N/A',
+                    semester: 'N/A',
+                    balance: 0,
+                    totalFees: 0,
+                    services: [],
+                    bursary: 'None',
+                    previousBalance: 0,
+                    status: 'active',
+                    walletBalance: studentProfile.walletBalance || 0,
+                    paymentRequests: [newRequest],
+                    tutorSubscriptions: studentProfile.subscribedTutorIds.map(tid => ({
+                        id: generateId(),
+                        tutorId: tid,
+                        studentId: studentProfile.id,
+                        amount: 0,
+                        status: 'Active',
+                        expiryDate: studentProfile.subscriptionEndDate,
+                        purchasedAt: new Date().toISOString()
+                    })),
+                    subscriptionExpiry: studentProfile.subscriptionEndDate
                 };
+                return [newStudent, ...prev];
             }
-            return s;
-        }));
+        });
+
         logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.reference}`, 'platform');
     };
 
     const verifySubscriptionRequest = (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
+        // 1. Update Global List
         setStudents(prev => prev.map(s => {
-            if (s.id === studentId || s.payCode === studentId) {
+            if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
                 const updatedRequests = (s.paymentRequests || []).map(r => {
                     if (r.id === requestId) {
                         return {
@@ -2507,6 +2554,32 @@ function useSchoolDataInternal() {
             }
             return s;
         }));
+
+        // 2. Update Current Profile (If matching)
+        if (studentProfile.id.toString() === studentId.toString()) {
+            setStudentProfile(prev => {
+                const updatedRequests = (prev.paymentRequests || []).map(r => {
+                    if (r.id === requestId) {
+                        return {
+                            ...r,
+                            status,
+                            amount,
+                            rejectionReason: reason,
+                            verifiedAt: new Date().toISOString()
+                        };
+                    }
+                    return r;
+                });
+
+                let newWalletBalance = prev.walletBalance || 0;
+                if (status === 'Approved') {
+                    newWalletBalance += amount;
+                }
+
+                return { ...prev, paymentRequests: updatedRequests, walletBalance: newWalletBalance };
+            });
+        }
+
         logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
     };
 
