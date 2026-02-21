@@ -1938,16 +1938,27 @@ function useSchoolDataInternal() {
                 } catch (err) {
                     console.error("❌ Consolidated Sync Error (Developer):", err);
                 }
-            } else if (studentProfile.id && studentProfile.id !== 'std_user_1') {
+            } else if (studentProfile.id) {
                 // --- STUDENT SYNC (Smarter Merge) ---
                 try {
-                    const { data: profile } = await supabase.from('profiles').select('*').eq('id', studentProfile.id).single();
+                    // Try to find profile by UUID (if logged in) OR PayCode (if guest/linking)
+                    let query = supabase.from('profiles').select('*');
+                    if (studentProfile.id !== 'std_user_1') {
+                        query = query.eq('id', studentProfile.id);
+                    } else if (studentProfile.payCode) {
+                        query = query.eq('pay_code', studentProfile.payCode);
+                    } else {
+                        return; // No identity to sync
+                    }
+
+                    const { data: profile } = await query.maybeSingle();
+
                     if (profile) {
                         setStudentProfile(prev => {
-                            // Merge Payment Requests: Prioritize cloud status, but keep local uniques
+                            // Merge Payment Requests
                             const cloudRequests = profile.payment_requests || [];
                             const localRequests = prev.paymentRequests || [];
-                            // Smart merge: Prioritize cloud status (Approved/Rejected), but keep local if cloud still says "Pending"
+
                             const requestMap = new Map();
                             [...localRequests, ...cloudRequests].forEach(r => {
                                 const existing = requestMap.get(r.id);
@@ -1961,11 +1972,11 @@ function useSchoolDataInternal() {
 
                             return {
                                 ...prev,
-                                id: profile.id, // Ensure ID is preserved from cloud
+                                id: studentProfile.id === 'std_user_1' ? prev.id : profile.id,
                                 walletBalance: profile.wallet_balance || 0,
                                 paymentRequests: mergedRequests,
-                                subscriptionStatus: (profile.subscription_status as any) || 'expired',
-                                subscriptionEndDate: profile.subscription_expiry || '',
+                                subscriptionStatus: (profile.subscription_status as any) || prev.subscriptionStatus,
+                                subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate,
                                 subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds
                             };
                         });
@@ -2604,47 +2615,38 @@ function useSchoolDataInternal() {
             submittedAt: new Date().toISOString()
         };
 
-        // 🛡️ UUID-FIRST IDENTITY (Reduce Noise)
-        // We only care about the person's UUID for the Wallet.
+        // 🛡️ SUBMISSION IDENTITY (Bridging UUID and PayCode)
         const isSelf = studentProfile.id.toString() === request.studentId.toString();
-        const cloudUserId = isSelf ? studentProfile.id : (typeof request.studentId === 'string' && request.studentId.length > 20 ? request.studentId : null);
-
-        if (!cloudUserId) throw new Error("Could not resolve a valid Cloud Identity (UUID) for this request.");
+        const targetId = request.studentId.toString();
 
         // Prepare Updated Request List
-        const currentRequests = isSelf ? (studentProfile.paymentRequests || []) : (students.find(s => s.id === cloudUserId)?.paymentRequests || []);
+        // Look for the student in the local cache by ID OR PayCode
+        const targetStudent = students.find(s => s.id.toString() === targetId || s.payCode === targetId);
+        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (isSelf ? (studentProfile.paymentRequests || []) : []);
         const updatedRequests = [newRequest, ...currentRequests];
 
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
         if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
-        // 1. Update Student Profile (Immediate UI Feedback)
-        if (isSelf) {
-            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
-        }
+        // 1. Update UI Immediate
+        if (isSelf) setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
 
-        // 2. Update Global Student List (For Developer Visibility)
+        // 2. Update Developer Visibility
         setStudents(prev => {
-            const index = prev.findIndex(s => s.id.toString() === cloudUserId.toString());
+            const index = prev.findIndex(s => s.id.toString() === targetId || s.payCode === targetId);
             if (index >= 0) {
                 const updated = [...prev];
                 updated[index] = { ...updated[index], paymentRequests: updatedRequests };
                 return updated;
             } else if (isSelf) {
-                // If student is new/independent and not in the list yet
                 const newStudent: EnrolledStudent = {
                     id: studentProfile.id,
                     name: studentProfile.name,
-                    payCode: studentProfile.payCode || studentProfile.id.toString(),
+                    payCode: studentProfile.payCode || targetId,
                     programme: 'Independent Learner',
                     level: 'N/A',
                     semester: 'N/A',
-                    balance: 0,
-                    totalFees: 0,
-                    services: [],
-                    bursary: 'None',
-                    previousBalance: 0,
-                    status: 'active',
+                    balance: 0, totalFees: 0, services: [], bursary: 'None', previousBalance: 0, status: 'active',
                     walletBalance: studentProfile.walletBalance || 0,
                     paymentRequests: updatedRequests,
                     tutorSubscriptions: [],
@@ -2656,14 +2658,28 @@ function useSchoolDataInternal() {
             return prev;
         });
 
-        // 3. PERSIST TO CLOUD (Universal Lobby)
+        // 3. PERSIST TO CLOUD (Universal Store)
         try {
-            await developerService.updateUserProfile(cloudUserId, {
-                payment_requests: updatedRequests
-            });
-            console.log("✅ Cloud Sync Success: Payment request anchored to UUID Lobby.");
+            // Find profile by ID OR PayCode
+            const { data: profile } = await supabase.from('profiles')
+                .select('id, payment_requests')
+                .or(`id.eq."${targetId}",pay_code.eq."${targetId}"`)
+                .maybeSingle();
+
+            if (profile) {
+                await developerService.updateUserProfile(profile.id, {
+                    payment_requests: updatedRequests
+                });
+            } else if (isSelf && studentProfile.id !== 'std_user_1') {
+                // If logged in student profile is missing, create it
+                await developerService.updateUserProfile(studentProfile.id, {
+                    full_name: studentProfile.name,
+                    payment_requests: updatedRequests,
+                    pay_code: studentProfile.payCode || null
+                });
+            }
         } catch (err) {
-            console.error("❌ Cloud Sync Error (Submit Payment):", err);
+            console.error("❌ Cloud Persist Error (Submission):", err);
         }
 
         logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.transactionId || request.reference}`, 'platform');
@@ -2671,55 +2687,52 @@ function useSchoolDataInternal() {
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
         // 1. Resolve Identity (UUID First, then PayCode)
-        let targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
-        let cloudBalance = 0;
-        let cloudRequests = [];
+        let targetId = studentId.toString();
+        let cloudProfile: any = null;
 
         try {
-            let query = supabase.from('profiles').select('id, wallet_balance, payment_requests');
-
-            if (targetUserId) {
-                query = query.eq('id', targetUserId);
+            // Priority 1: Search by exact ID (likely UUID)
+            const { data: p1 } = await supabase.from('profiles').select('*').eq('id', targetId).maybeSingle();
+            if (p1) {
+                cloudProfile = p1;
             } else {
-                // If we don't have a UUID, search by pay_code
-                query = query.eq('pay_code', studentId.toString());
+                // Priority 2: Search by PayCode
+                const { data: p2 } = await supabase.from('profiles').select('*').eq('pay_code', targetId).maybeSingle();
+                if (p2) cloudProfile = p2;
             }
 
-            const { data: profile, error } = await query.maybeSingle();
-
-            if (error) throw error;
-            if (!profile) throw new Error(`Could not find a student profile matching ID: ${studentId}`);
-
-            targetUserId = profile.id; // Corrected to real UUID
-            cloudBalance = profile.wallet_balance || 0;
-            cloudRequests = profile.payment_requests || [];
+            if (!cloudProfile) throw new Error(`Could not find a student profile for: ${targetId}`);
         } catch (fetchErr: any) {
             console.error("❌ Identity Resolution Failed:", fetchErr);
             throw new Error(`Cloud connection failed: ${fetchErr.message}`);
         }
 
-        // 2. Calculate New State
-        const updatedRequests = cloudRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
-        const updatedBalance = status === 'Approved' ? cloudBalance + amount : cloudBalance;
+        const targetUserId = cloudProfile.id;
+        const currentBalance = cloudProfile.wallet_balance || 0;
+        const currentRequests = cloudProfile.payment_requests || [];
 
-        // 3. Update Global List (Developer UI)
+        // 2. Calculate New State
+        const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
+        const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
+
+        // 3. Update Developer UI (Immediate)
         setStudents(prev => prev.map(s => {
-            const isMatch = s.id.toString() === targetUserId || (s.payCode && s.payCode.toString() === studentId.toString());
-            return isMatch ? { ...s, id: targetUserId as string, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
+            const isMatch = s.id.toString() === targetUserId || (s.payCode && s.payCode.toString() === targetId);
+            return isMatch ? { ...s, id: targetUserId, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
         }));
 
-        // 4. Update Student Profile (Student UI)
-        if (studentProfile.id.toString() === targetUserId || studentProfile.payCode === studentId.toString()) {
-            setStudentProfile(prev => ({ ...prev, id: targetUserId as string, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
+        // 4. Update Student UI (If they are the one viewing)
+        if (studentProfile.id.toString() === targetUserId || studentProfile.payCode === targetId) {
+            setStudentProfile(prev => ({ ...prev, id: targetUserId, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
         // 5. PERSIST TO CLOUD
         try {
-            await developerService.updateUserProfile(targetUserId as string, {
+            await developerService.updateUserProfile(targetUserId, {
                 wallet_balance: updatedBalance,
                 payment_requests: updatedRequests
             });
-            console.log("✅ Identity Resolved & Balance Saved: USh " + updatedBalance);
+            console.log("✅ Deposit Verified: Balance updated to USh " + updatedBalance);
         } catch (err) {
             console.error("❌ Cloud Persist Error:", err);
             throw err;
@@ -3507,27 +3520,28 @@ function useSchoolDataInternal() {
                         // Reset to default if explicitly vine_intl (optional cleanup)
                         setSchoolProfile(prev => ({ ...prev, id: 'vine_intl' }));
                     }
-                } catch (err) {
-                    console.error("Institutional Sync Error:", err);
-                } finally {
-                    setCheckingAccess(false);
                 }
-            };
+            } catch (err) {
+                console.error("Institutional Sync Error:", err);
+            } finally {
+                setCheckingAccess(false);
+            }
+        };
 
-            // Listen for Auth Changes to immediately refresh profile
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-                if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-                    verifyInstitutionalAccess(true);
-                }
-            });
+        // Listen for Auth Changes to immediately refresh profile
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+                verifyInstitutionalAccess(true);
+            }
+        });
 
-            verifyInstitutionalAccess();
-            const interval = setInterval(() => verifyInstitutionalAccess(true), 30000);
-            return () => {
-                clearInterval(interval);
-                subscription.unsubscribe();
-            };
-        }, [hydrated, activeRole, schoolProfile.id]);
+        verifyInstitutionalAccess();
+        const interval = setInterval(() => verifyInstitutionalAccess(true), 30000);
+        return () => {
+            clearInterval(interval);
+            subscription.unsubscribe();
+        };
+    }, [hydrated, activeRole, schoolProfile.id]);
 
     // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
     useEffect(() => {
