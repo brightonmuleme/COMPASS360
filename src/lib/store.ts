@@ -2668,35 +2668,43 @@ function useSchoolDataInternal() {
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        // Find by UUID exclusively for the wallet magic
-        const targetStudent = students.find(s => s.id.toString() === studentId.toString());
-        const isSelf = studentProfile.id.toString() === studentId.toString();
-
-        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (isSelf ? (studentProfile.paymentRequests || []) : []);
-        const currentBalance = targetStudent ? (targetStudent.walletBalance || 0) : (isSelf ? (studentProfile.walletBalance || 0) : 0);
-
-        const updatedRequests = currentRequests.map(r => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
-        const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
-
-        // 🛡️ ENFORCE CLOUD UUID
+        // 🔒 ENFORCE CLOUD UUID
         const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
         if (!targetUserId) throw new Error("Verification failed: Missing Student UUID.");
 
-        // 1. Update Global List (Developer)
+        // 1. Fetch ABSOLUTE LATEST Balance from Cloud (Atomic-style)
+        // This prevents overwriting the student's money if the Developer portal has stale data.
+        let cloudBalance = 0;
+        let cloudRequests = [];
+        try {
+            const { data: profile, error } = await supabase.from('profiles').select('wallet_balance, payment_requests').eq('id', targetUserId).single();
+            if (error) throw error;
+            cloudBalance = profile.wallet_balance || 0;
+            cloudRequests = profile.payment_requests || [];
+        } catch (fetchErr) {
+            console.error("❌ Pre-Approval Sync Failed:", fetchErr);
+            throw new Error("Could not verify student's current balance before approving.");
+        }
+
+        // 2. Calculate New State
+        const updatedRequests = cloudRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
+        const updatedBalance = status === 'Approved' ? cloudBalance + amount : cloudBalance;
+
+        // 3. Update Global List (Developer UI)
         setStudents(prev => prev.map(s => s.id.toString() === targetUserId ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s));
 
-        // 2. Update Student Profile (Student)
-        if (isSelf) {
+        // 4. Update Student Profile (Student UI)
+        if (studentProfile.id.toString() === targetUserId) {
             setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
-        // 3. PERSIST TO CLOUD (Universal)
+        // 5. PERSIST TO CLOUD
         try {
             await developerService.updateUserProfile(targetUserId, {
                 wallet_balance: updatedBalance,
                 payment_requests: updatedRequests
             });
-            console.log("✅ Cloud Sync Success: Student wallet updated via UUID.");
+            console.log("✅ Cloud Sync Success: Student wallet updated to USh " + updatedBalance);
         } catch (err) {
             console.error("❌ Cloud Sync Error (Verify Payment):", err);
             throw err;
@@ -3235,6 +3243,14 @@ function useSchoolDataInternal() {
     useEffect(() => {
         safeSetItem('school_profile_v1', schoolProfile);
     }, [schoolProfile, hydrated]);
+
+    useEffect(() => {
+        safeSetItem('school_student_profile_v1', studentProfile);
+    }, [studentProfile, hydrated]);
+
+    useEffect(() => {
+        safeSetItem('school_tutor_profile_v1', tutorProfile);
+    }, [tutorProfile, hydrated]);
 
     useEffect(() => {
         safeSetItem('school_payments_v1', payments);
