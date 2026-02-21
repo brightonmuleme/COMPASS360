@@ -39,7 +39,10 @@ export default function RoleSelectionPage() {
         // Assume Identity for Demo/Navigation
         if (roleId === 'tutor') {
             const defaultTutor = tutors[0];
-            setTutorProfile({
+            const savedTutor = typeof window !== 'undefined' ? localStorage.getItem('school_tutor_profile_v1') : null;
+            const existingTutor = savedTutor ? JSON.parse(savedTutor) : null;
+
+            setTutorProfile(existingTutor || {
                 id: defaultTutor?.id || 'tut_1',
                 name: defaultTutor?.name || 'Demo Tutor',
                 email: defaultTutor?.email || 'tutor@compass360.com',
@@ -47,14 +50,19 @@ export default function RoleSelectionPage() {
                 role: 'Tutor'
             });
         } else if (roleId === 'student') {
-            setStudentProfile({
+            const savedStudent = typeof window !== 'undefined' ? localStorage.getItem('school_student_profile_v1') : null;
+            const existingStudent = savedStudent ? JSON.parse(savedStudent) : null;
+
+            setStudentProfile(existingStudent || {
                 id: 'std_user_1',
                 name: 'Student User',
                 email: 'student@vine.ac.ug',
                 likedContentIds: [],
                 subscribedTutorIds: [],
                 subscriptionStatus: 'active',
-                subscriptionEndDate: '2026-12-31'
+                subscriptionEndDate: '2026-12-31',
+                walletBalance: 0,
+                paymentRequests: []
             });
         } else if (roleId === 'developer') {
             setDeveloperProfile({

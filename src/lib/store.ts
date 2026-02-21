@@ -1858,14 +1858,19 @@ function useSchoolDataInternal() {
                     const { data: profiles, error } = await supabase.from('profiles').select('*');
                     if (error) throw error;
 
-                    const cloudStudents = profiles.filter((p: any) => p.role?.toLowerCase() === 'student');
+                    const cloudStudents = profiles.filter((p: any) =>
+                        p.role?.toLowerCase() === 'student' ||
+                        (p.payment_requests && p.payment_requests.length > 0) ||
+                        (p.wallet_balance && p.wallet_balance > 0)
+                    );
                     const tutorList = profiles.filter((p: any) => p.role?.toLowerCase() === 'tutor');
 
                     // Sync Students
                     setStudents(prev => {
                         const merged = [...prev];
                         cloudStudents.forEach((cp: any) => {
-                            const index = merged.findIndex(s => s.id.toString() === cp.id.toString() || s.payCode === cp.pay_code);
+                            // 🛡️ UUID-ACTUAL ANCHOR (No Noisy PayCode Fallbacks)
+                            const index = merged.findIndex(s => s.id.toString() === cp.id.toString());
 
                             // Merge Payment Requests (preserve local if cloud has none or is stale)
                             const cloudRequests = cp.payment_requests || [];
@@ -1875,8 +1880,6 @@ function useSchoolDataInternal() {
                             const requestMap = new Map();
                             [...localRequests, ...cloudRequests].forEach(r => {
                                 const existing = requestMap.get(r.id);
-                                // If cloud update exists, or if we don't have it yet, take it.
-                                // BUT don't let cloud "Pending" overwrite a local "Approved" we just did.
                                 if (!existing || r.status !== 'Pending' || (existing && existing.status === 'Pending')) {
                                     requestMap.set(r.id, r);
                                 }
@@ -1887,7 +1890,7 @@ function useSchoolDataInternal() {
                             const updatedStudent: EnrolledStudent = {
                                 id: cp.id,
                                 name: cp.full_name || 'Student',
-                                payCode: cp.pay_code || cp.id,
+                                payCode: cp.pay_code || cp.id, // PayCode is just for peeping
                                 programme: index >= 0 ? merged[index].programme : 'Independent Learner',
                                 level: index >= 0 ? merged[index].level : 'N/A',
                                 semester: index >= 0 ? merged[index].semester : 'N/A',
@@ -2599,30 +2602,34 @@ function useSchoolDataInternal() {
             submittedAt: new Date().toISOString()
         };
 
-        // 1. Resolve Identity
-        const isSelf = studentProfile.id.toString() === request.studentId.toString() || studentProfile.payCode === request.studentId.toString();
-        const targetStudent = students.find(s => s.id.toString() === request.studentId.toString() || s.payCode === request.studentId.toString());
+        // 🛡️ UUID-FIRST IDENTITY (Reduce Noise)
+        // We only care about the person's UUID for the Wallet.
+        const isSelf = studentProfile.id.toString() === request.studentId.toString();
+        const cloudUserId = isSelf ? studentProfile.id : (typeof request.studentId === 'string' && request.studentId.length > 20 ? request.studentId : null);
 
-        // 2. Prepare Updated Request List
-        const currentRequests = isSelf ? (studentProfile.paymentRequests || []) : (targetStudent ? (targetStudent.paymentRequests || []) : []);
+        if (!cloudUserId) throw new Error("Could not resolve a valid Cloud Identity (UUID) for this request.");
+
+        // Prepare Updated Request List
+        const currentRequests = isSelf ? (studentProfile.paymentRequests || []) : (students.find(s => s.id === cloudUserId)?.paymentRequests || []);
         const updatedRequests = [newRequest, ...currentRequests];
 
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
         if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
-        // 3. Update Local State (Immediate Visibility)
+        // 1. Update Student Profile (Immediate UI Feedback)
         if (isSelf) {
             setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
         }
 
+        // 2. Update Global Student List (For Developer Visibility)
         setStudents(prev => {
-            const index = prev.findIndex(s => s.id.toString() === request.studentId.toString() || s.payCode === request.studentId.toString());
+            const index = prev.findIndex(s => s.id.toString() === cloudUserId.toString());
             if (index >= 0) {
                 const updated = [...prev];
                 updated[index] = { ...updated[index], paymentRequests: updatedRequests };
                 return updated;
             } else if (isSelf) {
-                // If student is themselves but not in the 'students' list yet (Independent Learner)
+                // If student is new/independent and not in the list yet
                 const newStudent: EnrolledStudent = {
                     id: studentProfile.id,
                     name: studentProfile.name,
@@ -2647,63 +2654,52 @@ function useSchoolDataInternal() {
             return prev;
         });
 
-        // 4. PERSIST TO CLOUD
-        // We MUST use the UUID for the cloud update to work.
-        const cloudUserId = (typeof request.studentId === 'string' && request.studentId.length > 20)
-            ? request.studentId
-            : (studentProfile.id.toString().length > 20 ? studentProfile.id.toString() : (targetStudent && targetStudent.id.toString().length > 20 ? targetStudent.id.toString() : null));
-
-        if (cloudUserId) {
-            try {
-                await developerService.updateUserProfile(cloudUserId, {
-                    payment_requests: updatedRequests
-                });
-                console.log("✅ Cloud Sync Success: Payment request submitted to UUID.");
-            } catch (err) {
-                console.error("❌ Cloud Sync Error (Submit Payment):", err);
-            }
+        // 3. PERSIST TO CLOUD (Universal Lobby)
+        try {
+            await developerService.updateUserProfile(cloudUserId, {
+                payment_requests: updatedRequests
+            });
+            console.log("✅ Cloud Sync Success: Payment request anchored to UUID Lobby.");
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Submit Payment):", err);
         }
 
         logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.transactionId || request.reference}`, 'platform');
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        // 1. Calculate values BEFORE state setters
-        const targetStudent = students.find(s => s.id.toString() === studentId.toString() || s.payCode === studentId);
-        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (studentProfile.id.toString() === studentId.toString() ? (studentProfile.paymentRequests || []) : []);
-        const currentBalance = targetStudent ? (targetStudent.walletBalance || 0) : (studentProfile.id.toString() === studentId.toString() ? (studentProfile.walletBalance || 0) : 0);
+        // Find by UUID exclusively for the wallet magic
+        const targetStudent = students.find(s => s.id.toString() === studentId.toString());
+        const isSelf = studentProfile.id.toString() === studentId.toString();
+
+        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (isSelf ? (studentProfile.paymentRequests || []) : []);
+        const currentBalance = targetStudent ? (targetStudent.walletBalance || 0) : (isSelf ? (studentProfile.walletBalance || 0) : 0);
 
         const updatedRequests = currentRequests.map(r => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
         const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
 
-        // Find UUID: Check if studentId is UUID, otherwise look it up in students list
-        const targetUserId = (typeof studentId === 'string' && studentId.length > 20)
-            ? studentId
-            : (targetStudent && typeof targetStudent.id === 'string' && targetStudent.id.length > 20 ? targetStudent.id : null);
+        // 🛡️ ENFORCE CLOUD UUID
+        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
+        if (!targetUserId) throw new Error("Verification failed: Missing Student UUID.");
 
-        // 2. Update Local State
-        setStudents(prev => prev.map(s => {
-            const isMatch = s.id.toString() === studentId.toString() || s.payCode === studentId;
-            return isMatch ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
-        }));
+        // 1. Update Global List (Developer)
+        setStudents(prev => prev.map(s => s.id.toString() === targetUserId ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s));
 
-        // sync updated balance to student profile if this is the student
-        if (studentProfile.id.toString() === studentId.toString() || (targetUserId && studentProfile.id === targetUserId)) {
+        // 2. Update Student Profile (Student)
+        if (isSelf) {
             setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
-        // 3. PERSIST TO CLOUD
-        if (targetUserId) {
-            try {
-                // FORCE CLOUD SYNC AWAIT
-                await developerService.updateUserProfile(targetUserId as string, {
-                    wallet_balance: updatedBalance,
-                    payment_requests: updatedRequests
-                });
-                console.log("✅ Cloud Sync Success: Student balance verified and saved.");
-            } catch (err) {
-                console.error("❌ Cloud Sync Error (Verify Payment):", err);
-            }
+        // 3. PERSIST TO CLOUD (Universal)
+        try {
+            await developerService.updateUserProfile(targetUserId, {
+                wallet_balance: updatedBalance,
+                payment_requests: updatedRequests
+            });
+            console.log("✅ Cloud Sync Success: Student wallet updated via UUID.");
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Verify Payment):", err);
+            throw err;
         }
 
         logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
