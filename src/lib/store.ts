@@ -1869,14 +1869,16 @@ function useSchoolDataInternal() {
                     setStudents(prev => {
                         const merged = [...prev];
                         cloudStudents.forEach((cp: any) => {
-                            // 🛡️ UUID-ACTUAL ANCHOR (No Noisy PayCode Fallbacks)
-                            const index = merged.findIndex(s => s.id.toString() === cp.id.toString());
+                            // 🛡️ MULTI-IDENTITY MERGE
+                            // Find existing record by UUID OR PayCode to collapse duplicates
+                            const index = merged.findIndex(s =>
+                                s.id.toString() === cp.id.toString() ||
+                                (cp.pay_code && s.payCode?.toString() === cp.pay_code.toString())
+                            );
 
-                            // Merge Payment Requests (preserve local if cloud has none or is stale)
                             const cloudRequests = cp.payment_requests || [];
                             const localRequests = index >= 0 ? (merged[index].paymentRequests || []) : [];
 
-                            // Smart merge: Prioritize cloud status (Approved/Rejected), but keep local "Pending" if cloud doesn't know about them yet
                             const requestMap = new Map();
                             [...localRequests, ...cloudRequests].forEach(r => {
                                 const existing = requestMap.get(r.id);
@@ -1888,9 +1890,9 @@ function useSchoolDataInternal() {
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
                             const updatedStudent: EnrolledStudent = {
-                                id: cp.id,
+                                id: cp.id, // Always normalize to Cloud UUID
                                 name: cp.full_name || 'Student',
-                                payCode: cp.pay_code || cp.id, // PayCode is just for peeping
+                                payCode: cp.pay_code || cp.id,
                                 programme: index >= 0 ? merged[index].programme : 'Independent Learner',
                                 level: index >= 0 ? merged[index].level : 'N/A',
                                 semester: index >= 0 ? merged[index].semester : 'N/A',
@@ -2668,22 +2670,32 @@ function useSchoolDataInternal() {
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        // 🔒 ENFORCE CLOUD UUID
-        const targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
-        if (!targetUserId) throw new Error("Verification failed: Missing Student UUID.");
-
-        // 1. Fetch ABSOLUTE LATEST Balance from Cloud (Atomic-style)
-        // This prevents overwriting the student's money if the Developer portal has stale data.
+        // 1. Resolve Identity (UUID First, then PayCode)
+        let targetUserId = (typeof studentId === 'string' && studentId.length > 20) ? studentId : null;
         let cloudBalance = 0;
         let cloudRequests = [];
+
         try {
-            const { data: profile, error } = await supabase.from('profiles').select('wallet_balance, payment_requests').eq('id', targetUserId).single();
+            let query = supabase.from('profiles').select('id, wallet_balance, payment_requests');
+
+            if (targetUserId) {
+                query = query.eq('id', targetUserId);
+            } else {
+                // If we don't have a UUID, search by pay_code
+                query = query.eq('pay_code', studentId.toString());
+            }
+
+            const { data: profile, error } = await query.maybeSingle();
+
             if (error) throw error;
+            if (!profile) throw new Error(`Could not find a student profile matching ID: ${studentId}`);
+
+            targetUserId = profile.id; // Corrected to real UUID
             cloudBalance = profile.wallet_balance || 0;
             cloudRequests = profile.payment_requests || [];
-        } catch (fetchErr) {
-            console.error("❌ Pre-Approval Sync Failed:", fetchErr);
-            throw new Error("Could not verify student's current balance before approving.");
+        } catch (fetchErr: any) {
+            console.error("❌ Identity Resolution Failed:", fetchErr);
+            throw new Error(`Cloud connection failed: ${fetchErr.message}`);
         }
 
         // 2. Calculate New State
@@ -2691,22 +2703,25 @@ function useSchoolDataInternal() {
         const updatedBalance = status === 'Approved' ? cloudBalance + amount : cloudBalance;
 
         // 3. Update Global List (Developer UI)
-        setStudents(prev => prev.map(s => s.id.toString() === targetUserId ? { ...s, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s));
+        setStudents(prev => prev.map(s => {
+            const isMatch = s.id.toString() === targetUserId || (s.payCode && s.payCode.toString() === studentId.toString());
+            return isMatch ? { ...s, id: targetUserId as string, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
+        }));
 
         // 4. Update Student Profile (Student UI)
-        if (studentProfile.id.toString() === targetUserId) {
-            setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
+        if (studentProfile.id.toString() === targetUserId || studentProfile.payCode === studentId.toString()) {
+            setStudentProfile(prev => ({ ...prev, id: targetUserId as string, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
         }
 
         // 5. PERSIST TO CLOUD
         try {
-            await developerService.updateUserProfile(targetUserId, {
+            await developerService.updateUserProfile(targetUserId as string, {
                 wallet_balance: updatedBalance,
                 payment_requests: updatedRequests
             });
-            console.log("✅ Cloud Sync Success: Student wallet updated to USh " + updatedBalance);
+            console.log("✅ Identity Resolved & Balance Saved: USh " + updatedBalance);
         } catch (err) {
-            console.error("❌ Cloud Sync Error (Verify Payment):", err);
+            console.error("❌ Cloud Persist Error:", err);
             throw err;
         }
 
@@ -3488,22 +3503,31 @@ function useSchoolDataInternal() {
                             setSchoolProfile(prev => ({ ...prev, id: resolvedSchoolId, status: 'Pending' }));
                         }
                     }
-                } else if (resolvedSchoolId === 'vine_intl' && schoolProfile.id !== 'vine_intl') {
-                    // Reset to default if explicitly vine_intl (optional cleanup)
-                    setSchoolProfile(prev => ({ ...prev, id: 'vine_intl' }));
+                    if (resolvedSchoolId === 'vine_intl' && schoolProfile.id !== 'vine_intl') {
+                        // Reset to default if explicitly vine_intl (optional cleanup)
+                        setSchoolProfile(prev => ({ ...prev, id: 'vine_intl' }));
+                    }
+                } catch (err) {
+                    console.error("Institutional Sync Error:", err);
+                } finally {
+                    setCheckingAccess(false);
                 }
-            } catch (err) {
-                console.error("Institutional Sync Error:", err);
-            } finally {
-                setCheckingAccess(false);
-            }
-        };
+            };
 
-        verifyInstitutionalAccess(false); // Initial load (show spinner)
-        // Constant background monitoring for live approval/revocation
-        const interval = setInterval(() => verifyInstitutionalAccess(true), 30000); // Check quietly every 30s
-        return () => clearInterval(interval);
-    }, [hydrated, schoolProfile.id, schoolProfile.status]);
+            // Listen for Auth Changes to immediately refresh profile
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+                if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+                    verifyInstitutionalAccess(true);
+                }
+            });
+
+            verifyInstitutionalAccess();
+            const interval = setInterval(() => verifyInstitutionalAccess(true), 30000);
+            return () => {
+                clearInterval(interval);
+                subscription.unsubscribe();
+            };
+        }, [hydrated, activeRole, schoolProfile.id]);
 
     // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
     useEffect(() => {
