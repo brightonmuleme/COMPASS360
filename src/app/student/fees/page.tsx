@@ -46,12 +46,10 @@ export default function FeesPage() {
         try {
             // Updated to be profile-first
             await submitSubscriptionRequest({
-                studentId: studentProfile.id,
-                studentName: studentProfile.name,
                 transactionId,
                 reference,
                 phoneNumber: studentProfile.phoneNumber || 'N/A'
-            });
+            } as any);
             setSuccess('Payment request submitted! Awaiting manual verification.');
             setTransactionId('');
             setReference('');
@@ -66,7 +64,7 @@ export default function FeesPage() {
         if (isPurchasing) return;
         setIsPurchasing(true);
         try {
-            await purchasePlatformPass(studentProfile.id, type);
+            await purchasePlatformPass(type);
             setSuccess(`Successfully purchased ${type} Platform Pass!`);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err: any) {

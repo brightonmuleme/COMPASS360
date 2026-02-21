@@ -2608,147 +2608,93 @@ function useSchoolDataInternal() {
     };
 
     const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
+        // 1. Validate Identity
+        if (studentProfile.id === 'std_user_1' || !studentProfile.email) {
+            throw new Error("You must be logged in to submit a payment request.");
+        }
+
         const newRequest: SubscriptionRequest = {
             ...request,
             id: generateId(),
+            studentId: studentProfile.id, // Strictly use Cloud UUID
+            email: studentProfile.email,    // Link to Email
             status: 'Pending',
             submittedAt: new Date().toISOString()
         };
 
-        // 🛡️ SUBMISSION IDENTITY (Bridging UUID and PayCode)
-        const isSelf = studentProfile.id.toString() === request.studentId.toString();
-        const targetId = request.studentId.toString();
-
-        // Prepare Updated Request List
-        // Look for the student in the local cache by ID OR PayCode
-        const targetStudent = students.find(s => s.id.toString() === targetId || s.payCode === targetId);
-        const currentRequests = targetStudent ? (targetStudent.paymentRequests || []) : (isSelf ? (studentProfile.paymentRequests || []) : []);
-        const updatedRequests = [newRequest, ...currentRequests];
-
+        // 2. Local Duplicate Check
         const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
         if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
-        // 1. Update UI Immediate
-        if (isSelf) setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
+        // 3. Update UI Immediate
+        const updatedRequests = [newRequest, ...(studentProfile.paymentRequests || [])];
+        setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
 
-        // 2. Update Developer Visibility
-        setStudents(prev => {
-            const index = prev.findIndex(s => s.id.toString() === targetId || s.payCode === targetId);
-            if (index >= 0) {
-                const updated = [...prev];
-                updated[index] = { ...updated[index], paymentRequests: updatedRequests };
-                return updated;
-            } else if (isSelf) {
-                const newStudent: EnrolledStudent = {
-                    id: studentProfile.id,
-                    name: studentProfile.name,
-                    payCode: studentProfile.payCode || targetId,
-                    programme: 'Independent Learner',
-                    level: 'N/A',
-                    semester: 'N/A',
-                    balance: 0, totalFees: 0, services: [], bursary: 'None', previousBalance: 0, status: 'active',
-                    walletBalance: studentProfile.walletBalance || 0,
-                    paymentRequests: updatedRequests,
-                    tutorSubscriptions: [],
-                    subscriptionExpiry: studentProfile.subscriptionEndDate,
-                    subscriptionStatus: studentProfile.subscriptionStatus
-                };
-                return [newStudent, ...prev];
-            }
-            return prev;
-        });
-
-        // 3. PERSIST TO CLOUD (Universal Store)
+        // 3. PERSIST TO CLOUD
         try {
-            // Find profile by ID OR PayCode
-            const { data: profile } = await supabase.from('profiles')
-                .select('id, payment_requests')
-                .or(`id.eq."${targetId}",pay_code.eq."${targetId}"`)
-                .maybeSingle();
+            const { data: profile } = await supabase.from('profiles').select('payment_requests').eq('id', studentProfile.id).maybeSingle();
 
-            if (profile) {
-                await developerService.updateUserProfile(profile.id, {
-                    payment_requests: updatedRequests
-                });
-            } else if (isSelf && studentProfile.id !== 'std_user_1') {
-                // If logged in student profile is missing, create it
-                await developerService.updateUserProfile(studentProfile.id, {
-                    full_name: studentProfile.name,
-                    payment_requests: updatedRequests,
-                    pay_code: studentProfile.payCode || null
-                });
-            }
+            const cloudRequests = profile?.payment_requests || [];
+            const merged = [newRequest, ...cloudRequests];
+
+            await developerService.updateUserProfile(studentProfile.id, {
+                payment_requests: merged
+            });
+            console.log("✅ Deposit Request Sent Successfully via Email Identity.");
         } catch (err) {
             console.error("❌ Cloud Persist Error (Submission):", err);
         }
 
-        logGlobalAction('Subscription Request', `Student ${request.studentName} submitted TXN ${request.transactionId || request.reference}`, 'platform');
+        logGlobalAction('Subscription Request', `Student ${studentProfile.name} submitted TXN ${request.transactionId}`, 'platform');
     };
 
     const verifySubscriptionRequest = async (requestId: string, studentId: string | number, amount: number, status: 'Approved' | 'Rejected', reason?: string) => {
-        // 1. Resolve Identity (UUID First, then PayCode)
-        let targetId = studentId.toString();
-        let cloudProfile: any = null;
-
+        // 1. Resolve Identity (Strictly UUID)
         try {
-            // Priority 1: Search by exact ID (likely UUID)
-            const { data: p1 } = await supabase.from('profiles').select('*').eq('id', targetId).maybeSingle();
-            if (p1) {
-                cloudProfile = p1;
-            } else {
-                // Priority 2: Search by PayCode
-                const { data: p2 } = await supabase.from('profiles').select('*').eq('pay_code', targetId).maybeSingle();
-                if (p2) cloudProfile = p2;
+            const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', studentId.toString()).maybeSingle();
+
+            if (error || !profile) {
+                throw new Error(`Profile for Account ID ${studentId} not found in Cloud.`);
             }
 
-            if (!cloudProfile) throw new Error(`Could not find a student profile for: ${targetId}`);
+            const currentBalance = profile.wallet_balance || 0;
+            const currentRequests = profile.payment_requests || [];
+
+            // 2. Calculate New State
+            const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
+            const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
+
+            // 3. PERSIST TO CLOUD (Universal Source of Truth)
+            try {
+                await developerService.updateUserProfile(profile.id, {
+                    wallet_balance: updatedBalance,
+                    payment_requests: updatedRequests
+                });
+                console.log("✅ Deposit Processed in Cloud.");
+            } catch (pErr) {
+                console.error("❌ Cloud Persist Error (Verification):", pErr);
+            }
+
+            // 5. Sync Local UI for Student (if they are observing)
+            if (studentProfile.id.toString() === profile.id.toString()) {
+                setStudentProfile(prev => ({ ...prev, walletBalance: updatedBalance, paymentRequests: updatedRequests }));
+            }
+
+            console.log("✅ Deposit Processed via Email Account Identity.");
+
         } catch (fetchErr: any) {
             console.error("❌ Identity Resolution Failed:", fetchErr);
-            throw new Error(`Cloud connection failed: ${fetchErr.message}`);
+            throw new Error(`Cloud verification failed: ${fetchErr.message}`);
         }
 
-        const targetUserId = cloudProfile.id;
-        const currentBalance = cloudProfile.wallet_balance || 0;
-        const currentRequests = cloudProfile.payment_requests || [];
-
-        // 2. Calculate New State
-        const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
-        const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
-
-        // 3. Update Developer UI (Immediate)
-        setStudents(prev => prev.map(s => {
-            const isMatch = s.id.toString() === targetUserId || (s.payCode && s.payCode.toString() === targetId);
-            return isMatch ? { ...s, id: targetUserId, paymentRequests: updatedRequests, walletBalance: updatedBalance } : s;
-        }));
-
-        // 4. Update Student UI (If they are the one viewing)
-        if (studentProfile.id.toString() === targetUserId || studentProfile.payCode === targetId) {
-            setStudentProfile(prev => ({ ...prev, id: targetUserId, paymentRequests: updatedRequests, walletBalance: updatedBalance }));
-        }
-
-        // 5. PERSIST TO CLOUD
-        try {
-            await developerService.updateUserProfile(targetUserId, {
-                wallet_balance: updatedBalance,
-                payment_requests: updatedRequests
-            });
-            console.log("✅ Deposit Verified: Balance updated to USh " + updatedBalance);
-        } catch (err) {
-            console.error("❌ Cloud Persist Error:", err);
-            throw err;
-        }
-
-        logGlobalAction('Payment Verification', `Request ${requestId} ${status} by ${activeRole}. Amount: ${amount}`);
+        logGlobalAction('Payment Verification', `Request ${requestId} ${status} for Account ${studentId}`);
     };
 
-    const purchasePlatformPass = async (studentId: string | number, type: '6 Months' | '1 Year') => {
+    const purchasePlatformPass = async (type: '6 Months' | '1 Year') => {
         const cost = type === '6 Months' ? 5000 : 9000;
         const months = type === '6 Months' ? 6 : 12;
 
-        let updatedBalance = 0;
-        let updatedExpiry = '';
-        let targetUserId: string | null = null;
-
+        if (studentProfile.id === 'std_user_1') throw new Error("Please log in to purchase a pass.");
         const currentBalance = studentProfile.walletBalance || 0;
         if (currentBalance < cost) throw new Error("Insufficient wallet balance. Please top up your wallet first.");
 
@@ -2758,70 +2704,44 @@ function useSchoolDataInternal() {
         const newExpiry = new Date(baseDate);
         newExpiry.setMonth(newExpiry.getMonth() + months);
 
-        updatedBalance = currentBalance - cost;
-        updatedExpiry = newExpiry.toISOString();
-        targetUserId = studentProfile.id;
+        const updatedBalance = currentBalance - cost;
+        const updatedExpiry = newExpiry.toISOString();
 
-        // Update Global Profile
+        // 1. Update UI (Self)
         setStudentProfile(prev => ({
             ...prev,
             walletBalance: updatedBalance,
             subscriptionEndDate: updatedExpiry,
             subscriptionStatus: 'active'
         }));
-        // Sync to Linked Student if applicable
-        setStudents(prev => prev.map(s => {
-            if (s.id.toString() === studentId.toString() || s.payCode === studentId) {
-                if ((s.walletBalance || 0) < cost) return s;
-                const startDate = new Date();
-                const currentExpiry = s.subscriptionExpiry ? new Date(s.subscriptionExpiry) : new Date(0);
-                const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
-                const newExpiry = new Date(baseDate);
-                newExpiry.setMonth(newExpiry.getMonth() + months);
 
-                if (typeof studentId === 'string' && studentId.length > 20) targetUserId = studentId;
-
-                return {
-                    ...s,
-                    walletBalance: (s.walletBalance || 0) - cost,
-                    subscriptionExpiry: newExpiry.toISOString(),
-                    subscriptionStatus: 'active'
-                };
-            }
-            return s;
-        }));
-
-        // PERSIST TO CLOUD
-        if (targetUserId) {
-            try {
-                await developerService.updateUserProfile(targetUserId, {
-                    wallet_balance: updatedBalance,
-                    subscription_expiry: updatedExpiry,
-                    subscription_status: 'active'
-                });
-                console.log("✅ Cloud Sync Success: Subscription Purchased.");
-            } catch (err) {
-                console.error("❌ Cloud Sync Error (Purchase Pass):", err);
-            }
+        // 3. PERSIST TO CLOUD
+        try {
+            await developerService.updateUserProfile(studentProfile.id, {
+                wallet_balance: updatedBalance,
+                subscription_expiry: updatedExpiry,
+                subscription_status: 'active'
+            });
+            console.log("✅ Platform Pass Purchased Successfully.");
+        } catch (err) {
+            console.error("❌ Cloud Sync Error (Purchase Pass):", err);
         }
 
-        logGlobalAction('Plan Purchase', `User ${studentId} purchased ${type} pass.`, 'platform');
+        logGlobalAction('Plan Purchase', `User ${studentProfile.email} purchased ${type} pass.`, 'platform');
     };
 
-    const subscribeToTutor = async (studentId: string | number, tutorId: string) => {
+    const subscribeToTutor = async (tutorId: string) => {
         const tutor = tutors.find(t => t.id === tutorId);
         if (!tutor) throw new Error("Tutor not found.");
         const price = tutor.subscriptionPrice || 3000;
         const duration = tutor.subscriptionDuration || '6 Months';
         const months = duration === '1 Month' ? 1 : duration === '3 Months' ? 3 : 6;
 
-        // 1. Initial Validation & Data Prep
-        const student = students.find(s => s.id.toString() === studentId.toString() || s.payCode === studentId.toString());
-        if (!student) throw new Error("Critical: Student record not found.");
-        if ((student.walletBalance || 0) < price) throw new Error("Insufficient wallet balance for this subscription.");
+        if (studentProfile.id === 'std_user_1') throw new Error("Please log in to subscribe to tutors.");
+        if ((studentProfile.walletBalance || 0) < price) throw new Error("Insufficient wallet balance for this subscription.");
 
         // PRE-CALCULATE Everything
-        const existingSub = student.tutorSubscriptions?.find(ts => ts.tutorId === tutorId);
+        const existingSub = studentProfile.tutorSubscriptions?.find(ts => ts.tutorId === tutorId);
         const startDate = new Date();
         const currentExpiryStr = existingSub?.expiryDate;
         const currentExpiry = currentExpiryStr ? new Date(currentExpiryStr) : new Date(0);
@@ -2833,7 +2753,7 @@ function useSchoolDataInternal() {
         const newSub: TutorSubscription = {
             id: generateId(),
             tutorId,
-            studentId: student.id.toString(),
+            studentId: studentProfile.id,
             amount: price,
             status: 'Active',
             startDate: startDate.toISOString(),
@@ -2841,46 +2761,34 @@ function useSchoolDataInternal() {
             subscribedAt: startDate.toISOString()
         };
 
-        // 2. Execute SEQUENTIAL State Updates (Flat)
-        setStudents(prev => prev.map(s => {
-            if (s.id.toString() === studentId.toString() || s.payCode === studentId.toString()) {
-                if ((s.walletBalance || 0) < price) return s;
-                const otherSubs = s.tutorSubscriptions?.filter(ts => ts.tutorId !== tutorId) || [];
-                return {
-                    ...s,
-                    walletBalance: (s.walletBalance || 0) - price,
-                    tutorSubscriptions: [newSub, ...otherSubs]
-                };
-            }
-            return s;
+        const updatedBalance = (studentProfile.walletBalance || 0) - price;
+        const otherSubs = studentProfile.tutorSubscriptions?.filter(ts => ts.tutorId !== tutorId) || [];
+        const updatedSubs = [newSub, ...otherSubs];
+
+        // 1. Update UI (Self)
+        setStudentProfile(prev => ({
+            ...prev,
+            walletBalance: updatedBalance,
+            tutorSubscriptions: updatedSubs
         }));
 
-        setTutorSubscriptions(prev => [newSub, ...prev.filter(ts => !(ts.tutorId === tutorId && ts.studentId.toString() === student.id.toString()))]);
-
-        // Credit Tutor with 80% (Commission is 20%)
         const tutorEarnings = price * 0.8;
-        setTutors(prev => prev.map(t => t.id === tutorId ? {
-            ...t,
-            walletBalance: (t.walletBalance || 0) + tutorEarnings
-        } : t));
-
-        logGlobalAction('Tutor Subscription', `Student ${studentId} subscribed to Tutor ${tutorId}`, 'platform');
 
         // 3. PERSIST TO CLOUD
         try {
-            // Update Student
-            await developerService.updateUserProfile(student.id.toString(), {
-                wallet_balance: (student.walletBalance || 0) - price,
-                subscribed_tutors: [newSub, ...(student.tutorSubscriptions || [])]
+            await developerService.updateUserProfile(studentProfile.id, {
+                wallet_balance: updatedBalance,
+                subscribed_tutors: updatedSubs
             });
-            // Update Tutor
             await developerService.updateUserProfile(tutorId, {
                 wallet_balance: (tutor.walletBalance || 0) + tutorEarnings
             });
-            console.log("✅ Cloud Sync Success: Tutor Subscription complete.");
+            console.log("✅ Tutor Subscription Successful.");
         } catch (err) {
             console.error("❌ Cloud Sync Error (Tutor Sub):", err);
         }
+
+        logGlobalAction('Plan Purchase', `User ${studentProfile.email} subscribed to Tutor ${tutor.name}.`, 'platform');
     };
 
     const claimTutorEarnings = async (tutorId: string, amount: number) => {
@@ -3609,6 +3517,36 @@ function useSchoolDataInternal() {
             console.error("Cloud Sync Error (Delete Featured School):", err);
         }
     };
+
+    // --- STUDENT: PLATFORM WALLET HEARTBEAT ---
+    // This effect periodically refreshes the student's platform-wide wallet and requests.
+    // It ensures that approved payments are visible within seconds without a refresh.
+    useEffect(() => {
+        const syncStudentWallet = async () => {
+            if (!hydrated || studentProfile.id === 'std_user_1' || !studentProfile.id) return;
+
+            try {
+                const { data, error } = await supabase.from('profiles').select('wallet_balance, payment_requests, subscription_expiry, subscription_status, subscribed_tutors').eq('id', studentProfile.id).maybeSingle();
+                if (error) throw error;
+                if (data) {
+                    setStudentProfile(prev => ({
+                        ...prev,
+                        walletBalance: data.wallet_balance || 0,
+                        paymentRequests: data.payment_requests || [],
+                        subscriptionEndDate: data.subscription_expiry || "",
+                        subscriptionStatus: data.subscription_status || "expired",
+                        tutorSubscriptions: data.subscribed_tutors || []
+                    }));
+                }
+            } catch (err) {
+                console.error("❌ Wallet Sync Failed:", err);
+            }
+        };
+
+        syncStudentWallet();
+        const interval = setInterval(syncStudentWallet, 15000); // 15s Heartbeat
+        return () => clearInterval(interval);
+    }, [hydrated, studentProfile.id]);
     // Assuming StoreData interface is defined elsewhere and this is the return object of useSchoolDataInternal
     // Adding setSchoolProfile to the return object of the hook.
     // The instruction implies adding it to an interface, but the diff shows it being added to the returned object.
