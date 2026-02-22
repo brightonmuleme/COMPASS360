@@ -39,8 +39,7 @@ export const developerService = {
     getAllUsers: async () => {
         const { data, error } = await supabase
             .from('profiles')
-            .select('*')
-            .order('created_at', { ascending: false });
+            .select('*'); // Removed strict order to prevent fetch crash if cloud schema is partial
 
         if (error) throw error;
         return data;
