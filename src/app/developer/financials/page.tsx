@@ -34,7 +34,7 @@ export default function FinancialCenter() {
             const { data, error } = await supabase
                 .from('profiles')
                 .select('*')
-                .order('updated_at', { ascending: false }); // Latest activity first
+                .order('created_at', { ascending: false }); // Latest activity first
 
             if (error) throw error;
 
