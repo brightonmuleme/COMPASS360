@@ -2766,7 +2766,7 @@ function useSchoolDataInternal() {
         logGlobalAction('Plan Purchase', `User ${studentProfile.email} purchased ${type} pass.`, 'platform');
     };
 
-    const subscribeToTutor = async (tutorId: string) => {
+    const purchaseTutorSubscription = async (tutorId: string) => {
         const tutor = tutors.find(t => t.id === tutorId);
         if (!tutor) throw new Error("Tutor not found.");
         const price = tutor.subscriptionPrice || 3000;
@@ -3510,6 +3510,33 @@ function useSchoolDataInternal() {
         };
         fetchCloudConfig();
     }, [hydrated]);
+
+    // --- REAL-TIME WALLET & REQUEST SYNC ---
+    useEffect(() => {
+        if (!studentProfile || studentProfile.id === 'std_user_1' || !hydrated) return;
+
+        const walletSub = supabase
+            .channel(`sync-wallet-${studentProfile.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'profiles',
+                filter: `id=eq.${studentProfile.id}`
+            }, (payload) => {
+                const newProfile = payload.new as any;
+                console.log("🔔 Cloud Signal: Wallet Balance Updated.");
+                setStudentProfile(prev => ({
+                    ...prev,
+                    walletBalance: Number(newProfile.wallet_balance || 0),
+                    paymentRequests: newProfile.payment_requests || []
+                }));
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(walletSub);
+        };
+    }, [studentProfile.id, hydrated]);
 
     useEffect(() => {
         safeSetItem('app_landing_content_v1', landingPageContent);
@@ -5182,7 +5209,8 @@ function useSchoolDataInternal() {
         // Student Portal
         suggestions, addSuggestion, updateSuggestionStatus,
         studentProfile, setStudentProfile, updateStudentProfile, toggleStudentLike,
-        toggleTutorSubscription, // Renamed from subscribeToTutor
+        toggleTutorSubscription, // Interaction version (like/unlike)
+        purchaseTutorSubscription, // Transactional version (buy subscription)
 
         // Tutor Portal
         tutorProfile, setTutorProfile,
@@ -5378,7 +5406,7 @@ function useSchoolDataInternal() {
         submitSubscriptionRequest,
         verifySubscriptionRequest,
         purchasePlatformPass,
-        subscribeToTutor,
+        purchaseTutorSubscription,
         claimTutorEarnings,
         processPayout,
 
