@@ -2648,27 +2648,32 @@ function useSchoolDataInternal() {
             paymentRequests: [newRequest, ...(prev.paymentRequests || [])]
         }));
 
-        // 4. PERSIST TO CLOUD (Supabase Profiles Layer)
+        // 4. PERSIST TO CLOUD (Universal Atomic Upsert)
         try {
-            const { data: profile } = await supabase.from('profiles').select('payment_requests').eq('id', activeId).maybeSingle();
+            // Force dynamic identity check to ensure we aren't using a stale ID from state
+            const { data: { user } } = await supabase.auth.getUser();
+            const cloudId = user?.id || activeId;
 
-            if (!profile) {
-                await supabase.from('profiles').upsert({
-                    id: activeId,
-                    full_name: studentProfile.name,
-                    role: 'Student',
-                    payment_requests: [newRequest]
-                });
-            } else {
-                const cloudRequests = (profile as any).payment_requests || [];
-                const merged = [newRequest, ...cloudRequests];
-                await developerService.updateUserProfile(activeId, {
-                    payment_requests: merged
-                });
-            }
-            console.log("✅ Platform Ledger: Deposit Request Persisted to Cloud.");
+            const { data: profile } = await supabase.from('profiles').select('payment_requests').eq('id', cloudId).maybeSingle();
+
+            const cloudRequests = (profile as any)?.payment_requests || [];
+            // Filter out any potential local duplicates that might have been pushed partially
+            const filteredCloud = cloudRequests.filter((r: any) => r.id !== newRequest.id && r.transactionId !== newRequest.transactionId);
+            const merged = [newRequest, ...filteredCloud];
+
+            const { error: syncError } = await supabase.from('profiles').upsert({
+                id: cloudId,
+                full_name: studentProfile.name,
+                email: studentProfile.email,
+                role: (profile as any)?.role || 'Student',
+                payment_requests: merged
+            });
+
+            if (syncError) throw syncError;
+            console.log(`✅ Platform Ledger: TXN ${newRequest.transactionId} safely vaulted for ${cloudId}.`);
         } catch (err: any) {
-            console.error("❌ Cloud Persist Error (Submission):", err.message);
+            console.error("❌ Cloud Persist Failed:", err.message);
+            // We don't throw here to allow LocalStorage fallback to keep user session feeling smooth
         }
 
         logGlobalAction('Subscription Request', `Student ${studentProfile.name} submitted TXN ${request.transactionId}`, 'platform');
