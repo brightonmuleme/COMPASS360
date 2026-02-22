@@ -21,14 +21,22 @@ export default function UserManagerPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('All');
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchUsers = async () => {
             try {
+                setLoading(true);
+                setError(null);
                 const data = await developerService.getAllUsers();
+                console.log("🔍 USER DATA FETCHED:", data);
+                if (!data || data.length === 0) {
+                    console.warn("⚠️ Cloud returned 0 users. Checking RLS policies might be necessary.");
+                }
                 setUsers(data || []);
-            } catch (error) {
-                console.error("Failed to fetch users", error);
+            } catch (err: any) {
+                console.error("❌ Failed to fetch users:", err);
+                setError(err.message || "An unknown error occurred while syncing with the cloud.");
             } finally {
                 setLoading(false);
             }
@@ -93,8 +101,16 @@ export default function UserManagerPage() {
                 </div>
             </div>
 
-            {/* List Body */}
-            {loading ? (
+            {/* Final Diagnostic UI */}
+            {error ? (
+                <div className="flex flex-col items-center justify-center py-32 bg-red-50 rounded-[3rem] border border-red-100 shadow-sm">
+                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                        <MoreVertical size={32} />
+                    </div>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-red-900 mb-2">Cloud Sync Failed</h3>
+                    <p className="text-xs font-bold text-red-500 max-w-md text-center px-8">{error}</p>
+                </div>
+            ) : loading ? (
                 <div className="flex flex-col items-center justify-center py-32 bg-white rounded-[3rem] border border-slate-100 shadow-sm">
                     <Loader2 className="animate-spin text-red-600 mb-6" size={48} />
                     <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Syncing Cloud Identity...</p>
