@@ -13,6 +13,16 @@ export const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
+const safeSetItem = (key: string, value: any) => {
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+        } catch (e) {
+            console.warn(`LocalStorage failed for ${key}`, e);
+        }
+    }
+};
+
 const SchoolContext = createContext<ReturnType<typeof useSchoolDataInternal> | null>(null);
 const SchoolContextProvider = SchoolContext.Provider;
 
@@ -478,6 +488,7 @@ export interface StudentProfile {
     subscriptionEndDate: string;
     walletBalance: number;
     paymentRequests: SubscriptionRequest[];
+    tutorSubscriptions: TutorSubscription[]; // Restored
     password?: string;
 }
 
@@ -1646,6 +1657,14 @@ function useSchoolDataInternal() {
         return null;
     });
 
+    const [featuredSchools, setFeaturedSchools] = useState<any[]>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('app_featured_schools_v4');
+            return saved ? JSON.parse(saved) : [];
+        }
+        return [];
+    });
+
     const [developerProfile, setDeveloperProfile] = useState<DeveloperProfile | null>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_developer_profile_v1');
@@ -2604,41 +2623,59 @@ function useSchoolDataInternal() {
     };
 
     const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
-        // 1. Validate Identity
-        if (studentProfile.id === 'std_user_1' || !studentProfile.email) {
-            throw new Error("You must be logged in to submit a payment request.");
+        // 1. Validate Identity (Recover UUID if currently using Demo ID)
+        let activeId = studentProfile.id;
+        if (activeId === 'std_user_1') {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) activeId = user.id;
+            else throw new Error("You must be logged in to submit a payment request.");
+        }
+
+        if (!studentProfile.email) {
+            throw new Error("Student email missing. Please update your profile.");
         }
 
         const newRequest: SubscriptionRequest = {
             ...request,
             id: generateId(),
-            studentId: studentProfile.id, // Strictly use Cloud UUID
-            email: studentProfile.email,    // Link to Email
+            studentId: activeId,
+            email: studentProfile.email,
             status: 'Pending',
             submittedAt: new Date().toISOString()
         };
 
         // 2. Local Duplicate Check
-        const duplicate = students.some(s => s.paymentRequests?.some(r => r.transactionId === request.transactionId && r.status !== 'Rejected'));
+        const duplicate = (studentProfile.paymentRequests || []).some(r => r.transactionId === request.transactionId && r.status !== 'Rejected');
         if (duplicate) throw new Error("This Transaction ID has already been submitted.");
 
         // 3. Update UI Immediate
-        const updatedRequests = [newRequest, ...(studentProfile.paymentRequests || [])];
-        setStudentProfile(prev => ({ ...prev, paymentRequests: updatedRequests }));
+        setStudentProfile(prev => ({
+            ...prev,
+            id: activeId,
+            paymentRequests: [newRequest, ...(prev.paymentRequests || [])]
+        }));
 
-        // 3. PERSIST TO CLOUD
+        // 4. PERSIST TO CLOUD (Supabase Profiles Layer)
         try {
-            const { data: profile } = await supabase.from('profiles').select('payment_requests').eq('id', studentProfile.id).maybeSingle();
+            const { data: profile } = await supabase.from('profiles').select('payment_requests').eq('id', activeId).maybeSingle();
 
-            const cloudRequests = profile?.payment_requests || [];
-            const merged = [newRequest, ...cloudRequests];
-
-            await developerService.updateUserProfile(studentProfile.id, {
-                payment_requests: merged
-            });
-            console.log("✅ Deposit Request Sent Successfully via Email Identity.");
-        } catch (err) {
-            console.error("❌ Cloud Persist Error (Submission):", err);
+            if (!profile) {
+                await supabase.from('profiles').upsert({
+                    id: activeId,
+                    full_name: studentProfile.name,
+                    role: 'Student',
+                    payment_requests: [newRequest]
+                });
+            } else {
+                const cloudRequests = profile.payment_requests || [];
+                const merged = [newRequest, ...cloudRequests];
+                await developerService.updateUserProfile(activeId, {
+                    payment_requests: merged
+                });
+            }
+            console.log("✅ Platform Ledger: Deposit Request Persisted to Cloud.");
+        } catch (err: any) {
+            console.error("❌ Cloud Persist Error (Submission):", err.message);
         }
 
         logGlobalAction('Subscription Request', `Student ${studentProfile.name} submitted TXN ${request.transactionId}`, 'platform');
