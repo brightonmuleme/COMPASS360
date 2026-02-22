@@ -1939,30 +1939,25 @@ function useSchoolDataInternal() {
                     console.error("❌ Consolidated Sync Error (Developer):", err);
                 }
             } else if (studentProfile.id) {
-                // --- STUDENT SYNC (Smarter Merge) ---
                 try {
-                    // Try to find profile by UUID (if logged in) OR PayCode (if guest/linking)
-                    let query = supabase.from('profiles').select('*');
-                    if (studentProfile.id !== 'std_user_1') {
-                        query = query.eq('id', studentProfile.id);
-                    } else if (studentProfile.payCode) {
-                        query = query.eq('pay_code', studentProfile.payCode);
-                    } else {
-                        return; // No identity to sync
-                    }
+                    // 1. IDENTITY: Use Auth UID (Cloud Wallet Cabin)
+                    if (!studentProfile.id || studentProfile.id === 'std_user_1') return;
 
-                    const { data: profile } = await query.maybeSingle();
+                    const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', studentProfile.id).maybeSingle();
 
-                    if (profile) {
+                    if (profile && !error) {
                         setStudentProfile(prev => {
-                            // Merge Payment Requests
+                            // Stable Merge: Keep 'Approved' or 'Rejected' status even if Cloud is slow to update
                             const cloudRequests = profile.payment_requests || [];
                             const localRequests = prev.paymentRequests || [];
 
                             const requestMap = new Map();
-                            [...localRequests, ...cloudRequests].forEach(r => {
-                                const existing = requestMap.get(r.id);
-                                if (!existing || r.status !== 'Pending' || (existing && existing.status === 'Pending')) {
+                            // First, add cloud status (The truth)
+                            cloudRequests.forEach((r: any) => requestMap.set(r.id, r));
+
+                            // Then, keep local requests if they don't exist in cloud yet OR if they are more 'advanced'
+                            localRequests.forEach(r => {
+                                if (!requestMap.has(r.id)) {
                                     requestMap.set(r.id, r);
                                 }
                             });
@@ -1972,16 +1967,17 @@ function useSchoolDataInternal() {
 
                             return {
                                 ...prev,
-                                id: studentProfile.id === 'std_user_1' ? prev.id : profile.id,
                                 walletBalance: profile.wallet_balance || 0,
                                 paymentRequests: mergedRequests,
-                                subscriptionStatus: (profile.subscription_status as any) || prev.subscriptionStatus,
+                                subscriptionStatus: profile.subscription_status || prev.subscriptionStatus,
                                 subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate,
-                                subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds
+                                tutorSubscriptions: profile.subscribed_tutors || prev.tutorSubscriptions
                             };
                         });
                     }
-                } catch (err) { }
+                } catch (err) {
+                    console.error("❌ Platform Sync Failed:", err);
+                }
             }
         };
 
@@ -2657,12 +2653,14 @@ function useSchoolDataInternal() {
                 throw new Error(`Profile for Account ID ${studentId} not found in Cloud.`);
             }
 
-            const currentBalance = profile.wallet_balance || 0;
+            // Ensure we are working with numbers to prevent "0 + 5000 = 05000" or NaN issues
+            const currentBalance = Number(profile.wallet_balance || 0);
+            const verifiedAmount = Number(amount || 0);
             const currentRequests = profile.payment_requests || [];
 
             // 2. Calculate New State
-            const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
-            const updatedBalance = status === 'Approved' ? currentBalance + amount : currentBalance;
+            const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount: verifiedAmount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
+            const updatedBalance = status === 'Approved' ? currentBalance + verifiedAmount : currentBalance;
 
             // 3. PERSIST TO CLOUD (Universal Source of Truth)
             try {
@@ -2670,17 +2668,21 @@ function useSchoolDataInternal() {
                     wallet_balance: updatedBalance,
                     payment_requests: updatedRequests
                 });
-                console.log("✅ Deposit Processed in Cloud.");
+                console.log(`✅ DISPATCH: Account ${profile.id} wallet updated to ${updatedBalance} UGX.`);
 
-                // Return data for immediate UI feedback if needed
+                // 4. Return data for immediate UI feedback
                 return { updatedBalance, updatedRequests };
             } catch (pErr) {
                 console.error("❌ Cloud Persist Error (Verification):", pErr);
                 throw pErr;
             } finally {
-                // 5. Sync Local UI for Student (if they are observing)
+                // 5. Sync Local UI for Student (if they are the one being verified in this browser)
                 if (studentProfile.id.toString() === profile.id.toString()) {
-                    setStudentProfile(prev => ({ ...prev, walletBalance: updatedBalance, paymentRequests: updatedRequests }));
+                    setStudentProfile(prev => ({
+                        ...prev,
+                        walletBalance: updatedBalance,
+                        paymentRequests: updatedRequests
+                    }));
                 }
             }
         } catch (fetchErr: any) {
@@ -3517,35 +3519,9 @@ function useSchoolDataInternal() {
         }
     };
 
-    // --- STUDENT: PLATFORM WALLET HEARTBEAT ---
-    // This effect periodically refreshes the student's platform-wide wallet and requests.
-    // It ensures that approved payments are visible within seconds without a refresh.
-    useEffect(() => {
-        const syncStudentWallet = async () => {
-            if (!hydrated || studentProfile.id === 'std_user_1' || !studentProfile.id) return;
+    // --- CLEANED UP: DUPLICATE HEARTBEAT REMOVED ---
+    // Consolidated into main syncPlatformData effect at line 1850.
 
-            try {
-                const { data, error } = await supabase.from('profiles').select('wallet_balance, payment_requests, subscription_expiry, subscription_status, subscribed_tutors').eq('id', studentProfile.id).maybeSingle();
-                if (error) throw error;
-                if (data) {
-                    setStudentProfile(prev => ({
-                        ...prev,
-                        walletBalance: data.wallet_balance || 0,
-                        paymentRequests: data.payment_requests || [],
-                        subscriptionEndDate: data.subscription_expiry || "",
-                        subscriptionStatus: data.subscription_status || "expired",
-                        tutorSubscriptions: data.subscribed_tutors || []
-                    }));
-                }
-            } catch (err) {
-                console.error("❌ Wallet Sync Failed:", err);
-            }
-        };
-
-        syncStudentWallet();
-        const interval = setInterval(syncStudentWallet, 15000); // 15s Heartbeat
-        return () => clearInterval(interval);
-    }, [hydrated, studentProfile.id]);
     // Assuming StoreData interface is defined elsewhere and this is the return object of useSchoolDataInternal
     // Adding setSchoolProfile to the return object of the hook.
     // The instruction implies adding it to an interface, but the diff shows it being added to the returned object.
