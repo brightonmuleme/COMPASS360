@@ -36,6 +36,14 @@ export async function GET(req: NextRequest) {
             results.profiles_columns = columns;
         }
 
+        // Fetch top 10 profiles to see actual content
+        const { data: profileRecords, error: profileErr } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, role, wallet_balance, payment_requests')
+            .limit(10);
+
+        results.profiles_data = profileErr ? `Error: ${profileErr.message}` : profileRecords;
+
         for (const table of tablesToTry) {
             const { count, error } = await supabase
                 .from(table)
