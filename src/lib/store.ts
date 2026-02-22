@@ -2607,6 +2607,7 @@ function useSchoolDataInternal() {
             email: 'student@vine.ac.ug',
             likedContentIds: [],
             subscribedTutorIds: [],
+            tutorSubscriptions: [],
             subscriptionStatus: 'active',
             subscriptionEndDate: '2026-12-31',
             walletBalance: 0,
@@ -2627,7 +2628,7 @@ function useSchoolDataInternal() {
 
                 const { data: profile, error } = await supabase
                     .from('profiles')
-                    .select('wallet_balance, payment_requests')
+                    .select('wallet_balance, payment_requests, subscription_status, subscription_expiry')
                     .eq('id', user.id)
                     .single();
 
@@ -2638,7 +2639,9 @@ function useSchoolDataInternal() {
                         ...prev,
                         id: user.id,
                         walletBalance: Number(profile.wallet_balance || 0),
-                        paymentRequests: profile.payment_requests || []
+                        paymentRequests: profile.payment_requests || [],
+                        subscriptionStatus: profile.subscription_status || 'expired',
+                        subscriptionEndDate: profile.subscription_expiry
                     }));
                     setHydratedFinancials(true);
                 }
@@ -2780,26 +2783,29 @@ function useSchoolDataInternal() {
         const updatedBalance = currentBalance - cost;
         const updatedExpiry = newExpiry.toISOString();
 
-        // 1. Update UI (Self)
-        setStudentProfile(prev => ({
-            ...prev,
-            walletBalance: updatedBalance,
-            subscriptionEndDate: updatedExpiry,
-            subscriptionStatus: 'active'
-        }));
-
-        // 3. PERSIST TO CLOUD
+        // 2. Persist to Cloud
         try {
-            await developerService.updateUserProfile(studentProfile.id, {
+            const { error: syncError } = await supabase.from('profiles').update({
                 wallet_balance: updatedBalance,
-                subscription_expiry: updatedExpiry,
-                subscription_status: 'active'
-            });
-            console.log("✅ Platform Pass Purchased Successfully.");
-        } catch (err) {
-            console.error("❌ Cloud Sync Error (Purchase Pass):", err);
-        }
+                subscription_status: 'active',
+                subscription_expiry: updatedExpiry
+            }).eq('id', studentProfile.id);
 
+            if (syncError) throw syncError;
+
+            // 3. Update UI (Self)
+            setStudentProfile(prev => ({
+                ...prev,
+                walletBalance: updatedBalance,
+                subscriptionEndDate: updatedExpiry,
+                subscriptionStatus: 'active'
+            }));
+
+            console.log(`✅ PLATFORM PASS: Access extended to ${updatedExpiry}`);
+        } catch (err: any) {
+            console.error("❌ Subscription Purchase Failed:", err.message);
+            throw err;
+        }
         logGlobalAction('Plan Purchase', `User ${studentProfile.email} purchased ${type} pass.`, 'platform');
     };
 
