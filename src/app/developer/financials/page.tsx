@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useMemo } from 'react';
 import { useSchoolData, formatMoney, SubscriptionRequest, PayoutRequest } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import {
     CheckCircle,
     XCircle,
@@ -20,30 +21,50 @@ import {
 } from "lucide-react";
 
 export default function FinancialCenter() {
-    const { students, tutors, verifySubscriptionRequest, processPayout } = useSchoolData();
+    const { tutors, verifySubscriptionRequest, processPayout } = useSchoolData();
     const [activeTab, setActiveTab] = useState<'deposits' | 'payouts' | 'analytics'>('deposits');
     const [searchQuery, setSearchQuery] = useState('');
     const [showRegistry, setShowRegistry] = useState(false);
+    const [cloudProfiles, setCloudProfiles] = useState<any[]>([]);
+    const [loadingLedger, setLoadingLedger] = useState(true);
 
-    // --- DATA AGGREGATION ---
+    const fetchCloudLedger = async () => {
+        try {
+            setLoadingLedger(true);
+            const { data, error } = await supabase.from('profiles').select('*');
+            if (error) throw error;
+            setCloudProfiles(data || []);
+        } catch (err) {
+            console.error("Failed to fetch cloud ledger:", err);
+        } finally {
+            setLoadingLedger(false);
+        }
+    };
+
+    React.useEffect(() => {
+        fetchCloudLedger();
+    }, []);
+
+    // --- DATA AGGREGATION (Based on Cloud Profiles, not School List) ---
     const approvedTransactions = useMemo(() => {
         const all: (SubscriptionRequest & { studentName: string })[] = [];
-        students.forEach(s => {
-            (s.paymentRequests || []).forEach(r => {
-                if (r.status === 'Approved') all.push({ ...r, studentName: s.name });
+        cloudProfiles.forEach(p => {
+            (p.payment_requests || []).forEach((r: any) => {
+                if (r.status === 'Approved') all.push({ ...r, studentName: p.full_name || p.name || 'Cloud User' });
             });
         });
         return all.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-    }, [students]);
+    }, [cloudProfiles]);
+
     const pendingDeposits = useMemo(() => {
         const all: (SubscriptionRequest & { studentId: string; studentName: string })[] = [];
-        students.forEach(s => {
-            (s.paymentRequests || []).forEach(r => {
-                if (r.status === 'Pending') all.push({ ...r, studentId: s.id.toString(), studentName: s.name });
+        cloudProfiles.forEach(p => {
+            (p.payment_requests || []).forEach((r: any) => {
+                if (r.status === 'Pending') all.push({ ...r, studentId: p.id.toString(), studentName: p.full_name || p.name || 'Cloud User' });
             });
         });
         return all.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-    }, [students]);
+    }, [cloudProfiles]);
 
     const pendingPayouts = useMemo(() => {
         const all: (PayoutRequest & { tutorName: string })[] = [];
@@ -57,11 +78,10 @@ export default function FinancialCenter() {
 
     const stats = useMemo(() => {
         let totalRevenue = 0;
-        let totalCommission = 0;
         let totalPayouts = 0;
 
-        students.forEach(s => {
-            (s.paymentRequests || []).forEach(r => {
+        cloudProfiles.forEach(p => {
+            (p.payment_requests || []).forEach((r: any) => {
                 if (r.status === 'Approved') totalRevenue += (r.amount || 0);
             });
         });
@@ -73,7 +93,7 @@ export default function FinancialCenter() {
         });
 
         return { totalRevenue, totalPayouts, platformBalance: totalRevenue - totalPayouts };
-    }, [students, tutors]);
+    }, [cloudProfiles, tutors]);
 
     // --- ACTIONS ---
     const handleVerifyDeposit = async (req: any, status: 'Approved' | 'Rejected') => {
@@ -84,6 +104,8 @@ export default function FinancialCenter() {
 
         try {
             await verifySubscriptionRequest(req.id, req.studentId, Number(amount), status, reason || undefined);
+            // RE-FETCH AFTER APPROVAL so stats and list update immediately
+            fetchCloudLedger();
         } catch (err: any) {
             alert(err.message);
         }

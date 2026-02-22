@@ -2671,23 +2671,22 @@ function useSchoolDataInternal() {
                     payment_requests: updatedRequests
                 });
                 console.log("✅ Deposit Processed in Cloud.");
+
+                // Return data for immediate UI feedback if needed
+                return { updatedBalance, updatedRequests };
             } catch (pErr) {
                 console.error("❌ Cloud Persist Error (Verification):", pErr);
+                throw pErr;
+            } finally {
+                // 5. Sync Local UI for Student (if they are observing)
+                if (studentProfile.id.toString() === profile.id.toString()) {
+                    setStudentProfile(prev => ({ ...prev, walletBalance: updatedBalance, paymentRequests: updatedRequests }));
+                }
             }
-
-            // 5. Sync Local UI for Student (if they are observing)
-            if (studentProfile.id.toString() === profile.id.toString()) {
-                setStudentProfile(prev => ({ ...prev, walletBalance: updatedBalance, paymentRequests: updatedRequests }));
-            }
-
-            console.log("✅ Deposit Processed via Email Account Identity.");
-
         } catch (fetchErr: any) {
             console.error("❌ Identity Resolution Failed:", fetchErr);
             throw new Error(`Cloud verification failed: ${fetchErr.message}`);
         }
-
-        logGlobalAction('Payment Verification', `Request ${requestId} ${status} for Account ${studentId}`);
     };
 
     const purchasePlatformPass = async (type: '6 Months' | '1 Year') => {
