@@ -31,11 +31,18 @@ export default function FinancialCenter() {
     const fetchCloudLedger = async () => {
         try {
             setLoadingLedger(true);
-            const { data, error } = await supabase.from('profiles').select('*');
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('updated_at', { ascending: false }); // Latest activity first
+
             if (error) throw error;
+
+            // Log for debugging (remove in production)
+            console.log(`📡 Cloud Ledger: Loaded ${data?.length || 0} profiles.`);
             setCloudProfiles(data || []);
         } catch (err) {
-            console.error("Failed to fetch cloud ledger:", err);
+            console.error("❌ Cloud Ledger Sync Failed:", err);
         } finally {
             setLoadingLedger(false);
         }
@@ -45,11 +52,12 @@ export default function FinancialCenter() {
         fetchCloudLedger();
     }, []);
 
-    // --- DATA AGGREGATION (Based on Cloud Profiles, not School List) ---
+    // --- DATA AGGREGATION (Safe check for JSONB objects) ---
     const approvedTransactions = useMemo(() => {
         const all: (SubscriptionRequest & { studentName: string })[] = [];
         cloudProfiles.forEach(p => {
-            (p.payment_requests || []).forEach((r: any) => {
+            const requests = Array.isArray(p.payment_requests) ? p.payment_requests : [];
+            requests.forEach((r: any) => {
                 if (r.status === 'Approved') all.push({ ...r, studentName: p.full_name || p.name || 'Cloud User' });
             });
         });
@@ -59,8 +67,16 @@ export default function FinancialCenter() {
     const pendingDeposits = useMemo(() => {
         const all: (SubscriptionRequest & { studentId: string; studentName: string })[] = [];
         cloudProfiles.forEach(p => {
-            (p.payment_requests || []).forEach((r: any) => {
-                if (r.status === 'Pending') all.push({ ...r, studentId: p.id.toString(), studentName: p.full_name || p.name || 'Cloud User' });
+            const requests = Array.isArray(p.payment_requests) ? p.payment_requests : [];
+            requests.forEach((r: any) => {
+                if (r.status === 'Pending') {
+                    all.push({
+                        ...r,
+                        studentId: p.id.toString(),
+                        studentName: p.full_name || p.name || 'Cloud User',
+                        email: p.email // useful for contact
+                    });
+                }
             });
         });
         return all.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
