@@ -175,15 +175,18 @@ export default function ResourceCenter() {
 
     const filteredTutors = useMemo(() => {
         if (activeTab !== 'Tutors') return [];
-        const VERIFIED_TUTOR_IDS = ['dvid', 'compass_tutor'];
+
+        // Internal Core IDs that should be hidden from the "Tutors" list
+        const CORE_INTERNAL_IDS = ['system', 'admin_main', developerProfile?.id].filter(Boolean);
+
         return tutors.filter(t =>
-            VERIFIED_TUTOR_IDS.includes(t.id) && (
+            !CORE_INTERNAL_IDS.includes(t.id) && (
                 !searchQuery ||
                 t.name.toLowerCase().includes(searchLower) ||
                 (t.department && t.department.toLowerCase().includes(searchLower))
             )
         );
-    }, [tutors, activeTab, searchQuery, searchLower]);
+    }, [tutors, activeTab, searchQuery, searchLower, developerProfile]);
 
     const checkTutorAccess = (tutorId: string) => {
         if (SYSTEM_TUTOR_IDS.includes(tutorId)) return true;
