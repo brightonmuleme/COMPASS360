@@ -18,6 +18,7 @@ export default function StudentDashboard() {
         ...studentProfile,
         id: studentProfile.id,
         name: studentProfile.name,
+        subscriptionExpiry: studentProfile.subscriptionEndDate,
         totalFees: 0,
         balance: 0,
         programme: 'Independent Learner',
@@ -45,15 +46,16 @@ export default function StudentDashboard() {
         }
     }, [studentProfile, hydrated, router]);
 
-    // Timer Logic - Tied to institutional record primarily
+    // Unified Expiry Date - Prioritize the institutional record, fallback to cloud profile
+    const effectiveExpiry = displayStudent?.subscriptionExpiry || studentProfile.subscriptionEndDate;
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
     useEffect(() => {
-        if (!displayStudent?.subscriptionExpiry) return;
+        if (!effectiveExpiry) return;
 
         const updateTimer = () => {
             const now = new Date();
-            const expiry = new Date(displayStudent.subscriptionExpiry!);
+            const expiry = new Date(effectiveExpiry);
             const totalSeconds = Math.floor((expiry.getTime() - now.getTime()) / 1000);
 
             if (totalSeconds > 0) {
@@ -72,7 +74,7 @@ export default function StudentDashboard() {
         updateTimer();
 
         return () => clearInterval(timerId);
-    }, [displayStudent]);
+    }, [effectiveExpiry]);
 
     const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
 
@@ -95,9 +97,12 @@ export default function StudentDashboard() {
     if (!STUDENT) return null;
 
     // Status logic: Platinum if institutional sub is active, Trial if portal sub is trial
-    const isInstitutionalActive = linkedStudent && new Date(linkedStudent.subscriptionExpiry || 0) > new Date();
-    const isActive = isInstitutionalActive || studentProfile.subscriptionStatus === 'active';
-    const isTrial = !isInstitutionalActive && studentProfile.subscriptionStatus === 'trial';
+    const now = new Date();
+    const expiryDate = new Date(effectiveExpiry || 0);
+    const isDateActive = expiryDate > now;
+
+    const isActive = isDateActive;
+    const isTrial = !isActive && studentProfile.subscriptionStatus === 'trial' && isDateActive;
 
     // Theme Colors
     const tierGradient = isActive
