@@ -2615,6 +2615,41 @@ function useSchoolDataInternal() {
         setStudentProfile(initialState);
     };
 
+    const [hydratedFinancials, setHydratedFinancials] = useState(false);
+
+    useEffect(() => {
+        const syncStudentFinancials = async () => {
+            if (!hydrated || hydratedFinancials) return;
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('wallet_balance, payment_requests')
+                    .eq('id', user.id)
+                    .single();
+
+                if (error) throw error;
+
+                if (profile) {
+                    setStudentProfile(prev => ({
+                        ...prev,
+                        id: user.id,
+                        walletBalance: Number(profile.wallet_balance || 0),
+                        paymentRequests: profile.payment_requests || []
+                    }));
+                    setHydratedFinancials(true);
+                }
+            } catch (err) {
+                console.warn("Financial sync failed, using local state:", err);
+            }
+        };
+
+        syncStudentFinancials();
+    }, [hydrated, hydratedFinancials, setStudentProfile]);
+
     const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
         // 1. Validate Identity (Recover UUID if currently using Demo ID)
         let activeId = studentProfile.id;
