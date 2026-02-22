@@ -2692,23 +2692,25 @@ function useSchoolDataInternal() {
             const currentBalance = Number(profile.wallet_balance || 0);
             const verifiedAmount = Number(amount || 0);
             const currentRequests = profile.payment_requests || [];
-
             // 2. Calculate New State
             const updatedRequests = currentRequests.map((r: any) => r.id === requestId ? { ...r, status, amount: verifiedAmount, rejectionReason: reason, verifiedAt: new Date().toISOString() } : r);
             const updatedBalance = status === 'Approved' ? currentBalance + verifiedAmount : currentBalance;
 
-            // 3. PERSIST TO CLOUD (Universal Source of Truth)
+            // 3. PERSIST TO CLOUD (Universal Source of Truth - Direct Write)
             try {
-                await developerService.updateUserProfile(profile.id, {
+                const { error: updateError } = await supabase.from('profiles').update({
                     wallet_balance: updatedBalance,
                     payment_requests: updatedRequests
-                });
-                console.log(`✅ DISPATCH: Account ${profile.id} wallet updated to ${updatedBalance} UGX.`);
+                }).eq('id', profile.id);
+
+                if (updateError) throw updateError;
+
+                console.log(`✅ CLOUD SYNC: Account ${profile.id} wallet updated to ${updatedBalance} UGX.`);
 
                 // 4. Return data for immediate UI feedback
                 return { updatedBalance, updatedRequests };
             } catch (pErr) {
-                console.error("❌ Cloud Persist Error (Verification):", pErr);
+                console.error("❌ Cloud Write Failed:", pErr);
                 throw pErr;
             } finally {
                 // 5. Sync Local UI for Student (if they are the one being verified in this browser)
