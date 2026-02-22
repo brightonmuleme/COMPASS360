@@ -178,6 +178,7 @@ export interface SubscriptionRequest {
     amount?: number; // Filled by developer during verification
     status: SubscriptionRequestStatus;
     submittedAt: string;
+    email?: string; // Link to Email identity
     verifiedAt?: string;
     rejectionReason?: string;
 }
@@ -1657,14 +1658,6 @@ function useSchoolDataInternal() {
         return null;
     });
 
-    const [featuredSchools, setFeaturedSchools] = useState<any[]>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('app_featured_schools_v4');
-            return saved ? JSON.parse(saved) : [];
-        }
-        return [];
-    });
-
     const [developerProfile, setDeveloperProfile] = useState<DeveloperProfile | null>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_developer_profile_v1');
@@ -2667,7 +2660,7 @@ function useSchoolDataInternal() {
                     payment_requests: [newRequest]
                 });
             } else {
-                const cloudRequests = profile.payment_requests || [];
+                const cloudRequests = (profile as any).payment_requests || [];
                 const merged = [newRequest, ...cloudRequests];
                 await developerService.updateUserProfile(activeId, {
                     payment_requests: merged
@@ -2779,7 +2772,7 @@ function useSchoolDataInternal() {
         if ((studentProfile.walletBalance || 0) < price) throw new Error("Insufficient wallet balance for this subscription.");
 
         // PRE-CALCULATE Everything
-        const existingSub = studentProfile.tutorSubscriptions?.find(ts => ts.tutorId === tutorId);
+        const existingSub = studentProfile.tutorSubscriptions?.find((ts: any) => ts.tutorId === tutorId);
         const startDate = new Date();
         const currentExpiryStr = existingSub?.expiryDate;
         const currentExpiry = currentExpiryStr ? new Date(currentExpiryStr) : new Date(0);
@@ -2800,7 +2793,7 @@ function useSchoolDataInternal() {
         };
 
         const updatedBalance = (studentProfile.walletBalance || 0) - price;
-        const otherSubs = studentProfile.tutorSubscriptions?.filter(ts => ts.tutorId !== tutorId) || [];
+        const otherSubs = studentProfile.tutorSubscriptions?.filter((ts: any) => ts.tutorId !== tutorId) || [];
         const updatedSubs = [newSub, ...otherSubs];
 
         // 1. Update UI (Self)
