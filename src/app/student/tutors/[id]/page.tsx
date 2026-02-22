@@ -199,7 +199,7 @@ export default function TutorProfilePage() {
                         if (!t) return null;
                         const price = t.subscriptionPrice || 3500;
                         const duration = t.subscriptionDuration || '6 Months';
-                        const hasFunds = (linkedStudent?.walletBalance || 0) >= price;
+                        const hasFunds = (studentProfile.walletBalance || 0) >= price;
 
                         return (
                             <div className="bg-[#0f0f0f] w-full max-w-lg rounded-[3rem] md:rounded-[3.5rem] border border-white/10 overflow-hidden shadow-[0_0_100px_rgba(0,0,0,1)] animate-scale-in">
@@ -241,7 +241,7 @@ export default function TutorProfilePage() {
                                         <div className="flex justify-between items-center px-4">
                                             <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Compass Wallet</span>
                                             <span className={`text-sm font-black ${hasFunds ? 'text-white' : 'text-red-500 animate-pulse'}`}>
-                                                {formatMoney(linkedStudent?.walletBalance || 0)}
+                                                {formatMoney(studentProfile.walletBalance || 0)}
                                             </span>
                                         </div>
                                         {hasFunds ? (

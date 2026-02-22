@@ -49,7 +49,7 @@ export default function TutorsPage() {
         if (!tutor) return;
 
         const price = tutor.subscriptionPrice || 3500;
-        const balance = linkedStudent.walletBalance || 0;
+        const balance = studentProfile.walletBalance || 0;
 
         if (balance < price) {
             if (confirm(`Insufficient Wallet Balance.\n\nYou need ${formatMoney(price)} but your balance is ${formatMoney(balance)}.\n\nGo to Wallet & Plans to top up?`)) {
@@ -140,7 +140,7 @@ export default function TutorsPage() {
                         </div>
                         <div className="relative z-10">
                             <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.4em] mb-2">Available Balance</p>
-                            <p className="text-4xl font-black text-white tracking-tighter">{formatMoney(linkedStudent.walletBalance || 0)}</p>
+                            <p className="text-4xl font-black text-white tracking-tighter">{formatMoney(studentProfile.walletBalance || 0)}</p>
                         </div>
                     </div>
                 )}
