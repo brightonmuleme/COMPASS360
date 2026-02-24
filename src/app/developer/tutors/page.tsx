@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import { useSchoolData } from '@/lib/store';
 import {
     Users,
@@ -17,24 +18,31 @@ import {
     Phone,
     ChevronRight,
     Trophy,
-    Activity
+    Activity,
+    TrendingUp,
+    ShieldCheck
 } from 'lucide-react';
 
 export default function TutorManagementPage() {
     const { tutors: localTutors } = useSchoolData();
     const [dbTutors, setDbTutors] = useState<any[]>([]);
+    const [allProfiles, setAllProfiles] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const router = useRouter();
 
     useEffect(() => {
         const fetchTutors = async () => {
             try {
+                // Fetch all profiles to find subscriptions and logs across the system
                 const { data } = await supabase
                     .from('profiles')
                     .select('*')
-                    .in('role', ['Tutor', 'tutor'])
                     .order('created_at', { ascending: false });
-                setDbTutors(data || []);
+
+                setAllProfiles(data || []);
+                const tutorsOnly = (data || []).filter(p => ['Tutor', 'tutor'].includes(p?.role || ''));
+                setDbTutors(tutorsOnly);
             } catch (error) {
                 console.error("Error fetching DB tutors:", error);
             } finally {
@@ -44,30 +52,58 @@ export default function TutorManagementPage() {
         fetchTutors();
     }, []);
 
-    // Merge local verified tutors with DB tutors, avoiding duplicates by email
-    const allTutors = useMemo(() => {
-        const combined = [...localTutors];
-        const localEmails = new Set(localTutors.map(t => t.email.toLowerCase()));
+    const formatMoney = (amount: number) => {
+        return `USH ${new Intl.NumberFormat('en-US').format(Math.floor(amount))}`;
+    };
 
+    // Merge local verified tutors with DB tutors, avoiding duplicates by email
+
+    // Unified Merging Strategy: UUID is the absolute key
+    const allTutors = useMemo(() => {
+        const merged = new Map<string, any>();
+
+        // 1. Load Local / Initial Tutors as base entries
+        localTutors.forEach(lt => {
+            merged.set(lt.id?.toString(), { ...lt });
+        });
+
+        // 2. Overlay DB Tutors - Database truth (IDs and is_verified) ALWAYS wins
         dbTutors.forEach(dbT => {
-            if (dbT.email && !localEmails.has(dbT.email.toLowerCase())) {
-                combined.push({
-                    id: dbT.id,
+            const dbId = dbT.id?.toString();
+            const existing = merged.get(dbId);
+
+            if (existing) {
+                // If ID matches exactly, update verify status and counters
+                // IMPORTANT: We use OR (||) for is_verified to ensure once verified, it stays verified even if one fetch source is stale
+                merged.set(dbId, {
+                    ...existing,
+                    name: dbT.full_name || existing.name,
+                    is_verified: dbT.is_verified || existing.is_verified || false,
+                    resources_count: dbT.resources_count || existing.resources_count || 0,
+                    subscribers_count: dbT.subscribers_count || existing.subscribers_count || 0
+                });
+            } else {
+                // If it's a new ID from Supabase, add it as a fresh profile
+                merged.set(dbId, {
+                    id: dbId,
                     name: dbT.full_name || 'Unregistered Tutor',
                     email: dbT.email,
                     phone: dbT.phone || '',
                     status: 'Active',
-                    stats: { subscribers: dbT.subscribers_count || 0, views: 0, uploads: dbT.resources_count || 0 },
+                    is_verified: dbT.is_verified || false,
+                    resources_count: dbT.resources_count || 0,
+                    subscribers_count: dbT.subscribers_count || 0,
                     department: 'Community'
-                } as any);
+                });
             }
         });
-        return combined;
+
+        return Array.from(merged.values());
     }, [localTutors, dbTutors]);
 
     const filteredTutors = allTutors.filter(t =>
-        (t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+        (t?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t?.email || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
@@ -111,20 +147,33 @@ export default function TutorManagementPage() {
                     {filteredTutors.map((tutor) => (
                         <div
                             key={tutor.id}
-                            className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-red-900/5 transition-all group relative overflow-hidden flex flex-col"
+                            onClick={() => router.push(`/developer/tutors/${tutor.id}`)}
+                            className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-red-900/5 transition-all group relative overflow-hidden flex flex-col cursor-pointer active:scale-[0.98]"
                         >
                             {/* Decorative Background */}
                             <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" />
 
                             <div className="relative z-10 flex flex-col h-full">
                                 <div className="flex items-start justify-between mb-8">
-                                    <div className="w-16 h-16 rounded-2xl bg-[#0d0d0d] flex items-center justify-center text-white text-2xl font-black shadow-xl shadow-slate-200 group-hover:bg-red-600 group-hover:rotate-6 transition-all">
+                                    <div className="w-16 h-16 rounded-2xl bg-[#0d0d0d] flex items-center justify-center text-white text-2xl font-black shadow-xl shadow-slate-200 group-hover:bg-red-600 group-hover:rotate-6 transition-all relative">
                                         {tutor.name?.[0] || 'T'}
+                                        {tutor.is_verified && (
+                                            <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-lg shadow-lg border-2 border-white animate-in zoom-in duration-500 shadow-emerald-500/20">
+                                                <ShieldCheck size={14} />
+                                            </div>
+                                        )}
                                     </div>
-                                    <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1.5">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                        Active
-                                    </span>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <span className="px-3 py-1.5 rounded-xl bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border border-slate-100 flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            Active
+                                        </span>
+                                        {tutor.is_verified && (
+                                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-100 rounded-lg italic animate-pulse">
+                                                Elite Certified
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="mb-8">
@@ -167,8 +216,11 @@ export default function TutorManagementPage() {
                                 </div>
 
                                 <div className="mt-auto flex items-center gap-3">
-                                    <button className="flex-1 py-4 bg-slate-900 hover:bg-black text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center justify-center gap-2">
-                                        Control Center <ArrowUpRight size={16} />
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); router.push(`/developer/tutors/${tutor.id}`); }}
+                                        className="flex-1 py-4 bg-slate-900 hover:bg-black text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center justify-center gap-2"
+                                    >
+                                        Financial Portfolio <ArrowUpRight size={16} />
                                     </button>
                                 </div>
                             </div>

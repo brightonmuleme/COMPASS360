@@ -73,6 +73,8 @@ export const authService = {
                             id: data.user.id,
                             full_name: params.name,
                             role: params.role,
+                            email: params.email,
+                            phone: params.phoneNumber,
                             school_id: params.schoolId,
                             pay_code: params.payCode
                         }
@@ -243,10 +245,14 @@ export const authService = {
             if (authError) throw authError;
 
             // B. Update Public Profile Table (if it exists)
-            if (updates.name) {
+            const profileUpdates: any = {};
+            if (updates.name) profileUpdates.full_name = updates.name;
+            if (updates.phone) profileUpdates.phone = updates.phone;
+
+            if (Object.keys(profileUpdates).length > 0) {
                 const { error: profileError } = await supabase
                     .from('profiles')
-                    .update({ full_name: updates.name })
+                    .update(profileUpdates)
                     .eq('id', user.id);
 
                 if (profileError) console.error("Profile update sync failed (non-critical):", profileError);

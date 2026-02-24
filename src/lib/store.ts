@@ -1354,45 +1354,7 @@ export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
 
 export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [];
 
-export const INITIAL_TUTORS: Tutor[] = [
-    {
-        id: 'dvid',
-        name: 'Kusasira David',
-        email: 'kusasiradavid@gmail.com',
-        phone: '+256 700 000000',
-        type: 'Full-time',
-        status: 'Active',
-        programmeIds: [],
-        department: 'Independent',
-        bio: 'Senior Tutor and Content Creator.',
-        stats: { subscribers: 0, views: 0, uploads: 0 },
-        password: 'password123'
-    },
-    {
-        id: 'compass_tutor',
-        name: 'Compass Tutor',
-        email: 'tutor@compass360.ug',
-        phone: '+256 700 000001',
-        type: 'Full-time',
-        status: 'Active',
-        programmeIds: [],
-        department: 'Independent',
-        bio: 'Official Compass 360 Education Partner.',
-        stats: { subscribers: 0, views: 0, uploads: 0 },
-        password: 'password123'
-    },
-    {
-        id: 'system',
-        name: 'System Administrator',
-        email: 'system@vine.ac.ug',
-        phone: '+256 000 000000',
-        type: 'Full-time',
-        status: 'Active',
-        programmeIds: [],
-        department: 'Information Technology',
-        bio: 'Automated system account for maintaining platform resources.'
-    }
-];
+export const INITIAL_TUTORS: Tutor[] = [];
 export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
     {
         id: 'tc1',
@@ -1938,6 +1900,7 @@ function useSchoolDataInternal() {
                             email: p.email || '',
                             phone: p.phone || '',
                             role: 'Tutor',
+                            is_verified: p.is_verified || false,
                             walletBalance: p.wallet_balance || 0,
                             payoutRequests: p.payout_requests || [],
                             subscriptionDaysLeft: 30,
@@ -2794,12 +2757,30 @@ function useSchoolDataInternal() {
             if (syncError) throw syncError;
 
             // 3. Update UI (Self)
+            const newLog = {
+                id: generateId(),
+                type: 'AppPass',
+                plan: type,
+                amount: cost,
+                timestamp: new Date().toISOString()
+            };
+            const updatedLogs = [newLog, ...(studentProfile.activityLogs || [])];
+
             setStudentProfile(prev => ({
                 ...prev,
                 walletBalance: updatedBalance,
                 subscriptionEndDate: updatedExpiry,
-                subscriptionStatus: 'active'
+                subscriptionStatus: 'active',
+                activityLogs: updatedLogs
             }));
+
+            // 4. Update Cloud
+            await supabase.from('profiles').update({
+                wallet_balance: updatedBalance,
+                subscription_status: 'active',
+                subscription_expiry: updatedExpiry,
+                activity_logs: updatedLogs
+            }).eq('id', studentProfile.id);
 
             console.log(`✅ PLATFORM PASS: Access extended to ${updatedExpiry}`);
         } catch (err: any) {
@@ -2855,13 +2836,25 @@ function useSchoolDataInternal() {
 
         // 3. PERSIST TO CLOUD
         try {
+            const newLog = {
+                id: generateId(),
+                type: 'Marketplace',
+                tutorId,
+                amount: price,
+                timestamp: new Date().toISOString()
+            };
+            const updatedLogs = [newLog, ...(studentProfile.activityLogs || [])];
+
             await developerService.updateUserProfile(studentProfile.id, {
                 wallet_balance: updatedBalance,
-                subscribed_tutors: updatedSubs
+                subscribed_tutors: updatedSubs,
+                activity_logs: updatedLogs
             });
             await developerService.updateUserProfile(tutorId, {
                 wallet_balance: (tutor.walletBalance || 0) + tutorEarnings
             });
+
+            setStudentProfile(prev => ({ ...prev, activityLogs: updatedLogs }));
             console.log("✅ Tutor Subscription Successful.");
         } catch (err) {
             console.error("❌ Cloud Sync Error (Tutor Sub):", err);
@@ -4489,15 +4482,31 @@ function useSchoolDataInternal() {
 
     // --- REQUISITION ACTIONS ---
 
+    const saveRequisitionAtomic = async (req: Requisition) => {
+        if (!schoolProfile.id || schoolProfile.id === 'vine_intl') return;
+        try {
+            await fetch('/api/requisitions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schoolId: schoolProfile.id, requisition: req })
+            });
+            console.log("☁️ Requisition Synced Atomically");
+        } catch (e) {
+            console.error("Atomic Sync Failed", e);
+        }
+    };
+
     const addRequisition = (req: Requisition) => {
         // Generate Human Readable ID if not present
-        const nextId = `REQ - ${(requisitions.length + 1).toString().padStart(3, '0')} `;
+        const nextId = `REQ-${(requisitions.length + 1).toString().padStart(3, '0')}`;
         const newReq = { ...req, readableId: nextId };
         setRequisitions(prev => [newReq, ...prev]);
+        saveRequisitionAtomic(newReq);
     };
 
     const updateRequisition = (updatedReq: Requisition) => {
         setRequisitions(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+        saveRequisitionAtomic(updatedReq);
     };
 
     const setRequisitionDraft = (draft: Partial<Requisition> | ((prev: Requisition) => Requisition)) => {
@@ -5111,6 +5120,7 @@ function useSchoolDataInternal() {
         requisitions,
         addRequisition,
         updateRequisition,
+        saveRequisitionAtomic,
         deleteRequisition,
         approveRequisition,
 
