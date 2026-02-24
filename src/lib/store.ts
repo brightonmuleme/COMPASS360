@@ -4490,7 +4490,7 @@ function useSchoolDataInternal() {
     // --- REQUISITION ACTIONS ---
 
     const saveRequisitionAtomic = async (req: Requisition) => {
-        if (!schoolProfile.id || schoolProfile.id === 'vine_intl') return;
+        if (!schoolProfile.id) return;
         try {
             await fetch('/api/requisitions', {
                 method: 'POST',
@@ -4988,7 +4988,7 @@ function useSchoolDataInternal() {
         const timer = setTimeout(async () => {
             try {
                 // Only push if we are currently logged in as a valid school schoolProfile
-                if (schoolProfile.status === 'Active' && schoolProfile.id !== 'vine_intl') {
+                if (schoolProfile.status === 'Active') {
                     // SAFEGUARD: Don't push if both students and programmes are empty but we haven't synced with cloud yet
                     // This prevents a fresh device with no data from accidentally overwriting a populated cloud state
                     // during the initial connection phase.
@@ -5006,7 +5006,7 @@ function useSchoolDataInternal() {
             } catch (e) {
                 console.error("☁️ Compass Cloud: Sync failed", e);
             }
-        }, 8000); // 8 second debounce to avoid spamming Supabase
+        }, 4000); // 4 second debounce (Faster sync for cross-device consistency)
 
         return () => clearTimeout(timer);
     }, [
