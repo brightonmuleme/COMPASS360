@@ -4799,6 +4799,25 @@ function useSchoolDataInternal() {
         setInventoryItems(prev => prev.map(i => i.id === item.id ? item : i));
     };
 
+    const applyInventoryDelta = async (itemId: string, delta: number, log: InventoryLog) => {
+        // 1. Update Local State Immediately (Optimistic)
+        setInventoryItems(prev => prev.map(item =>
+            item.id === itemId ? { ...item, quantity: item.quantity + delta, lastUpdated: new Date().toISOString() } : item
+        ));
+        setInventoryLogs(prev => [log, ...prev]);
+
+        // 2. Lock Sync to prevent Snapshot overlap
+        triggerManualActionLock();
+
+        // 3. Send Transactional Patch to Cloud
+        try {
+            await databaseService.applyInventoryTransaction(schoolProfile.id, itemId, delta, log);
+            console.log("☁️ Transaction Sync: Success");
+        } catch (e) {
+            console.error("☁️ Transaction Sync: Failed", e);
+        }
+    };
+
     const deleteInventoryItem = (id: string) => {
         triggerManualActionLock();
         setInventoryItems(prev => prev.filter(i => i.id !== id));
@@ -5439,6 +5458,7 @@ function useSchoolDataInternal() {
         inventoryItems,
         addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, i]); },
         updateInventoryItem,
+        applyInventoryDelta,
         deleteInventoryItem,
 
         inventorySettings,

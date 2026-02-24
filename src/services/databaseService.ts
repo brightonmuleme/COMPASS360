@@ -140,5 +140,28 @@ export const databaseService = {
             console.error('☁️ CLOUD SAVE CRITICAL ERROR:', error);
             throw error;
         }
+    },
+
+    applyInventoryTransaction: async (schoolId: string, itemId: string, delta: number, log: any) => {
+        // 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK
+        if (typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            console.warn("🛑 SAFETY BOUNDARY: Cloud Transaction Blocked on Localhost.");
+            return true;
+        }
+
+        try {
+            const response = await fetch('/api/cloud/inventory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schoolId, itemId, delta, log })
+            });
+
+            if (!response.ok) throw new Error('Transaction failed');
+            return await response.json();
+        } catch (error) {
+            console.error('☁️ TRANSACTION ERROR:', error);
+            throw error;
+        }
     }
 };

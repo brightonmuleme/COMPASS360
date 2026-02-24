@@ -30,7 +30,7 @@ export default function InventoryPage() {
         activeRole,
         inventoryLists, addInventoryList, deleteInventoryList,
         inventoryGroups, addInventoryGroup, updateInventoryGroup, deleteInventoryGroup,
-        inventoryItems, addInventoryItem, updateInventoryItem, deleteInventoryItem,
+        inventoryItems, addInventoryItem, updateInventoryItem, applyInventoryDelta, deleteInventoryItem,
         inventoryLogs, addInventoryLog, updateInventoryLog, deleteInventoryLog,
         inventorySettings, updateInventorySettings,
         students,
@@ -243,17 +243,10 @@ export default function InventoryPage() {
             return;
         }
 
-        let newQty = editAction === 'add'
-            ? editingItem.quantity + qty
-            : editingItem.quantity - qty;
+        let delta = editAction === 'add' ? qty : -qty;
+        let newQty = editingItem.quantity + delta;
 
-        updateInventoryItem({
-            ...editingItem,
-            quantity: newQty,
-            lastUpdated: editDate ? new Date(editDate).toISOString() : new Date().toISOString()
-        });
-
-        addInventoryLog({
+        applyInventoryDelta(editingItem.id, delta, {
             id: crypto.randomUUID(),
             itemId: editingItem.id,
             itemName: editingItem.name,
@@ -265,8 +258,6 @@ export default function InventoryPage() {
             user: activeRole || 'Unknown'
         });
 
-        // Don't close modal, just switch state or clear form to allow rapid edits?
-        // User probably expects it to close.
         setEditingItem(null);
         setEditQuantity('');
         setEditComment('');
@@ -303,17 +294,10 @@ export default function InventoryPage() {
             return;
         }
 
-        let newQty = action === 'add'
-            ? item.quantity + qty
-            : item.quantity - qty;
+        let delta = action === 'add' ? qty : -qty;
+        let newQty = item.quantity + delta;
 
-        updateInventoryItem({
-            ...item,
-            quantity: newQty,
-            lastUpdated: new Date().toISOString()
-        });
-
-        addInventoryLog({
+        applyInventoryDelta(item.id, delta, {
             id: crypto.randomUUID(),
             itemId: item.id,
             itemName: item.name,
@@ -346,22 +330,6 @@ export default function InventoryPage() {
                 key: prev.key + 1
             };
         });
-
-        // FORCE CLOUD SYNC
-        databaseService.saveSchoolCloudState(schoolProfile.id, {
-            inventoryItems: inventoryItems.map(i => i.id === item.id ? { ...i, quantity: newQty, lastUpdated: new Date().toISOString() } : i),
-            inventoryLogs: [{
-                id: crypto.randomUUID(),
-                itemId: item.id,
-                itemName: item.name,
-                action: action,
-                quantityChange: qty,
-                newQuantity: newQty,
-                comment: action === 'add' ? 'Quick Add' : (isRequirementsList ? 'Issued Requirement' : 'Quick Reduce'),
-                date: new Date().toISOString(),
-                user: activeRole || 'Unknown'
-            }, ...inventoryLogs]
-        }).catch(err => console.error("Cloud sync error after quick action:", err));
     };
 
     // --- HISTORY MANAGEMENT ---
@@ -539,6 +507,16 @@ export default function InventoryPage() {
         );
     };
 
+    // AUTO-SELECT DEFAULT LIST
+    useEffect(() => {
+        if (!selectedListId && inventoryLists.length > 0) {
+            const reqList = inventoryLists.find(l => l.name === 'Requirements');
+            if (reqList) {
+                setSelectedListId(reqList.id);
+            }
+        }
+    }, [inventoryLists, selectedListId]);
+
 
     return (
         <div className="flex h-screen bg-neutral-900 text-gray-100 font-sans overflow-hidden">
@@ -642,10 +620,18 @@ export default function InventoryPage() {
             <div className="flex-1 flex flex-col bg-neutral-900 overflow-hidden relative">
                 {/* Mobile Header Title (Layout handles hamburger) */}
                 {selectedListId && (
-                    <div className="md:hidden px-6 py-4 border-b border-neutral-800 flex justify-between items-center bg-black/40 backdrop-blur-md sticky top-0 z-[40]">
-                        <h2 className="text-sm font-black text-white uppercase tracking-wider truncate mr-4">
-                            {activeList?.name}
-                        </h2>
+                    <div className="md:hidden px-4 py-4 border-b border-neutral-800 flex justify-between items-center bg-black/40 backdrop-blur-md sticky top-0 z-[40] gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="p-2 bg-neutral-800 text-white rounded-xl border border-neutral-700 active:scale-95 transition-all"
+                            >
+                                <Menu className="w-5 h-5" />
+                            </button>
+                            <h2 className="text-xs font-black text-white uppercase tracking-wider truncate">
+                                {activeList?.name}
+                            </h2>
+                        </div>
                         <div className="flex items-center gap-1">
                             {!isReadOnly && (
                                 <button
@@ -851,8 +837,8 @@ export default function InventoryPage() {
                                                     {/* Three Dots - Edit */}
                                                     {!isReadOnly && (
                                                         <button
-                                                            className="absolute top-1 sm:top-2 right-1 sm:right-2 p-1.5 sm:p-2 rounded-full hover:bg-black/20 text-white/50 hover:text-white transition-colors z-20"
-
+                                                            className="absolute top-1 sm:top-2 right-1 sm:right-2 p-2 sm:p-2.5 rounded-full bg-black/40 hover:bg-black/60 text-white border border-white/10 hover:border-white/30 backdrop-blur-sm shadow-lg transition-all z-20 active:scale-90"
+                                                            title="Manual Entry / Edit"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setEditingItem(item);
@@ -861,7 +847,7 @@ export default function InventoryPage() {
                                                                 setEditComment('');
                                                             }}
                                                         >
-                                                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="12" cy="19" r="2" /></svg>
+                                                            <MoreVertical className="w-5 h-5" />
                                                         </button>
                                                     )}
                                                 </div>
