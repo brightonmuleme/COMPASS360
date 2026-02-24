@@ -50,8 +50,8 @@ export default function UnifiedRoleSelection() {
         path: string,
         locked?: boolean
     }[] = [
-            // --- DEVELOPER PORTAL (If Authorized) ---
-            ...(developerProfile ? [{
+            // --- DEVELOPER PORTAL (Only shown on the Main Platform Portal, hidden from School views) ---
+            ...(developerProfile && portalBranding.schoolName.toUpperCase() === "COMPASS 360" ? [{
                 id: 'Developer' as const,
                 title: 'Developer Portal',
                 description: 'Master control panel for platform management and diagnostics.',

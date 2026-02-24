@@ -1963,6 +1963,13 @@ function useSchoolDataInternal() {
 
     const getSyncedDate = () => new Date(Date.now() + serverTimeOffset);
 
+    const triggerManualActionLock = () => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('school_manual_action_lock', Date.now().toString());
+            console.log("🔒 Sync: Manual Action Lock active (15s).");
+        }
+    };
+
     const logGlobalAction = (action: string, details: string, scope: 'school' | 'platform' = 'school') => {
         const newLog: AuditLog = {
             id: generateId(),
@@ -4496,17 +4503,26 @@ function useSchoolDataInternal() {
         }
     };
 
-    const addRequisition = (req: Requisition) => {
+    const addRequisition = async (req: Requisition) => {
         // Generate Human Readable ID if not present
         const nextId = `REQ-${(requisitions.length + 1).toString().padStart(3, '0')}`;
         const newReq = { ...req, readableId: nextId };
+
+        // 1. Optimistic Update (Local State)
         setRequisitions(prev => [newReq, ...prev]);
-        saveRequisitionAtomic(newReq);
+
+        // 2. Blocking Cloud Sync (Await the result)
+        await saveRequisitionAtomic(newReq);
+        return true;
     };
 
-    const updateRequisition = (updatedReq: Requisition) => {
+    const updateRequisition = async (updatedReq: Requisition) => {
+        // 1. Optimistic Update
         setRequisitions(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
-        saveRequisitionAtomic(updatedReq);
+
+        // 2. Await Cloud Persistence
+        await saveRequisitionAtomic(updatedReq);
+        return true;
     };
 
     const setRequisitionDraft = (draft: Partial<Requisition> | ((prev: Requisition) => Requisition)) => {
@@ -4521,6 +4537,21 @@ function useSchoolDataInternal() {
 
     const deleteRequisition = (id: string) => {
         setRequisitions(prev => prev.filter(r => r.id !== id));
+    };
+
+    const deleteRequisitionCascade = async (id: string) => {
+        // 0. Identify the requisition to find its readableId
+        const targetReq = requisitions.find(r => r.id === id);
+        const readableId = targetReq?.readableId;
+
+        // 1. Purge the requisition record
+        setRequisitions(prev => prev.filter(r => r.id !== id));
+
+        // 2. Cascade: Purge all ledger entries (General Transactions) linked to this requisition
+        setGeneralTransactions(prev => prev.filter(t => t.requisitionId !== id && t.requisitionId !== targetReq?.readableId));
+
+        console.log(`🧹 Cascade Purge: Requisition ${id} (${readableId}) and all related ledger entries removed.`);
+        return true;
     };
 
     // --- BUDGET SETTINGS ---
@@ -4764,10 +4795,12 @@ function useSchoolDataInternal() {
     };
 
     const updateInventoryItem = (item: InventoryItem) => {
+        triggerManualActionLock();
         setInventoryItems(prev => prev.map(i => i.id === item.id ? item : i));
     };
 
     const deleteInventoryItem = (id: string) => {
+        triggerManualActionLock();
         setInventoryItems(prev => prev.filter(i => i.id !== id));
         // Remove logs? Keep for history.
     };
@@ -5120,9 +5153,11 @@ function useSchoolDataInternal() {
         requisitions,
         addRequisition,
         updateRequisition,
-        saveRequisitionAtomic,
         deleteRequisition,
+        deleteRequisitionCascade,
+        saveRequisitionAtomic,
         approveRequisition,
+        verifySensitiveAction,
 
         requisitionQueue,
         addToQueue,
@@ -5397,12 +5432,12 @@ function useSchoolDataInternal() {
         deleteInventoryList: (id: string) => setInventoryLists(prev => prev.filter(p => p.id !== id)),
 
         inventoryGroups,
-        addInventoryGroup: (g: InventoryGroup) => setInventoryGroups(prev => [...prev, g]),
-        updateInventoryGroup: (g: InventoryGroup) => setInventoryGroups(prev => prev.map(p => p.id === g.id ? g : p)),
-        deleteInventoryGroup: (id: string) => setInventoryGroups(prev => prev.filter(p => p.id !== id)),
+        addInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => [...prev, g]); },
+        updateInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => prev.map(p => p.id === g.id ? g : p)); },
+        deleteInventoryGroup: (id: string) => { triggerManualActionLock(); setInventoryGroups(prev => prev.filter(p => p.id !== id)); },
 
         inventoryItems,
-        addInventoryItem: (i: InventoryItem) => setInventoryItems(prev => [...prev, i]),
+        addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, i]); },
         updateInventoryItem,
         deleteInventoryItem,
 

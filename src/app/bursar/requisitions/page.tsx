@@ -19,6 +19,7 @@ export default function RequisitionsPage() {
 
     const [viewingReq, setViewingReq] = useState<Requisition | null>(null);
     const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // --- ACTIONS ---
 
@@ -61,32 +62,40 @@ export default function RequisitionsPage() {
         setActiveTab('New');
     };
 
-    const handleSaveEditor = (asDraft: boolean) => {
+    const handleSaveEditor = async (asDraft: boolean) => {
         if (requisitionDraft.items.length === 0) return alert("Please add at least one item.");
         if (!requisitionDraft.title) return alert("Title is required.");
 
-        const isEditing = requisitionDraft.id !== 'draft' && requisitionDraft.id !== null;
+        setIsSaving(true);
+        try {
+            const isEditing = requisitionDraft.id !== 'draft' && requisitionDraft.id !== null;
 
-        const req: Requisition = {
-            ...requisitionDraft,
-            id: isEditing ? requisitionDraft.id! : generateId(),
-            readableId: requisitions.find(r => r.id === requisitionDraft.id)?.readableId, // Keep existing if editing
-            status: asDraft ? 'Draft' : 'Submitted'
-        };
+            const req: Requisition = {
+                ...requisitionDraft,
+                id: isEditing ? requisitionDraft.id! : generateId(),
+                readableId: requisitions.find(r => r.id === requisitionDraft.id)?.readableId,
+                status: asDraft ? 'Draft' : 'Submitted'
+            };
 
-        if (isEditing) {
-            updateRequisition(req);
-        } else {
-            addRequisition(req);
-        }
+            if (isEditing) {
+                await updateRequisition(req);
+            } else {
+                await addRequisition(req);
+            }
 
-        if (asDraft) {
-            alert("Draft Saved.");
-            setActiveTab('Drafts');
-        } else {
-            alert("Requisition Submitted for Approval.");
-            setActiveTab('Drafts');
-            resetRequisitionDraft();
+            if (asDraft) {
+                alert("Draft Saved and Synced to Cloud.");
+                setActiveTab('Drafts');
+            } else {
+                alert("Requisition Submitted and Vaulted to Ledger.");
+                setActiveTab('Drafts');
+                resetRequisitionDraft();
+            }
+        } catch (error) {
+            console.error("Submission failed:", error);
+            alert("Cloud synchronization failed. Please check your connection and try again.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -160,6 +169,7 @@ export default function RequisitionsPage() {
                         onSave={() => handleSaveEditor(true)}
                         onSubmit={() => handleSaveEditor(false)}
                         onClear={resetRequisitionDraft}
+                        isSaving={isSaving}
                     />
                 </div>
 
@@ -224,9 +234,10 @@ interface FormProps {
     onSave: () => void;
     onSubmit: () => void;
     onClear: () => void;
+    isSaving: boolean;
 }
 
-function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAccount, date, setDate, notes, setNotes, items, setItems, onSave, onSubmit, onClear }: FormProps) {
+function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAccount, date, setDate, notes, setNotes, items, setItems, onSave, onSubmit, onClear, isSaving }: FormProps) {
     const { addToQueue, requisitions, generalTransactions, accounts } = useSchoolData();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [isManagingCategories, setIsManagingCategories] = useState(false);
@@ -570,13 +581,21 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
                     />
                 </div>
                 <div className="hidden md:flex items-end justify-end gap-4 h-full">
-                    <button onClick={onSave} className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2 font-medium transition-colors">
-                        <Save className="w-5 h-5" />
-                        Save Draft
+                    <button
+                        onClick={onSave}
+                        disabled={isSaving}
+                        className={`px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2 font-medium transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {isSaving ? <RotateCcw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                        {isSaving ? 'Saving...' : 'Save Draft'}
                     </button>
-                    <button onClick={onSubmit} className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-purple-900/20">
-                        <CheckCircle className="w-5 h-5" />
-                        Submit & Clear
+                    <button
+                        onClick={onSubmit}
+                        disabled={isSaving}
+                        className={`px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-purple-900/20 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {isSaving ? <RotateCcw className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+                        {isSaving ? 'Syncing...' : 'Submit & Clear'}
                     </button>
                 </div>
             </div>
@@ -584,11 +603,19 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
             {/* Mobile Sticky Action Bar - For convenience but using desktop logic */}
             <div className="md:hidden fixed bottom-4 left-4 right-4 z-50">
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={onSave} className="flex items-center justify-center gap-2 py-4 bg-slate-800 text-white rounded-xl font-bold shadow-2xl border border-slate-700 active:scale-95 transition-transform">
-                        <Save className="w-4 h-4" /> Save
+                    <button
+                        onClick={onSave}
+                        disabled={isSaving}
+                        className="flex items-center justify-center gap-2 py-4 bg-slate-800 text-white rounded-xl font-bold shadow-2xl border border-slate-700 active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                        {isSaving ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {isSaving ? 'Wait...' : 'Save'}
                     </button>
-                    <button onClick={onSubmit} className="flex items-center justify-center gap-2 py-4 bg-blue-600 text-white rounded-xl font-black shadow-2xl active:scale-95 transition-transform">
-                        <CheckCircle className="w-4 h-4" /> Submit
+                    <button
+                        onClick={onSubmit}
+                        disabled={isSaving}
+                        className="flex items-center justify-center gap-2 py-4 bg-blue-600 text-white rounded-xl font-black shadow-2xl active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                        {isSaving ? <RotateCcw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} {isSaving ? 'Syncing...' : 'Submit'}
                     </button>
                 </div>
             </div>

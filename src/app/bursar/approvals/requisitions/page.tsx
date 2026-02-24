@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 // --- MAIN PAGE ---
 export default function RequisitionsApprovalPage() {
-    const { requisitions, requisitionQueue, approveRequisition, deleteRequisition, updateRequisition } = useSchoolData();
+    const { requisitions, requisitionQueue, approveRequisition, deleteRequisitionCascade, updateRequisition, activeRole, verifySensitiveAction } = useSchoolData();
     const [activeTab, setActiveTab] = useState<'Drafts' | 'In-Queue' | 'Approved'>('Drafts');
     const router = useRouter();
 
@@ -17,6 +17,19 @@ export default function RequisitionsApprovalPage() {
     const handleApprove = (id: string) => {
         if (confirm("Are you sure you want to approve this requisition?")) {
             approveRequisition(id);
+        }
+    };
+
+    const handleDeleteCascade = async (id: string) => {
+        const password = prompt("🚨 DIRECTOR OVERRIDE REQUIRED\n\nDeleting this requisition will also PURGE all associated ledger entries from the Activity Ledger.\n\nPlease enter your password to confirm this action:");
+
+        if (!password) return;
+
+        if (verifySensitiveAction(password)) {
+            await deleteRequisitionCascade(id);
+            alert("✅ Requisition and related ledger entries have been successfully purged.");
+        } else {
+            alert("❌ Invalid password. Authorization denied.");
         }
     };
 
@@ -59,6 +72,8 @@ export default function RequisitionsApprovalPage() {
                         requisitions={requisitions.filter(r => r.status === 'Pending Approval' || r.status === 'Submitted')}
                         onView={handleView}
                         onApprove={handleApprove}
+                        onDelete={handleDeleteCascade}
+                        activeRole={activeRole}
                     />
                 )}
 
@@ -72,6 +87,8 @@ export default function RequisitionsApprovalPage() {
                         requisitions={requisitions.filter(r => r.status === 'Approved')}
                         isReadOnly
                         onView={handleView}
+                        onDelete={handleDeleteCascade}
+                        activeRole={activeRole}
                     />
                 )}
 
@@ -83,7 +100,7 @@ export default function RequisitionsApprovalPage() {
 
 // --- COMPONENTS (Replicated from Expense Manager) ---
 
-function RequisitionList({ title, requisitions, onView, onApprove, isReadOnly }: any) {
+function RequisitionList({ title, requisitions, onView, onApprove, onDelete, isReadOnly, activeRole }: any) {
     if (requisitions.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-96 text-slate-500">
@@ -146,9 +163,20 @@ function RequisitionList({ title, requisitions, onView, onApprove, isReadOnly }:
                                         </button>
                                     )}
                                     {isReadOnly && (
-                                        <button onClick={(e) => { e.stopPropagation(); onView(req); }} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-700 transition-all active:scale-95">
-                                            Details
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button onClick={(e) => { e.stopPropagation(); onView(req); }} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-700 transition-all active:scale-95">
+                                                Details
+                                            </button>
+                                            {activeRole === 'Director' && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onDelete(req.id); }}
+                                                    className="p-2 bg-red-900/20 hover:bg-red-900/40 text-red-500 rounded-xl border border-red-900/30 transition-all active:scale-95 shadow-lg shadow-red-900/10"
+                                                    title="Director Override: Delete and Purge Ledger"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>

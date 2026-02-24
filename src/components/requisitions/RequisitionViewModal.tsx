@@ -1,6 +1,6 @@
 import React from 'react';
 import { Requisition } from '@/lib/store';
-import { Printer, XCircle } from 'lucide-react';
+import { Printer, XCircle, Download } from 'lucide-react';
 
 interface RequisitionViewModalProps {
     requisition: Requisition | null;
@@ -9,6 +9,50 @@ interface RequisitionViewModalProps {
 
 export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requisition, onClose }) => {
     if (!requisition) return null;
+
+    const handleExportCSV = () => {
+        // --- CLEAN CSV GENERATION ---
+        const headers = ["#", "Category", "Item Description", "Qty", "Unit Price", "Amount"];
+        const rows = (requisition.items || []).map((item, index) => [
+            index + 1,
+            item.category || "Uncategorized",
+            item.name,
+            item.quantity,
+            item.unitPrice,
+            item.amount
+        ]);
+
+        const meta = [
+            [`SCHOOL: VINE INTERNATIONAL SCHOOL`],
+            [`IDENTIFIER: ${requisition.readableId || 'REQ-???'}`],
+            [`TITLE: ${requisition.title}`],
+            [`DATE: ${requisition.date}`],
+            [`LEDGER ACCOUNT: ${requisition.account}`],
+            [`STATUS: ${requisition.status}`],
+            [""] // Spacer
+        ];
+
+        const total = requisition.items?.reduce((s, i) => s + Number(i.amount), 0) || 0;
+
+        const csvContent = [
+            ...meta,
+            headers,
+            ...rows,
+            [""],
+            ["", "", "", "", "TOTAL SUM (UGX)", total]
+        ].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+        // --- DOWNLOAD TRIGGER ---
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${requisition.readableId || 'REQ'}_Financial_Export.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-auto print:absolute print:inset-0 print:bg-white print:z-auto">
@@ -23,8 +67,13 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
                     </div>
 
                     <div className="flex gap-2">
-                        <button onClick={() => window.print()} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">
-                            <Printer className="w-5 h-5" />
+                        <button
+                            onClick={handleExportCSV}
+                            className="p-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg border border-purple-400 shadow-lg shadow-purple-900/20 flex items-center gap-2 transition-all active:scale-95 group"
+                            title="Export Clean CSV"
+                        >
+                            <Download className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest px-1">Export CSV</span>
                         </button>
                         <button onClick={onClose} className="p-2 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors">
                             <XCircle className="w-6 h-6" />
