@@ -11,7 +11,18 @@ import { Requisition } from '@/lib/store';
 const formatMoney = (amount: number) => `UGX ${amount.toLocaleString()}`;
 
 export default function TransactionsPage() {
-    const { generalTransactions, addGeneralTransaction, updateGeneralTransaction, deleteGeneralTransaction, activeRole, expenseCategories, incomeCategories, accounts, accountGroups, transactionSettings } = useSchoolData();
+    const {
+        filteredGeneralTransactions: generalTransactions,
+        addGeneralTransaction,
+        updateGeneralTransaction,
+        deleteGeneralTransaction,
+        activeRole,
+        expenseCategories,
+        incomeCategories,
+        filteredAccounts: accounts,
+        accountGroups,
+        transactionSettings
+    } = useSchoolData();
 
     // VIEW STATE
     const [viewMode, setViewMode] = useState<'daily' | 'calendar' | 'monthly' | 'summary'>('daily');

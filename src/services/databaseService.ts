@@ -142,6 +142,39 @@ export const databaseService = {
         }
     },
 
+    // --- TIME MACHINE: institutional Snapshots ---
+    getSchoolSnapshots: async (schoolId: string) => {
+        const { data, error } = await supabase
+            .from('school_snapshots')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('🕵️ Snapshot Fetch Error:', error);
+            return [];
+        }
+        return data;
+    },
+
+    createSchoolSnapshot: async (schoolId: string, label: string, state: any) => {
+        const { data, error } = await supabase
+            .from('school_snapshots')
+            .insert([{
+                school_id: schoolId,
+                label: label,
+                state: state,
+                created_at: new Date().toISOString()
+            }])
+            .select();
+
+        if (error) {
+            console.error('🕵️ Snapshot Creation Error:', error);
+            throw error;
+        }
+        return data[0];
+    },
+
     applyInventoryTransaction: async (schoolId: string, itemId: string, delta: number, log: any) => {
         // 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK
         if (typeof window !== 'undefined' &&

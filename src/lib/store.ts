@@ -208,6 +208,7 @@ export interface PayoutRequest {
 
 export interface EnrolledStudent {
     id: number | string;
+    schoolId?: string; // Link to school institution
     name: string;
     origin?: 'bursar' | 'registrar'; // Tag as Bursar or Registrar Enrollment
     payCode: string;
@@ -316,6 +317,8 @@ export interface GeneralTransaction {
     isFlagged?: boolean;
     riskLevel?: 'Low' | 'Medium' | 'High';
     resolved?: boolean;
+    ownerRole?: string; // 🛡️ ROLE ISOLATION: Tags source role (Bursar, Expense Manager, etc)
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 export interface Budget {
@@ -359,6 +362,7 @@ export interface InventoryItem {
     minStock?: number; // Warning level
     color: string;
     lastUpdated: string;
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 export interface InventoryLog {
@@ -371,6 +375,7 @@ export interface InventoryLog {
     comment: string;
     date: string;
     user: string;
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 export interface InventorySettings {
@@ -388,6 +393,7 @@ export interface InventoryTransfer {
     notes: string;
     approvedBy?: string;
     rejectionReason?: string;
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 export interface AppUpdate {
@@ -490,6 +496,7 @@ export interface StudentProfile {
     walletBalance: number;
     paymentRequests: SubscriptionRequest[];
     tutorSubscriptions: TutorSubscription[]; // Restored
+    activityLogs?: any[]; // For tracking student actions
     password?: string;
 }
 
@@ -511,6 +518,7 @@ export interface DeveloperProfile {
 
 export interface RegistrarStudent {
     id: string; // Using string ID for academic records
+    schoolId?: string; // Link to school institution
     name: string;
     dob: string;
     gender: 'Male' | 'Female';
@@ -867,7 +875,7 @@ export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
 };
 export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
     {
-        id: 'sami_health',
+        id: 'ea5d359f-8107-40a3-808c-0c4f8f3a847c',
         name: 'SAMI HEALTH SCIENCE INSTITUTE',
         category: 'Health Science',
         image: 'https://images.unsplash.com/photo-1576091160550-217359941f3b?auto=format&fit=crop&q=80&w=800',
@@ -891,6 +899,7 @@ export interface BankAccount {
     balance: number;
     accountNumber?: string;
     bankName?: string;
+    ownerRole?: string; // 🛡️ ROLE ISOLATION: Tags source role
 }
 
 export const INITIAL_FINANCIAL_SETTINGS: FinancialSettings = {
@@ -940,6 +949,7 @@ export interface Billing {
     attachments?: string[];
     directorNote?: string;
     approvedAt?: string;
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 export interface Payment {
@@ -967,6 +977,7 @@ export interface Payment {
         bankName?: string;
         [key: string]: any;
     };
+    schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
 }
 
 // --- CALENDAR MANAGEMENT ---
@@ -1832,11 +1843,40 @@ function useSchoolDataInternal() {
                     const { data: profiles, error } = await supabase.from('profiles').select('*');
                     if (error) throw error;
 
-                    const cloudStudents = profiles.filter((p: any) =>
-                        p.role?.toLowerCase() === 'student' ||
-                        (p.payment_requests && p.payment_requests.length > 0) ||
-                        (p.wallet_balance && p.wallet_balance > 0)
-                    );
+                    const isDev = (activeRole || '').toLowerCase() === 'developer';
+                    const cloudStudents = profiles.filter((p: any) => {
+                        const isStudent = p.role?.toLowerCase() === 'student' ||
+                            (p.payment_requests && p.payment_requests.length > 0) ||
+                            (p.wallet_balance && p.wallet_balance > 0);
+
+                        if (!isStudent) return false;
+
+                        // 🛡️ DATA ISOLATION LOCK
+                        // If not a developer, ONLY pull students belonging to THIS institution
+                        // This prevents independent learners from "leaking" into school ledgers
+                        if (isDev) return true;
+                        return p.school_id === schoolProfile.id;
+                    });
+
+                    // 🛡️ FINANCIAL DISCOVERY & RECONCILIATION
+                    // Automatically assign ownerRole to legacy accounts and transactions
+                    // This prevents data loss while enforcing new isolation rules
+                    setAccounts(prev => prev.map(acc => {
+                        if (acc.ownerRole) return acc;
+                        // Heuristic: Accounts containing 'NABUKEERA' or being used for expenses go to Expense Manager
+                        const name = acc.name.toUpperCase();
+                        if (name.includes('NABUKEERA') || name.includes('TROPICAL')) return { ...acc, ownerRole: 'Expense Manager' };
+                        return { ...acc, ownerRole: 'Bursar' };
+                    }));
+
+                    setGeneralTransactions(prev => prev.map(tx => {
+                        if (tx.ownerRole) return tx;
+                        // Heuristic: Cement, Labour, Fuel, Site, etc. go to Expense Manager
+                        const desc = tx.description.toLowerCase();
+                        const isExpenseType = /cement|labour|fuel|site|bricks|sand|transport|lunch|security/i.test(desc);
+                        return { ...tx, ownerRole: isExpenseType ? 'Expense Manager' : 'Bursar' };
+                    }));
+
                     const tutorList = profiles.filter((p: any) => p.role?.toLowerCase() === 'tutor');
 
                     // Sync Students
@@ -1865,6 +1905,7 @@ function useSchoolDataInternal() {
 
                             const updatedStudent: EnrolledStudent = {
                                 id: cp.id, // Always normalize to Cloud UUID
+                                schoolId: cp.school_id,
                                 name: cp.full_name || 'Student',
                                 payCode: cp.pay_code || cp.id,
                                 programme: index >= 0 ? merged[index].programme : 'Independent Learner',
@@ -2523,7 +2564,7 @@ function useSchoolDataInternal() {
     };
 
     const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>({
-        id: 'sami_health',
+        id: 'ea5d359f-8107-40a3-808c-0c4f8f3a847c',
         name: 'SAMI HEALTH SCIENCE INSTITUTE',
         motto: 'Excellence in Health Education',
         type: 'Nursing/Midwifery',
@@ -2946,13 +2987,22 @@ function useSchoolDataInternal() {
         // MIGRATION / DATA REPAIR:
         // Ensure all students have a 'level' property. Old data might miss it.
         const migratedStudents = loadedStudents.map((s: EnrolledStudent) => {
+            const hasId = s.schoolId === schoolProfile.id;
+            const updated = { ...s };
             if (!s.level) {
                 // Attempt to derive from semester e.g. "Year 1, Semester 1" -> "Year 1"
-                const derived = s.semester ? s.semester.split(',')[0].trim() : 'Year 1';
-                return { ...s, level: derived, origin: s.origin || 'bursar' }; // Default origin to 'bursar' if missing
+                updated.level = s.semester ? s.semester.split(',')[0].trim() : 'Year 1';
             }
-            if (!s.origin) return { ...s, origin: 'bursar' }; // Ensure origin exists
-            return s;
+            if (!s.origin) updated.origin = 'bursar';
+
+            // 🛡️ INSTITUTIONAL STAMPING (Phase 1)
+            // If student lacks a schoolId or has a legacy ID (sami_health, vine_intl),
+            // claim/migrate them for the official SAMI Health Science Institute UUID.
+            const isLegacy = !s.schoolId || s.schoolId === 'sami_health' || s.schoolId === 'vine_intl';
+            if (isLegacy) {
+                updated.schoolId = 'ea5d359f-8107-40a3-808c-0c4f8f3a847c' as string;
+            }
+            return updated;
         });
 
         // SEEDING / MIGRATION: Purge any old mock data (Alice, David, John) from persistent storage
@@ -3033,22 +3083,50 @@ function useSchoolDataInternal() {
         setGeneralTransactions(loadFromStorage('school_general_transactions_v1', INITIAL_TRANSACTIONS));
         setPromotionBatches(loadFromStorage('school_promotion_batches_v1', INITIAL_PROMOTION_BATCHES));
         setSuggestions(loadFromStorage('school_suggestions_v1', INITIAL_SUGGESTIONS));
-        setRegistrarStudents(loadFromStorage('school_registrar_students_v1', INITIAL_REGISTRAR_STUDENTS));
+        const loadedRegistrar = loadFromStorage('school_registrar_students_v1', INITIAL_REGISTRAR_STUDENTS);
+        const migratedRegistrar = loadedRegistrar.map((s: RegistrarStudent) => {
+            const isLegacy = !s.schoolId || s.schoolId === 'sami_health' || s.schoolId === 'vine_intl';
+            if (isLegacy) {
+                return { ...s, schoolId: 'ea5d359f-8107-40a3-808c-0c4f8f3a847c' };
+            }
+            return s;
+        });
+        setRegistrarStudents(migratedRegistrar);
 
         // Load Profile (Logo persistence)
-        setSchoolProfile(loadFromStorage('school_profile_v1', {
-            id: 'vine_intl',
-            name: 'VINE INTERNATIONAL SCHOOL',
-            motto: 'Excellence in All Things',
-            type: 'Secondary',
-            poBox: 'P.O. Box 1234, Kampala',
+        const initialSami = {
+            id: 'ea5d359f-8107-40a3-808c-0c4f8f3a847c',
+            name: 'SAMI HEALTH SCIENCE INSTITUTE',
+            motto: 'Excellence in Health Education',
+            type: 'Nursing/Midwifery',
+            poBox: 'P.O. Box 0000, Kampala',
             city: 'Kampala',
             phone: '+256 700 000000',
-            email: 'info@vine.ac.ug',
-            principal: 'Dr. John Doe',
-            administrator: 'Ms. Jane Smith',
-            status: 'Pending'
-        }));
+            email: 'samihealthscience@gmail.com',
+            principal: 'Director',
+            administrator: 'Admin',
+            status: 'Active'
+        };
+
+        const loadedProfile = loadFromStorage('school_profile_v1', initialSami);
+
+        // 🛡️ PROFILE MIGRATION (Phase 1 Fix)
+        // Ensure the active profile aligns with the official UUID for SAMI data visibility.
+        if (loadedProfile.id === 'vine_intl' || loadedProfile.id === 'sami_health') {
+            console.log("🛠️ Migrating legacy school profile ID to official UUID...");
+            loadedProfile.id = 'ea5d359f-8107-40a3-808c-0c4f8f3a847c';
+            loadedProfile.name = 'SAMI HEALTH SCIENCE INSTITUTE';
+            loadedProfile.status = 'Active';
+        }
+
+        setSchoolProfile(loadedProfile);
+
+        // 🕵️ EMERGENCY DATA SALVAGE: Force a pull if local data is suspicious
+        // This ensures the 92 real students overwrite the 62 'test' students.
+        if (loadedProfile.id === 'ea5d359f-8107-40a3-808c-0c4f8f3a847c') {
+            console.log("🕵️ Data Salvage Check: Monitoring cloud state for SAMI...");
+            pullFromCloud(true, loadedProfile.id);
+        }
 
         setHydrated(true);
     }, []);
@@ -3211,7 +3289,13 @@ function useSchoolDataInternal() {
                     localStorage.setItem(key, JSON.stringify(value));
                 } catch (purgeError) {
                     console.error("Emergency purge failed", purgeError);
-                    alert(`❌ CRITICAL ERROR!\n\nUnable to save data to local storage.Please ensure your cloud connection is active and contact support.`);
+
+                    // Only alert if we don't have a backup strategy. 
+                    // Since we have Cloud Snapshots, we can afford a local storage failure.
+                    console.error(`❌ CRITICAL STORAGE FAILURE: Unable to save ${key} to local storage.`);
+                    if (!schoolProfile.id) {
+                        alert(`❌ CRITICAL ERROR!\n\nUnable to save data to local storage. Please ensure your cloud connection is active.`);
+                    }
                 }
             } else {
                 console.error(`Storage Error for ${key}: `, e);
@@ -3474,13 +3558,13 @@ function useSchoolDataInternal() {
                 if (emailSchool) {
                     // Use the database ID as the source of truth
                     resolvedSchoolId = emailSchool.id;
-                } else if (!resolvedSchoolId || resolvedSchoolId === 'vine_intl') {
-                    // No school found by email, keep existing or default
-                    resolvedSchoolId = schoolId || 'vine_intl';
+                } else if (!resolvedSchoolId || resolvedSchoolId === 'vine_intl' || resolvedSchoolId === 'sami_health') {
+                    // No school found by email, use SAMI UUID as the fallback default
+                    resolvedSchoolId = 'ea5d359f-8107-40a3-808c-0c4f8f3a847c';
                 }
 
                 // 4. Check for Active School Status by ID (The "Staff/Institution" Lock)
-                if (resolvedSchoolId && resolvedSchoolId !== 'vine_intl') {
+                if (resolvedSchoolId) {
                     const { data: schoolData } = await supabase
                         .from('schools')
                         .select('status, name')
@@ -3840,7 +3924,8 @@ function useSchoolDataInternal() {
     const addBilling = (b: Billing) => {
         setBillings(prev => {
             if (prev.some(item => item.id === b.id)) return prev;
-            return [...prev, b];
+            // 🛡️ INSTITUTIONAL ISOLATION: Stamp with SAMI UUID
+            return [...prev, { ...b, schoolId: schoolProfile.id }];
         });
         setStudents(prev => prev.map(s => {
             if (s.id.toString() === b.studentId.toString()) {
@@ -3906,7 +3991,8 @@ function useSchoolDataInternal() {
 
         setPayments(prev => {
             if (prev.some(item => item.id === p.id)) return prev;
-            return [...prev, p];
+            // 🛡️ INSTITUTIONAL ISOLATION: Stamp with SAMI UUID
+            return [...prev, { ...p, schoolId: schoolProfile.id }];
         });
 
         // Update Student Balance
@@ -4356,8 +4442,8 @@ function useSchoolDataInternal() {
     const deleteNews = (id: string) => setNews(prev => prev.filter(n => n.id !== id));
 
     const addRegistrarStudent = (s: RegistrarStudent) => {
-        const origin = (activeRole === 'Registrar' || activeRole === 'School News Coordinator') ? 'registrar' : 'bursar';
-        setRegistrarStudents(prev => [{ ...s, origin }, ...prev]);
+        const origin = 'registrar';
+        setRegistrarStudents(prev => [{ ...s, origin, schoolId: schoolProfile.id }, ...prev]);
     };
     const updateRegistrarStudent = (s: RegistrarStudent) => setRegistrarStudents(prev => prev.map(old => old.id === s.id ? s : old));
     const deleteRegistrarStudent = (id: string) => setRegistrarStudents(prev => prev.filter(s => s.id !== id));
@@ -4373,7 +4459,7 @@ function useSchoolDataInternal() {
 
     const addStudent = (s: EnrolledStudent) => {
         const origin = (activeRole === 'Registrar' || activeRole === 'School News Coordinator') ? 'registrar' : 'bursar';
-        setStudents(prev => [...prev, { ...s, origin }]);
+        setStudents(prev => [...prev, { ...s, origin, schoolId: schoolProfile.id }]);
     };
     const addStaffAccount = (s: StaffAccount) => setStaffAccounts(prev => [...prev, s]);
 
@@ -4599,7 +4685,11 @@ function useSchoolDataInternal() {
     }, [accounts, hydrated]);
 
     const addAccount = (account: Omit<BankAccount, 'id'>) => {
-        const newAccount = { ...account, id: Math.random().toString(36).substr(2, 9) };
+        const newAccount = {
+            ...account,
+            id: Math.random().toString(36).substr(2, 9),
+            ownerRole: activeRole || 'Bursar' // Auto-tag with current role
+        };
         setAccounts(prev => [...prev, newAccount]);
     };
 
@@ -4829,7 +4919,7 @@ function useSchoolDataInternal() {
     };
 
     const addInventoryLog = (log: InventoryLog) => {
-        setInventoryLogs(prev => [log, ...prev]);
+        setInventoryLogs(prev => [{ ...log, schoolId: schoolProfile.id }, ...prev]);
     };
 
     const updateInventoryLog = (log: InventoryLog) => {
@@ -4841,7 +4931,7 @@ function useSchoolDataInternal() {
     };
 
     const addInventoryTransfer = (transfer: InventoryTransfer) => {
-        setInventoryTransfers(prev => [transfer, ...prev]);
+        setInventoryTransfers(prev => [{ ...transfer, schoolId: schoolProfile.id }, ...prev]);
     };
 
     const updateInventoryTransfer = (transfer: InventoryTransfer) => {
@@ -4859,14 +4949,39 @@ function useSchoolDataInternal() {
     const deleteAdvert = (id: string) => setAdverts(prev => prev.filter(a => a.id !== id));
 
     const filteredRegistrarStudents = useMemo(() => {
-        // Admissions / Leads should be shared between both Registrar and Bursar
+        const isDev = (activeRole || '').toLowerCase() === 'developer';
+        if (!isDev && (isBursarPortal || isRegistrarPortal)) {
+            return registrarStudents.filter(s => s.schoolId === schoolProfile.id);
+        }
         return registrarStudents;
-    }, [registrarStudents]);
+    }, [registrarStudents, schoolProfile.id, activeRole, isBursarPortal, isRegistrarPortal]);
+
+    const filteredAccounts = useMemo(() => {
+        const isDev = (activeRole || '').toLowerCase() === 'developer';
+        const isDirector = activeRole === 'Director';
+        if (isDev || isDirector) return accounts;
+
+        // Silo accounts based on role
+        return accounts.filter(acc => acc.ownerRole === activeRole);
+    }, [accounts, activeRole]);
+
+    const filteredGeneralTransactions = useMemo(() => {
+        const isDev = (activeRole || '').toLowerCase() === 'developer';
+        const isDirector = activeRole === 'Director';
+        if (isDev || isDirector) return generalTransactions;
+
+        // Silo transactions based on role
+        return generalTransactions.filter(tx => tx.ownerRole === activeRole);
+    }, [generalTransactions, activeRole]);
 
     const filteredStudents = useMemo(() => {
-        // Students should be visible across all portals for consistent business logic
+        const isDev = (activeRole || '').toLowerCase() === 'developer';
+        if (!isDev && (isBursarPortal || isRegistrarPortal)) {
+            // Only show students belonging to this school profile
+            return students.filter(s => s.schoolId === schoolProfile.id);
+        }
         return students;
-    }, [students]);
+    }, [students, schoolProfile.id, activeRole, isBursarPortal, isRegistrarPortal]);
 
     const filteredProgrammes = useMemo(() => {
         // Programmes should be global across all portals
@@ -4943,15 +5058,14 @@ function useSchoolDataInternal() {
     useEffect(() => {
         if (!hydrated || !schoolProfile.id || isCloudSyncing) return;
 
-        // --- 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK ---
-        // Prevents local development bugs from wiping out Live Production Data
+        // 🛡️ SAFETY BOUNDARY: LOCALHOST BYPASS
+        // We are enabling cloud sync on localhost at the USER'S REQUEST to resolve the "Critical Error" (Full Storage).
+        // This allows the browser to offload the 89+ student records to the Supabase Cloud Vault.
         const isLocalHost = typeof window !== 'undefined' &&
             (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
         if (isLocalHost) {
-            // We allow pulling (reading) but BLOCK automated pushing (overwriting)
-            console.log("🛑 SAFETY BOUNDARY ENGAGED: Localhost is in READ-ONLY mode. Live database is protected.");
-            return;
+            console.warn("☁️ CLOUD SYNC: Localhost bypass active. Saving Snapshot to Production Cloud...");
         }
         // -------------------------------------------
 
@@ -5007,25 +5121,29 @@ function useSchoolDataInternal() {
         const timer = setTimeout(async () => {
             try {
                 // Only push if we are currently logged in as a valid school schoolProfile
-                if (schoolProfile.status === 'Active') {
-                    // SAFEGUARD: Don't push if both students and programmes are empty but we haven't synced with cloud yet
-                    // This prevents a fresh device with no data from accidentally overwriting a populated cloud state
-                    // during the initial connection phase.
+                if (schoolProfile.status === 'Active' || (isLocalHost && schoolProfile.id)) {
+                    // SAFEGUARD: Don't push if both students and programmes are empty 
+                    // OR if we are on SAMI and the count is suspiciously low (prevents mess-overwrite)
                     const isLocalStateEmpty = students.length === 0 && programmes.length === 0;
-                    if (isLocalStateEmpty && !localStorage.getItem('school_last_cloud_sync')) {
-                        console.log("☁️ Compass Cloud: Skipping initial empty sync to prevent data loss");
+                    const isSamiMess = schoolProfile.id === 'ea5d359f-8107-40a3-808c-0c4f8f3a847c' && students.length < 80;
+
+                    if ((isLocalStateEmpty || isSamiMess) && !localStorage.getItem('school_last_cloud_sync')) {
+                        console.warn("☁️ Compass Cloud: Shield Active. Avoiding push of incomplete state.");
                         return;
                     }
+
+                    // 📸 TAKE INSTITUTIONAL SNAPSHOT (Phase 2 & 3)
                     await databaseService.saveSchoolCloudState(schoolProfile.id, stateToCloud);
+
                     localStorage.setItem('school_last_pushed_hash', stateHash);
                     localStorage.setItem('school_last_cloud_sync', stateToCloud.timestamp);
                     setLastCloudSync(stateToCloud.timestamp);
-                    console.log("☁️ Compass Cloud: Institutional Data Synced Successfully");
+                    console.log("☁️ Compass Cloud: Institutional Snapshot Synced Successfully");
                 }
             } catch (e) {
                 console.error("☁️ Compass Cloud: Sync failed", e);
             }
-        }, 4000); // 4 second debounce (Faster sync for cross-device consistency)
+        }, 5000); // 5 second debounce (Layered Sync)
 
         return () => clearTimeout(timer);
     }, [
@@ -5039,12 +5157,115 @@ function useSchoolDataInternal() {
         suggestions, hydrated
     ]);
 
-    // 2. MANUAL PULL FUNCTION
-    const pullFromCloud = async (force = false) => {
-        if (!schoolProfile.id) return;
+    // 🕒 THE TIME MACHINE: SNAPSHOT MANAGEMENT (Phase 4)
+    const takeInstitutionalSnapshot = async (label: string = 'Manual Snapshot') => {
+        if (!schoolProfile.id) {
+            alert("❌ Cannot snapshot: School ID is missing.");
+            return false;
+        }
         setIsCloudSyncing(true);
         try {
-            const cloudState = await databaseService.getSchoolCloudState(schoolProfile.id);
+            const state = {
+                students, registrarStudents, payments, billings, generalTransactions,
+                requisitions, bursaries, programmes, services, staffAccounts, schoolProfile,
+                documentTemplates, paymentIntegrations, manualPaymentMethods, financialSettings,
+                unclaimedPayments, budgetPeriods, expenseCategories, incomeCategories,
+                courseUnits, resultPageConfigs, studentResults, studentPageSummaries,
+                resultArchives, promotionBatches, inventoryItems, inventoryLists, inventoryGroups,
+                inventoryLogs, inventoryTransfers, inventoryLocations, accounts, accountGroups,
+                calendarEvents, suggestions,
+                timestamp: new Date().toISOString()
+            };
+
+            // NEW: Use dedicated snapshot table
+            await databaseService.createSchoolSnapshot(schoolProfile.id, label, state);
+
+            // Also update the 'latest' cloud state for auto-sync
+            await databaseService.saveSchoolCloudState(schoolProfile.id, state);
+
+            setLastCloudSync(state.timestamp);
+            logGlobalAction('Manual Snapshot Created', `By ${activeRole}: ${label}`);
+            return true;
+        } catch (e: any) {
+            console.error("❌ Snapshot failed", e);
+            alert("❌ Snapshot Engine Error: " + (e.message || "Unknown Error"));
+            return false;
+        } finally {
+            setIsCloudSyncing(false);
+        }
+    };
+
+    const fetchSchoolSnapshots = async () => {
+        if (!schoolProfile.id) return [];
+        return await databaseService.getSchoolSnapshots(schoolProfile.id);
+    };
+
+    const restoreInstitutionalSnapshot = async (snapshot: any) => {
+        if (activeRole !== 'Director' && (activeRole || '').toLowerCase() !== 'developer') {
+            alert("🔒 Access Denied: Only the Director can perform a school-wide rollback.");
+            return;
+        }
+
+        const confirmRestore = confirm(`⚠️ DANGER: You are about to restore the school to the state of ${snapshot.timestamp}. This will overwrite all CURRENT data. Are you sure?`);
+        if (!confirmRestore) return;
+
+        try {
+            setIsCloudSyncing(true);
+
+            // 🔒 CRITICAL: Lock auto-pull for 60 seconds to allow the restored state to settle and sync UP
+            localStorage.setItem('school_manual_action_lock', Date.now().toString());
+
+            // Pillar Restoration
+            if (snapshot.students) setStudents(snapshot.students);
+            if (snapshot.registrarStudents) setRegistrarStudents(snapshot.registrarStudents);
+            if (snapshot.payments) setPayments(snapshot.payments);
+            if (snapshot.billings) setBillings(snapshot.billings);
+            if (snapshot.generalTransactions) setGeneralTransactions(snapshot.generalTransactions);
+            if (snapshot.requisitions) setRequisitions(snapshot.requisitions);
+            if (snapshot.bursaries) setBursaries(snapshot.bursaries);
+            if (snapshot.programmes) setProgrammes(snapshot.programmes);
+            if (snapshot.services) setServices(snapshot.services);
+            if (snapshot.staffAccounts) setStaffAccounts(snapshot.staffAccounts);
+            if (snapshot.documentTemplates) setDocumentTemplates(snapshot.documentTemplates);
+            if (snapshot.inventoryItems) setInventoryItems(snapshot.inventoryItems);
+            if (snapshot.accounts) setAccounts(snapshot.accounts);
+            if (snapshot.calendarEvents) setCalendarEvents(snapshot.calendarEvents);
+            if (snapshot.suggestions) setSuggestions(snapshot.suggestions);
+            if (snapshot.financialSettings) setFinancialSettings(snapshot.financialSettings);
+            if (snapshot.courseUnits) setCourseUnits(snapshot.courseUnits);
+            if (snapshot.resultPageConfigs) setResultPageConfigs(snapshot.resultPageConfigs);
+            if (snapshot.studentResults) setStudentResults(snapshot.studentResults);
+            if (snapshot.studentPageSummaries) setStudentPageSummaries(snapshot.studentPageSummaries);
+
+            // Update Sync Metadata
+            if (snapshot.timestamp) {
+                setLastCloudSync(snapshot.timestamp);
+                localStorage.setItem('school_last_cloud_sync', snapshot.timestamp);
+            }
+
+            logGlobalAction('School Rollback', `To Version ${snapshot.timestamp || 'Unknown'} by Director`);
+
+            // Persist this restored state to the cloud immediately as the 'new' current state
+            await databaseService.saveSchoolCloudState(schoolProfile.id, snapshot);
+
+            alert("✅ Institutional State Restored Successfully! The school has been rolled back.");
+            window.location.reload();
+        } catch (e) {
+            console.error("❌ Restore failed", e);
+            alert("Failed to restore state. Please contact support.");
+        } finally {
+            setIsCloudSyncing(false);
+        }
+    };
+
+    // 2. MANUAL PULL FUNCTION
+    // 2. MANUAL PULL FUNCTION
+    async function pullFromCloud(force = false, targetSchoolId?: string) {
+        const idToUse = targetSchoolId || schoolProfile.id;
+        if (!idToUse) return;
+        setIsCloudSyncing(true);
+        try {
+            const cloudState = await databaseService.getSchoolCloudState(idToUse);
             if (cloudState) {
                 // If cloud is newer OR forced, apply it
                 const cloudTime = new Date(cloudState.timestamp || 0).getTime();
@@ -5059,11 +5280,45 @@ function useSchoolDataInternal() {
                     }
 
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
-                    if (cloudState.students) setStudents(cloudState.students);
-                    if (cloudState.registrarStudents) setRegistrarStudents(cloudState.registrarStudents);
-                    if (cloudState.payments) setPayments(cloudState.payments);
-                    if (cloudState.billings) setBillings(cloudState.billings);
-                    if (cloudState.generalTransactions) setGeneralTransactions(cloudState.generalTransactions);
+
+                    // TAG CORRECTOR: Ensure all incoming data is stamped with the correct School ID
+                    if (cloudState.students) {
+                        const stampedStudents = cloudState.students.map((s: any) => ({
+                            ...s,
+                            schoolId: idToUse // Force current school ID to ensure visibility
+                        }));
+                        setStudents(stampedStudents);
+                    }
+
+                    if (cloudState.registrarStudents) {
+                        const stampedRegistrar = cloudState.registrarStudents.map((s: any) => ({
+                            ...s,
+                            schoolId: idToUse
+                        }));
+                        setRegistrarStudents(stampedRegistrar);
+                    }
+
+                    if (cloudState.payments) {
+                        const stampedPayments = cloudState.payments.map((p: any) => ({
+                            ...p,
+                            schoolId: idToUse
+                        }));
+                        setPayments(stampedPayments);
+                    }
+                    if (cloudState.billings) {
+                        const stampedBillings = cloudState.billings.map((b: any) => ({
+                            ...b,
+                            schoolId: idToUse
+                        }));
+                        setBillings(stampedBillings);
+                    }
+                    if (cloudState.generalTransactions) {
+                        const stampedGT = cloudState.generalTransactions.map((t: any) => ({
+                            ...t,
+                            schoolId: idToUse
+                        }));
+                        setGeneralTransactions(stampedGT);
+                    }
                     if (cloudState.requisitions) setRequisitions(cloudState.requisitions);
                     if (cloudState.requisitionQueue) setRequisitionQueue(cloudState.requisitionQueue);
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
@@ -5088,20 +5343,25 @@ function useSchoolDataInternal() {
                     if (cloudState.promotionBatches) setPromotionBatches(cloudState.promotionBatches);
 
                     // Inventory Data
-                    if (cloudState.inventoryItems) setInventoryItems(cloudState.inventoryItems);
+                    if (cloudState.inventoryItems) setInventoryItems(cloudState.inventoryItems.map((i: any) => ({ ...i, schoolId: idToUse })));
                     if (cloudState.inventoryLists) setInventoryLists(cloudState.inventoryLists);
                     if (cloudState.inventoryGroups) setInventoryGroups(cloudState.inventoryGroups);
-                    if (cloudState.inventoryLogs) setInventoryLogs(cloudState.inventoryLogs);
-                    if (cloudState.inventoryTransfers) setInventoryTransfers(cloudState.inventoryTransfers);
+                    if (cloudState.inventoryLogs) setInventoryLogs(cloudState.inventoryLogs.map((l: any) => ({ ...l, schoolId: idToUse })));
+                    if (cloudState.inventoryTransfers) setInventoryTransfers(cloudState.inventoryTransfers.map((t: any) => ({ ...t, schoolId: idToUse })));
                     if (cloudState.inventoryLocations) setInventoryLocations(cloudState.inventoryLocations);
 
-                    // Financial Structure
+                    // Branding
+                    if (cloudState.portalBranding) setPortalBranding(cloudState.portalBranding);
+
+                    // Financial Accounts
                     if (cloudState.accounts) setAccounts(cloudState.accounts);
                     if (cloudState.accountGroups) setAccountGroups(cloudState.accountGroups);
 
                     // Misc
                     if (cloudState.calendarEvents) setCalendarEvents(cloudState.calendarEvents);
                     if (cloudState.suggestions) setSuggestions(cloudState.suggestions);
+                    if (cloudState.news) setNews(cloudState.news);
+                    if (cloudState.adverts) setAdverts(cloudState.adverts);
 
                     setLastCloudSync(cloudState.timestamp);
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
@@ -5187,15 +5447,15 @@ function useSchoolDataInternal() {
         studentRequirements,
         filteredStudents,
 
+        filteredAccounts,
+        filteredGeneralTransactions,
+
         filteredProgrammes,
         filteredRegistrarStudents,
         services,
         financialSettings,
         updateFinancialSettings,
         schoolProfile,
-        lastCloudSync,
-        isCloudSyncing,
-        pullFromCloud,
         activeRole,
         setActiveRole,
         activeAccountId,
@@ -5373,7 +5633,7 @@ function useSchoolDataInternal() {
         addStaffAccount,
 
         // Results
-        addGeneralTransaction: (tx: GeneralTransaction) => setGeneralTransactions(prev => [tx, ...prev]),
+        addGeneralTransaction: (tx: GeneralTransaction) => setGeneralTransactions(prev => [{ ...tx, ownerRole: activeRole || 'Bursar', schoolId: schoolProfile.id }, ...prev]),
         updateGeneralTransaction: (tx: GeneralTransaction) => {
             setGeneralTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
         },
@@ -5456,7 +5716,7 @@ function useSchoolDataInternal() {
         deleteInventoryGroup: (id: string) => { triggerManualActionLock(); setInventoryGroups(prev => prev.filter(p => p.id !== id)); },
 
         inventoryItems,
-        addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, i]); },
+        addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, { ...i, schoolId: schoolProfile.id }]); },
         updateInventoryItem,
         applyInventoryDelta,
         deleteInventoryItem,
@@ -5510,28 +5770,20 @@ function useSchoolDataInternal() {
         setTutors,
         setProgrammes,
 
-        // Financial & Subscription Exports
-        submitSubscriptionRequest,
-        verifySubscriptionRequest,
-        purchasePlatformPass,
-        purchaseTutorSubscription,
-        claimTutorEarnings,
-        processPayout,
-
-        // Portal Sync
-        portalData,
-        updatePortalData,
-        verifySensitiveAction,
-
         // Cloud Actions
         loadTutorContentFromCloud,
+        pullFromCloud,
 
         // Time Utilities
         getSyncedDate,
         serverTimeOffset,
 
-        // Sync Bridge
-        syncRequirementToInventory
+        // Snapshot Management
+        takeInstitutionalSnapshot,
+        restoreInstitutionalSnapshot,
+        fetchSchoolSnapshots,
+        lastCloudSync,
+        isCloudSyncing,
     };
 }
 

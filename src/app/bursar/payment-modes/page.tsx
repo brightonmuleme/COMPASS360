@@ -10,7 +10,7 @@ const logGlobalAction = (action: string, details: string) => console.log(action,
 
 export default function PaymentModesPage() {
     const {
-        accounts, addAccount, updateAccount, deleteAccount,
+        filteredAccounts: accounts, addAccount, updateAccount, deleteAccount,
         manualPaymentMethods, addManualPaymentMethod, updateManualPaymentMethod, deleteManualPaymentMethod,
         paymentIntegrations, updatePaymentIntegration, // Restored
         students, payments, generalTransactions, addPayment, deletePayment, // Restored

@@ -623,6 +623,7 @@ function EnrollmentContent() {
                 status: 'active' as const,
                 level: enrollmentData.entryLevel, // Added required field
                 origin: 'bursar' as const, // Tag as Bursar Enrollment
+                schoolId: schoolProfile.id, // Tag with school ID
                 compassNumber: nextCompassNumber, // Auto-generated Compass Number
                 marketingAgent: studentInfo.marketingAgent, // Persist marketing agent
                 walletBalance: 0,

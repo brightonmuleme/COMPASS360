@@ -177,6 +177,10 @@ export default function BursarSidebar({ isOpen, onClose }: { isOpen?: boolean, o
                                 🏛️ Portal Branding
                             </Link>
 
+                            <Link href="/admin/vault" className={`${styles.link} ${isActive('/admin/vault') ? styles.active : ''} text-blue-400`} onClick={handleClose}>
+                                🏦 Institutional Vault
+                            </Link>
+
                             <Link href="/admin/recovery" className={`${styles.link} ${isActive('/admin/recovery') ? styles.active : ''} text-red-400`} onClick={handleClose}>
                                 ☣️ Disaster Recovery
                             </Link>

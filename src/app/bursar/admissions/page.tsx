@@ -626,7 +626,8 @@ export default function AdmissionsPage() {
                 status: 'active',
                 promotionHistory: [],
                 marketingAgent: student.marketingAgent,
-                origin: 'bursar' as const
+                origin: 'bursar' as const,
+                schoolId: schoolProfile.id // Tag with school ID
             };
             return newStudent;
 
