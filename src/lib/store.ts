@@ -5158,9 +5158,9 @@ function useSchoolDataInternal() {
     ]);
 
     // 🕒 THE TIME MACHINE: SNAPSHOT MANAGEMENT (Phase 4)
-    const takeInstitutionalSnapshot = async (label: string = 'Manual Snapshot') => {
+    const takeInstitutionalSnapshot = async (label: string = 'Manual Snapshot', silent: boolean = false) => {
         if (!schoolProfile.id) {
-            alert("❌ Cannot snapshot: School ID is missing.");
+            if (!silent) alert("❌ Cannot snapshot: School ID is missing.");
             return false;
         }
         setIsCloudSyncing(true);
@@ -5188,7 +5188,7 @@ function useSchoolDataInternal() {
             return true;
         } catch (e: any) {
             console.error("❌ Snapshot failed", e);
-            alert("❌ Snapshot Engine Error: " + (e.message || "Unknown Error"));
+            if (!silent) alert("❌ Snapshot Engine Error: " + (e.message || "Unknown Error"));
             return false;
         } finally {
             setIsCloudSyncing(false);
@@ -5421,6 +5421,38 @@ function useSchoolDataInternal() {
         });
         return totals;
     }, [students]);
+
+    // 🕒 AUTOMATED SNAPSHOTS (Phase 5: 24h Pulse & Login Sync)
+    useEffect(() => {
+        if (!hydrated || !schoolProfile.id || !activeRole) return;
+
+        const checkAutomatedSnapshots = async () => {
+            const lastAuto = localStorage.getItem('school_last_auto_snapshot');
+            const now = Date.now();
+
+            // 1. 24-Hour Pulse
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            const needsDaily = !lastAuto || (now - parseInt(lastAuto)) > oneDayMs;
+
+            if (needsDaily) {
+                console.log("🕒 Triggering Automated Daily Baseline...");
+                const success = await takeInstitutionalSnapshot("Automatic Daily Baseline", true);
+                if (success) {
+                    localStorage.setItem('school_last_auto_snapshot', now.toString());
+                }
+            }
+
+            // 2. Session/Login Sync (Once per Login/Role Switch)
+            const sessionKey = `school_login_sync_${activeAccountId || 'anon'}`;
+            if (!sessionStorage.getItem(sessionKey)) {
+                console.log("🔐 Triggering Login Snapshot Sync...");
+                await takeInstitutionalSnapshot(`Automatic Sync: ${activeRole} Login`, true);
+                sessionStorage.setItem(sessionKey, 'true');
+            }
+        };
+
+        checkAutomatedSnapshots();
+    }, [hydrated, schoolProfile.id, activeRole, activeAccountId]);
 
     return {
         // Results Exports

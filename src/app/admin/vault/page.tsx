@@ -54,9 +54,42 @@ export default function InstitutionalVaultPage() {
         }
     };
 
-    const handleRestore = async (snapshot: any) => {
-        // The store handles the confirmation and actual restoration
-        await restoreInstitutionalSnapshot(snapshot.state);
+    const [showRestoreModal, setShowRestoreModal] = useState(false);
+    const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
+    const [authPin, setAuthPin] = useState('');
+    const { verifySensitiveAction } = useSchoolData();
+
+    const handleRestoreClick = (snapshot: any) => {
+        setSelectedSnapshot(snapshot);
+        setShowRestoreModal(true);
+    };
+
+    const handleConfirmRestore = async () => {
+        if (!authPin) {
+            alert("Please enter your Director Password/PIN to authorize this rollback.");
+            return;
+        }
+
+        const isAuthorized = verifySensitiveAction(authPin);
+        if (!isAuthorized) {
+            alert("❌ Authorization Failed: Incorrect Password or PIN.");
+            return;
+        }
+
+        const confirmFinal = confirm("⚠️ FINAL WARNING: This action cannot be undone. All current data will be replaced. Proceed?");
+        if (!confirmFinal) return;
+
+        setIsSaving(true);
+        try {
+            await restoreInstitutionalSnapshot(selectedSnapshot.state);
+            setShowRestoreModal(false);
+            setAuthPin('');
+            alert("✅ School Rollback Successful. The institution has been reverted.");
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -140,12 +173,58 @@ export default function InstitutionalVaultPage() {
                             <SnapshotCard
                                 key={snapshot.id}
                                 snapshot={snapshot}
-                                onRestore={() => handleRestore(snapshot)}
+                                onRestore={() => handleRestoreClick(snapshot)}
                             />
                         ))}
                     </div>
                 )}
             </div>
+
+            {/* RESTORE SECURITY MODAL */}
+            {showRestoreModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+                        <div className="p-8">
+                            <h3 className="text-2xl font-black text-white flex items-center gap-3">
+                                <span className="text-red-500">⏪</span> Authorize Rollback
+                            </h3>
+                            <p className="text-slate-400 mt-4 text-sm leading-relaxed">
+                                You are about to restore the school to <span className="text-white font-bold">{selectedSnapshot?.label}</span>.
+                                This will permanently replace all current records.
+                            </p>
+
+                            <div className="mt-8 space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Enter Director Password/PIN</label>
+                                    <input
+                                        type="password"
+                                        value={authPin}
+                                        onChange={(e) => setAuthPin(e.target.value)}
+                                        placeholder="••••••••"
+                                        className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-3 pt-4">
+                                    <button
+                                        onClick={handleConfirmRestore}
+                                        disabled={isSaving}
+                                        className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl shadow-lg shadow-red-900/20 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {isSaving ? "VERIFYING..." : "UNFOLD REALITY & RESTORE"}
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowRestoreModal(false); setAuthPin(''); }}
+                                        className="w-full bg-transparent hover:bg-white/5 text-slate-500 font-bold py-3 rounded-xl transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* DANGER AREA INFOGRAPHIC */}
             <div className="bg-red-950/10 border border-red-500/20 p-8 rounded-3xl flex flex-col md:flex-row items-center gap-6">
