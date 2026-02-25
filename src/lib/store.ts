@@ -4950,10 +4950,13 @@ function useSchoolDataInternal() {
 
     const filteredRegistrarStudents = useMemo(() => {
         const isDev = (activeRole || '').toLowerCase() === 'developer';
+        // Deduplicate registrar students
+        const uniqueRegistrar = Array.from(new Map(registrarStudents.map(s => [s.id, s])).values());
+
         if (!isDev && (isBursarPortal || isRegistrarPortal)) {
-            return registrarStudents.filter(s => s.schoolId === schoolProfile.id);
+            return uniqueRegistrar.filter(s => s.schoolId === schoolProfile.id);
         }
-        return registrarStudents;
+        return uniqueRegistrar;
     }, [registrarStudents, schoolProfile.id, activeRole, isBursarPortal, isRegistrarPortal]);
 
     const filteredAccounts = useMemo(() => {
@@ -4976,11 +4979,25 @@ function useSchoolDataInternal() {
 
     const filteredStudents = useMemo(() => {
         const isDev = (activeRole || '').toLowerCase() === 'developer';
+
+        // 💎 DEDUPLICATION: Ensure search and lists don't show duplicates
+        const uniqueStudents = Array.from(new Map(students.map(s => [s.id, s])).values());
+
         if (!isDev && (isBursarPortal || isRegistrarPortal)) {
-            // Only show students belonging to this school profile
-            return students.filter(s => s.schoolId === schoolProfile.id);
+            let baseList = uniqueStudents.filter(s => s.schoolId === schoolProfile.id);
+
+            // 🧼 BURSAR PURGE: Exclude signed-up learners who aren't official yet
+            if (isBursarPortal || activeRole === 'Director') {
+                baseList = baseList.filter(s =>
+                    s.origin === 'registrar' ||
+                    s.origin === 'bursar' ||
+                    (s.admissionNumber && s.admissionNumber !== 'N/A')
+                );
+            }
+
+            return baseList;
         }
-        return students;
+        return uniqueStudents;
     }, [students, schoolProfile.id, activeRole, isBursarPortal, isRegistrarPortal]);
 
     const filteredProgrammes = useMemo(() => {
