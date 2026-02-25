@@ -5260,7 +5260,10 @@ function useSchoolDataInternal() {
 
     // 2. MANUAL PULL FUNCTION
     // 2. MANUAL PULL FUNCTION
-    async function pullFromCloud(force = false, targetSchoolId?: string) {
+    async function pullFromCloud(forceOrEvent: any = false, targetSchoolId?: string) {
+        // Handle case where React passes an event object instead of a boolean
+        const isForce = forceOrEvent === true || (forceOrEvent && typeof forceOrEvent === 'object' && forceOrEvent.target);
+
         const idToUse = targetSchoolId || schoolProfile.id;
         if (!idToUse) return;
         setIsCloudSyncing(true);
@@ -5271,10 +5274,10 @@ function useSchoolDataInternal() {
                 const cloudTime = new Date(cloudState.timestamp || 0).getTime();
                 const localTime = new Date(lastCloudSync || 0).getTime();
 
-                if (force || cloudTime > localTime) {
+                if (isForce || cloudTime > localTime) {
                     // SAFEGUARD: Don't pull if a manual action happened in the last 15 seconds
                     const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
-                    if (!force && Date.now() - lastManualAction < 15000) {
+                    if (!isForce && Date.now() - lastManualAction < 15000) {
                         console.log("☁️ Compass Sync: Pull deferred - manual action recently performed.");
                         return;
                     }
@@ -5422,9 +5425,11 @@ function useSchoolDataInternal() {
         return totals;
     }, [students]);
 
-    // 🕒 AUTOMATED SNAPSHOTS (Phase 5: 24h Pulse & Login Sync)
+    // 🕒 AUTOMATED SNAPSHOTS (Phase 5: 24h Pulse)
     useEffect(() => {
-        if (!hydrated || !schoolProfile.id || !activeRole) return;
+        // 🔒 CRITICAL SAFETY: Never auto-snapshot if we are currently syncing data
+        // or if the store hasn't been populated with students yet (to avoid empty overwrites)
+        if (!hydrated || !schoolProfile.id || !activeRole || isCloudSyncing || students.length === 0) return;
 
         const checkAutomatedSnapshots = async () => {
             const lastAuto = localStorage.getItem('school_last_auto_snapshot');
@@ -5441,18 +5446,11 @@ function useSchoolDataInternal() {
                     localStorage.setItem('school_last_auto_snapshot', now.toString());
                 }
             }
-
-            // 2. Session/Login Sync (Once per Login/Role Switch)
-            const sessionKey = `school_login_sync_${activeAccountId || 'anon'}`;
-            if (!sessionStorage.getItem(sessionKey)) {
-                console.log("🔐 Triggering Login Snapshot Sync...");
-                await takeInstitutionalSnapshot(`Automatic Sync: ${activeRole} Login`, true);
-                sessionStorage.setItem(sessionKey, 'true');
-            }
+            // LOGIN-TRIGGERED SNAPSHOTS REMOVED: They cause race conditions during hydration
         };
 
         checkAutomatedSnapshots();
-    }, [hydrated, schoolProfile.id, activeRole, activeAccountId]);
+    }, [hydrated, schoolProfile.id, activeRole, isCloudSyncing, students.length]);
 
     return {
         // Results Exports
