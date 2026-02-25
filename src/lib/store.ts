@@ -1927,7 +1927,9 @@ function useSchoolDataInternal() {
                             if (index >= 0) {
                                 merged[index] = updatedStudent;
                             } else {
-                                merged.push(updatedStudent);
+                                // 🚫 PURGE LOGIC: Do NOT automatically push global sign-ups/independent learners into the school ledger.
+                                // They only belong in the ledger if the School (Registrar/Bursar) creates a record for them.
+                                // merged.push(updatedStudent);
                             }
                         });
                         return merged;
@@ -4986,12 +4988,13 @@ function useSchoolDataInternal() {
         if (!isDev && (isBursarPortal || isRegistrarPortal)) {
             let baseList = uniqueStudents.filter(s => s.schoolId === schoolProfile.id);
 
-            // 🧼 BURSAR PURGE: Exclude signed-up learners who aren't official yet
+            // 🧼 BURSAR PURGE: Strictly exclude any guest/independent learners.
+            // Even if they are linked, they stay hidden from Bursar lists unless they are formal school members.
             if (isBursarPortal || activeRole === 'Director') {
                 baseList = baseList.filter(s =>
-                    s.origin === 'registrar' ||
-                    s.origin === 'bursar' ||
-                    (s.admissionNumber && s.admissionNumber !== 'N/A')
+                    (s.origin === 'registrar' || s.origin === 'bursar') &&
+                    s.programme !== 'Independent Learner' &&
+                    s.admissionNumber !== 'N/A'
                 );
             }
 
