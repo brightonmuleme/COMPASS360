@@ -1891,7 +1891,7 @@ function useSchoolDataInternal() {
     useEffect(() => {
         const syncPlatformData = async () => {
             if (!hydrated) return;
-            const isAdmin = ['developer', 'director', 'bursar'].includes((activeRole || '').toLowerCase());
+            const isAdmin = ['developer', 'director', 'bursar', 'expense manager', 'estate manager'].includes((activeRole || '').toLowerCase());
 
             if (isAdmin) {
                 try {
@@ -1918,19 +1918,27 @@ function useSchoolDataInternal() {
                     // Automatically assign ownerRole to legacy accounts and transactions
                     // This prevents data loss while enforcing new isolation rules
                     setAccounts(prev => prev.map(acc => {
-                        if (acc.ownerRole) return acc;
+                        if (acc.ownerRole && acc.ownerRole !== 'Bursar') return acc;
                         // Heuristic: Accounts containing 'NABUKEERA' or being used for expenses go to Expense Manager
                         const name = acc.name.toUpperCase();
                         if (name.includes('NABUKEERA') || name.includes('TROPICAL')) return { ...acc, ownerRole: 'Expense Manager' };
-                        return { ...acc, ownerRole: 'Bursar' };
+                        return acc.ownerRole ? acc : { ...acc, ownerRole: 'Bursar' };
                     }));
 
                     setGeneralTransactions(prev => prev.map(tx => {
-                        if (tx.ownerRole) return tx;
-                        // Heuristic: Cement, Labour, Fuel, Site, etc. go to Expense Manager
-                        const desc = tx.description.toLowerCase();
-                        const isExpenseType = /cement|labour|fuel|site|bricks|sand|transport|lunch|security/i.test(desc);
-                        return { ...tx, ownerRole: isExpenseType ? 'Expense Manager' : 'Bursar' };
+                        const desc = (tx.description || '').toLowerCase();
+                        // 🏗️ CONSTRUCTION & LOGISTICS SCOPE (Expanded)
+                        const isExpenseType = /cement|labour|fuel|site|bricks|sand|transport|lunch|security|nails|poles|timber|tiber|charges|withdraw/i.test(desc);
+
+                        // If it's already correctly tagged, leave it
+                        if (tx.ownerRole === 'Expense Manager' && isExpenseType) return tx;
+                        if (tx.ownerRole === 'Bursar' && !isExpenseType) return tx;
+
+                        // If it's untagged OR tagged as Bursar but should be Expense Manager, fix it
+                        if (isExpenseType) return { ...tx, ownerRole: 'Expense Manager' };
+
+                        // Default fallback for untagged items
+                        return tx.ownerRole ? tx : { ...tx, ownerRole: 'Bursar' };
                     }));
 
                     const tutorList = profiles.filter((p: any) => p.role?.toLowerCase() === 'tutor');
@@ -4825,6 +4833,7 @@ function useSchoolDataInternal() {
                 description: item.name,
                 requisitionId: req.readableId,
                 longDescription: `Requisition: ${req.title} (${req.readableId})`,
+                ownerRole: 'Expense Manager', // 🛡️ Ensure visibility in Finance/Expense Manager Ledger
                 lastUpdated: now
             };
         });
