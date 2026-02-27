@@ -13,6 +13,46 @@ export const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
+/**
+ * 🛡️ COMPASS RESILIENCE HELPER: Resilient Delta Merging
+ * Merges a local collection with a cloud collection by ID and Timestamp.
+ * Preserves local items that haven't reached the cloud yet OR are fresher than cloud data.
+ */
+export const unionMerge = <T extends { id: string | number, lastUpdated?: string }>(local: T[], cloud: T[] | undefined): T[] => {
+    if (!cloud || !Array.isArray(cloud)) return local;
+    if (!local || !Array.isArray(local)) return cloud;
+
+    const mergedMap = new Map<string, T>();
+
+    // 1. Load cloud items as the baseline
+    cloud.forEach(item => {
+        if (item && item.id) mergedMap.set(item.id.toString(), item);
+    });
+
+    // 2. Overlay local items
+    local.forEach(localItem => {
+        if (!localItem || !localItem.id) return;
+        const id = localItem.id.toString();
+
+        if (!mergedMap.has(id)) {
+            // Case: Local-only item (Unpushed)
+            mergedMap.set(id, localItem);
+        } else {
+            // Case: Conflict. Compare timestamps.
+            const cloudItem = mergedMap.get(id)!;
+            const localTime = localItem.lastUpdated ? new Date(localItem.lastUpdated).getTime() : 0;
+            const cloudTime = cloudItem.lastUpdated ? new Date(cloudItem.lastUpdated).getTime() : 0;
+
+            if (localTime >= cloudTime) {
+                // Local version is fresher or same age - prefer local in Local-First architecture
+                mergedMap.set(id, localItem);
+            }
+        }
+    });
+
+    return Array.from(mergedMap.values());
+};
+
 const safeSetItem = (key: string, value: any) => {
     if (typeof window !== 'undefined') {
         try {
@@ -272,6 +312,7 @@ export interface EnrolledStudent {
     password?: string; // Added for customized login
     email?: string; // Added for authentication consistency
     phoneNumber?: string; // Added for contact consistency
+    lastUpdated?: string;
 }
 
 export interface Service {
@@ -314,6 +355,7 @@ export interface GeneralTransaction {
     fromAccount?: string;
     toAccount?: string;
     transferGroupId?: string;
+    lastUpdated?: string;
     isFlagged?: boolean;
     riskLevel?: 'Low' | 'Medium' | 'High';
     resolved?: boolean;
@@ -345,12 +387,14 @@ export interface AuditLog {
 export interface InventoryList {
     id: string;
     name: string;
+    lastUpdated?: string;
 }
 
 export interface InventoryGroup {
     id: string;
     name: string;
     listId: string;
+    lastUpdated?: string;
 }
 
 export interface InventoryItem {
@@ -376,6 +420,7 @@ export interface InventoryLog {
     date: string;
     user: string;
     schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
+    lastUpdated?: string;
 }
 
 export interface InventorySettings {
@@ -394,6 +439,7 @@ export interface InventoryTransfer {
     approvedBy?: string;
     rejectionReason?: string;
     schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
+    lastUpdated?: string;
 }
 
 export interface AppUpdate {
@@ -721,6 +767,7 @@ export interface Requisition {
     priority?: 'Low' | 'Medium' | 'High';
     queueSnapshot?: InQueueItem[]; // Access locked queue at approval
     rejectionReason?: string;
+    lastUpdated?: string;
 }
 
 export interface CompulsoryFee {
@@ -950,6 +997,7 @@ export interface Billing {
     directorNote?: string;
     approvedAt?: string;
     schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
+    lastUpdated?: string;
 }
 
 export interface Payment {
@@ -978,6 +1026,7 @@ export interface Payment {
         [key: string]: any;
     };
     schoolId?: string; // 🏫 INSTITUTIONAL ISOLATION
+    lastUpdated?: string;
 }
 
 // --- CALENDAR MANAGEMENT ---
@@ -1605,7 +1654,7 @@ function useSchoolDataInternal() {
                 likedContentIds: [],
                 subscribedTutorIds: [],
                 subscriptionStatus: 'active',
-                subscriptionEndDate: '2026-12-31',
+                subscriptionExpiry: '2026-12-31',
                 walletBalance: 0,
                 paymentRequests: []
             };
@@ -1617,7 +1666,7 @@ function useSchoolDataInternal() {
             likedContentIds: [],
             subscribedTutorIds: [],
             subscriptionStatus: 'active',
-            subscriptionEndDate: '2026-12-31',
+            subscriptionExpiry: '2026-12-31',
             walletBalance: 0,
             paymentRequests: []
         };
@@ -1734,6 +1783,10 @@ function useSchoolDataInternal() {
         return INITIAL_ADVERTS;
     });
 
+
+
+
+
     const [generalTransactions, setGeneralTransactions] = useState<GeneralTransaction[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_general_transactions_v1');
@@ -1802,8 +1855,11 @@ function useSchoolDataInternal() {
     const [isProcessingPromotion, setIsProcessingPromotion] = useState(false);
 
     useEffect(() => {
-        if (hydrated) safeSetItem('school_global_audit_logs_v1', globalAuditLogs);
-    }, [globalAuditLogs, hydrated]);
+        if (hydrated) {
+            safeSetItem('school_general_transactions_v1', generalTransactions);
+            safeSetItem('school_global_audit_logs_v1', globalAuditLogs);
+        }
+    }, [generalTransactions, globalAuditLogs, hydrated]);
 
     const [serverTimeOffset, setServerTimeOffset] = useState(0);
 
@@ -1927,9 +1983,9 @@ function useSchoolDataInternal() {
                             if (index >= 0) {
                                 merged[index] = updatedStudent;
                             } else {
-                                // 🚫 PURGE LOGIC: Do NOT automatically push global sign-ups/independent learners into the school ledger.
-                                // They only belong in the ledger if the School (Registrar/Bursar) creates a record for them.
-                                // merged.push(updatedStudent);
+                                // 🌐 GLOBAL RECOVERY: Add independent accounts to the 'memory' so their dashboards work,
+                                // but they stay hidden from the Bursar's desk via the UI filters.
+                                merged.push(updatedStudent);
                             }
                         });
                         return merged;
@@ -1985,10 +2041,10 @@ function useSchoolDataInternal() {
 
                             return {
                                 ...prev,
-                                walletBalance: profile.wallet_balance || 0,
+                                walletBalance: profile.wallet_balance ?? 0,
                                 paymentRequests: mergedRequests,
                                 subscriptionStatus: profile.subscription_status || prev.subscriptionStatus,
-                                subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate,
+                                subscriptionExpiry: profile.subscription_expiry || prev.subscriptionExpiry,
                                 tutorSubscriptions: profile.subscribed_tutors || prev.tutorSubscriptions
                             };
                         });
@@ -2000,7 +2056,7 @@ function useSchoolDataInternal() {
         };
 
         syncPlatformData();
-        const interval = setInterval(syncPlatformData, 15000); // 15s refresh for live data
+        const interval = setInterval(syncPlatformData, 10000); // 10s refresh for live data
         return () => clearInterval(interval);
     }, [hydrated, activeRole, studentProfile.id]);
 
@@ -2009,7 +2065,7 @@ function useSchoolDataInternal() {
     const triggerManualActionLock = () => {
         if (typeof window !== 'undefined') {
             localStorage.setItem('school_manual_action_lock', Date.now().toString());
-            console.log("🔒 Sync: Manual Action Lock active (15s).");
+            console.log("🔒 Sync: Manual Action Lock active (5s).");
         }
     };
 
@@ -2260,6 +2316,7 @@ function useSchoolDataInternal() {
     };
 
     const updateStaffProfile = (accountId: string, updates: Partial<StaffAccount>) => {
+        triggerManualActionLock();
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, ...updates } : acc));
     };
 
@@ -3845,9 +3902,13 @@ function useSchoolDataInternal() {
         })));
     };
 
-    const updateStudent = (s: EnrolledStudent) => setStudents(prev => prev.map(st => st.id.toString() === s.id.toString() ? s : st));
+    const updateStudent = (s: EnrolledStudent) => {
+        triggerManualActionLock();
+        setStudents(prev => prev.map(st => st.id.toString() === s.id.toString() ? { ...st, ...s, schoolId: st.schoolId || schoolProfile.id, lastUpdated: new Date().toISOString() } : st));
+    };
 
     const batchUpdateStudents = (updatedStudents: EnrolledStudent[], logAction?: string, logDetails?: string) => {
+        triggerManualActionLock();
         if (updatedStudents.length === 0) return;
 
         const updatesMap = new Map<number | string, EnrolledStudent>();
@@ -3855,7 +3916,7 @@ function useSchoolDataInternal() {
 
         setStudents(prev => prev.map(s => {
             if (updatesMap.has(s.id)) {
-                return updatesMap.get(s.id)!;
+                return { ...updatesMap.get(s.id)!, lastUpdated: new Date().toISOString() };
             }
             return s;
         }));
@@ -3926,18 +3987,19 @@ function useSchoolDataInternal() {
     const addBilling = (b: Billing) => {
         setBillings(prev => {
             if (prev.some(item => item.id === b.id)) return prev;
-            // 🛡️ INSTITUTIONAL ISOLATION: Stamp with SAMI UUID
-            return [...prev, { ...b, schoolId: schoolProfile.id }];
+            return [...prev, { ...b, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }];
         });
         setStudents(prev => prev.map(s => {
             if (s.id.toString() === b.studentId.toString()) {
-                return { ...s, totalFees: s.totalFees + b.amount, balance: s.balance + b.amount };
+                return { ...s, totalFees: s.totalFees + b.amount, balance: s.balance + b.amount, lastUpdated: new Date().toISOString() };
             }
             return s;
         }));
     };
 
-    const updateBilling = (b: Billing) => setBillings(prev => prev.map(old => old.id === b.id ? b : old));
+    const updateBilling = (b: Billing) => {
+        setBillings(prev => prev.map(old => old.id === b.id ? { ...b, lastUpdated: new Date().toISOString() } : old));
+    };
 
     const deleteBilling = (id: string, reason: string = 'Moved to Trash') => {
         const bill = billings.find(b => b.id === id);
@@ -3993,8 +4055,7 @@ function useSchoolDataInternal() {
 
         setPayments(prev => {
             if (prev.some(item => item.id === p.id)) return prev;
-            // 🛡️ INSTITUTIONAL ISOLATION: Stamp with SAMI UUID
-            return [...prev, { ...p, schoolId: schoolProfile.id }];
+            return [...prev, { ...p, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }];
         });
 
         // Update Student Balance
@@ -4436,18 +4497,23 @@ function useSchoolDataInternal() {
     const updateFinancialSettings = (s: FinancialSettings) => setFinancialSettings(s);
 
     const updateSchoolProfile = (profile: SchoolProfile) => {
+        triggerManualActionLock();
         setSchoolProfile(profile);
     };
 
-    const addNews = (item: NewsItem) => setNews(prev => [item, ...prev]);
-    const updateNews = (item: NewsItem) => setNews(prev => prev.map(n => n.id === item.id ? item : n));
-    const deleteNews = (id: string) => setNews(prev => prev.filter(n => n.id !== id));
+    const addNews = (item: NewsItem) => { triggerManualActionLock(); setNews(prev => [item, ...prev]); };
+    const updateNews = (item: NewsItem) => { triggerManualActionLock(); setNews(prev => prev.map(n => n.id === item.id ? item : n)); };
+    const deleteNews = (id: string) => { triggerManualActionLock(); setNews(prev => prev.filter(n => n.id !== id)); };
 
     const addRegistrarStudent = (s: RegistrarStudent) => {
-        const origin = 'registrar';
+        const origin = s.origin || 'registrar';
         setRegistrarStudents(prev => [{ ...s, origin, schoolId: schoolProfile.id }, ...prev]);
     };
-    const updateRegistrarStudent = (s: RegistrarStudent) => setRegistrarStudents(prev => prev.map(old => old.id === s.id ? s : old));
+    const updateRegistrarStudent = (s: RegistrarStudent) => {
+        setRegistrarStudents(prev => prev.map(old =>
+            old.id === s.id ? { ...old, ...s, schoolId: old.schoolId || schoolProfile.id } : old
+        ));
+    };
     const deleteRegistrarStudent = (id: string) => setRegistrarStudents(prev => prev.filter(s => s.id !== id));
 
     // Tutor Actions
@@ -4460,10 +4526,14 @@ function useSchoolDataInternal() {
     };
 
     const addStudent = (s: EnrolledStudent) => {
+        triggerManualActionLock();
         const origin = (activeRole === 'Registrar' || activeRole === 'School News Coordinator') ? 'registrar' : 'bursar';
-        setStudents(prev => [...prev, { ...s, origin, schoolId: schoolProfile.id }]);
+        setStudents(prev => [...prev, { ...s, origin, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }]);
     };
-    const addStaffAccount = (s: StaffAccount) => setStaffAccounts(prev => [...prev, s]);
+    const addStaffAccount = (s: StaffAccount) => {
+        triggerManualActionLock();
+        setStaffAccounts(prev => [...prev, s]);
+    };
 
     // TUTOR CONTENT ACTIONS
 
@@ -4592,24 +4662,17 @@ function useSchoolDataInternal() {
     };
 
     const addRequisition = async (req: Requisition) => {
-        // Generate Human Readable ID if not present
         const nextId = `REQ-${(requisitions.length + 1).toString().padStart(3, '0')}`;
-        const newReq = { ...req, readableId: nextId };
-
-        // 1. Optimistic Update (Local State)
+        const newReq = { ...req, readableId: nextId, lastUpdated: new Date().toISOString() };
         setRequisitions(prev => [newReq, ...prev]);
-
-        // 2. Blocking Cloud Sync (Await the result)
         await saveRequisitionAtomic(newReq);
         return true;
     };
 
     const updateRequisition = async (updatedReq: Requisition) => {
-        // 1. Optimistic Update
-        setRequisitions(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
-
-        // 2. Await Cloud Persistence
-        await saveRequisitionAtomic(updatedReq);
+        const fresherReq = { ...updatedReq, lastUpdated: new Date().toISOString() };
+        setRequisitions(prev => prev.map(r => r.id === fresherReq.id ? fresherReq : r));
+        await saveRequisitionAtomic(fresherReq);
         return true;
     };
 
@@ -4687,6 +4750,7 @@ function useSchoolDataInternal() {
     }, [accounts, hydrated]);
 
     const addAccount = (account: Omit<BankAccount, 'id'>) => {
+        triggerManualActionLock();
         const newAccount = {
             ...account,
             id: Math.random().toString(36).substr(2, 9),
@@ -4696,10 +4760,12 @@ function useSchoolDataInternal() {
     };
 
     const updateAccount = (updated: BankAccount) => {
+        triggerManualActionLock();
         setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a));
     };
 
     const deleteAccount = (id: string) => {
+        triggerManualActionLock();
         setAccounts(prev => prev.filter(a => a.id !== id));
     };
 
@@ -4728,6 +4794,7 @@ function useSchoolDataInternal() {
 
 
     const approveRequisition = (id: string) => {
+        triggerManualActionLock();
         const req = requisitions.find(r => r.id === id);
         if (!req || req.status === 'Approved') return;
 
@@ -4735,12 +4802,14 @@ function useSchoolDataInternal() {
         const approvedReq: Requisition = {
             ...req,
             status: 'Approved',
-            queueSnapshot: [...requisitionQueue]
+            queueSnapshot: [...requisitionQueue],
+            lastUpdated: new Date().toISOString()
         };
         updateRequisition(approvedReq);
 
         // 2. Create Expenses & Calculate Total
         let totalDeduction = 0;
+        const now = new Date().toISOString();
         const newTransactions: GeneralTransaction[] = req.items.map(item => {
             const amount = Number(item.amount);
             totalDeduction += amount;
@@ -4755,7 +4824,8 @@ function useSchoolDataInternal() {
                 recordedBy: 'Director',
                 description: item.name,
                 requisitionId: req.readableId,
-                longDescription: `Requisition: ${req.title} (${req.readableId})`
+                longDescription: `Requisition: ${req.title} (${req.readableId})`,
+                lastUpdated: now
             };
         });
 
@@ -4888,7 +4958,7 @@ function useSchoolDataInternal() {
 
     const updateInventoryItem = (item: InventoryItem) => {
         triggerManualActionLock();
-        setInventoryItems(prev => prev.map(i => i.id === item.id ? item : i));
+        setInventoryItems(prev => prev.map(i => i.id === item.id ? { ...item, lastUpdated: new Date().toISOString() } : i));
     };
 
     const applyInventoryDelta = async (itemId: string, delta: number, log: InventoryLog) => {
@@ -4896,7 +4966,8 @@ function useSchoolDataInternal() {
         setInventoryItems(prev => prev.map(item =>
             item.id === itemId ? { ...item, quantity: item.quantity + delta, lastUpdated: new Date().toISOString() } : item
         ));
-        setInventoryLogs(prev => [log, ...prev]);
+        const stampedLog = { ...log, lastUpdated: new Date().toISOString() };
+        setInventoryLogs(prev => [stampedLog, ...prev]);
 
         // 2. Lock Sync to prevent Snapshot overlap
         triggerManualActionLock();
@@ -4921,11 +4992,11 @@ function useSchoolDataInternal() {
     };
 
     const addInventoryLog = (log: InventoryLog) => {
-        setInventoryLogs(prev => [{ ...log, schoolId: schoolProfile.id }, ...prev]);
+        setInventoryLogs(prev => [{ ...log, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }, ...prev]);
     };
 
     const updateInventoryLog = (log: InventoryLog) => {
-        setInventoryLogs(prev => prev.map(l => l.id === log.id ? log : l));
+        setInventoryLogs(prev => prev.map(l => l.id === log.id ? { ...log, lastUpdated: new Date().toISOString() } : l));
     };
 
     const deleteInventoryLog = (id: string) => {
@@ -4933,11 +5004,11 @@ function useSchoolDataInternal() {
     };
 
     const addInventoryTransfer = (transfer: InventoryTransfer) => {
-        setInventoryTransfers(prev => [{ ...transfer, schoolId: schoolProfile.id }, ...prev]);
+        setInventoryTransfers(prev => [{ ...transfer, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }, ...prev]);
     };
 
     const updateInventoryTransfer = (transfer: InventoryTransfer) => {
-        setInventoryTransfers(prev => prev.map(t => t.id === transfer.id ? transfer : t));
+        setInventoryTransfers(prev => prev.map(t => t.id === transfer.id ? { ...transfer, lastUpdated: new Date().toISOString() } : t));
     };
 
     const addInventoryLocation = (location: string) => {
@@ -4946,9 +5017,9 @@ function useSchoolDataInternal() {
         }
     };
 
-    const addAdvert = (ad: Advert) => setAdverts(prev => [ad, ...prev]);
-    const updateAdvert = (ad: Advert) => setAdverts(prev => prev.map(a => a.id === ad.id ? ad : a));
-    const deleteAdvert = (id: string) => setAdverts(prev => prev.filter(a => a.id !== id));
+    const addAdvert = (ad: Advert) => { triggerManualActionLock(); setAdverts(prev => [ad, ...prev]); };
+    const updateAdvert = (ad: Advert) => { triggerManualActionLock(); setAdverts(prev => prev.map(a => a.id === ad.id ? ad : a)); };
+    const deleteAdvert = (id: string) => { triggerManualActionLock(); setAdverts(prev => prev.filter(a => a.id !== id)); };
 
     const filteredRegistrarStudents = useMemo(() => {
         const isDev = (activeRole || '').toLowerCase() === 'developer';
@@ -4994,7 +5065,7 @@ function useSchoolDataInternal() {
                 baseList = baseList.filter(s =>
                     (s.origin === 'registrar' || s.origin === 'bursar') &&
                     s.programme !== 'Independent Learner' &&
-                    s.admissionNumber !== 'N/A'
+                    (!s.admissionNumber || s.admissionNumber !== 'N/A')
                 );
             }
 
@@ -5145,7 +5216,7 @@ function useSchoolDataInternal() {
                     // SAFEGUARD: Don't push if both students and programmes are empty 
                     // OR if we are on SAMI and the count is suspiciously low (prevents mess-overwrite)
                     const isLocalStateEmpty = students.length === 0 && programmes.length === 0;
-                    const isSamiMess = schoolProfile.id === 'ea5d359f-8107-40a3-808c-0c4f8f3a847c' && students.length < 80;
+                    const isSamiMess = false;
 
                     if ((isLocalStateEmpty || isSamiMess) && !localStorage.getItem('school_last_cloud_sync')) {
                         console.warn("☁️ Compass Cloud: Shield Active. Avoiding push of incomplete state.");
@@ -5295,55 +5366,45 @@ function useSchoolDataInternal() {
                 const localTime = new Date(lastCloudSync || 0).getTime();
 
                 if (isForce || cloudTime > localTime) {
-                    // SAFEGUARD: Don't pull if a manual action happened in the last 15 seconds
+                    // SAFEGUARD: Don't pull if a manual action happened in the last 5 seconds
                     const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
-                    if (!isForce && Date.now() - lastManualAction < 15000) {
+                    if (!isForce && Date.now() - lastManualAction < 5000) {
                         console.log("☁️ Compass Sync: Pull deferred - manual action recently performed.");
                         return;
                     }
 
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
 
-                    // TAG CORRECTOR: Ensure all incoming data is stamped with the correct School ID
+                    // 💎 DELTA MERGING: Use unionMerge to preserve unpushed local changes
                     if (cloudState.students) {
-                        const stampedStudents = cloudState.students.map((s: any) => ({
-                            ...s,
-                            schoolId: idToUse // Force current school ID to ensure visibility
-                        }));
-                        setStudents(stampedStudents);
+                        const stampedStudents = cloudState.students.map((s: any) => ({ ...s, schoolId: idToUse }));
+                        setStudents(prev => unionMerge(prev, stampedStudents));
                     }
 
                     if (cloudState.registrarStudents) {
-                        const stampedRegistrar = cloudState.registrarStudents.map((s: any) => ({
-                            ...s,
-                            schoolId: idToUse
-                        }));
-                        setRegistrarStudents(stampedRegistrar);
+                        const stampedRegistrar = cloudState.registrarStudents.map((s: any) => ({ ...s, schoolId: idToUse }));
+                        setRegistrarStudents(prev => unionMerge(prev, stampedRegistrar));
                     }
 
                     if (cloudState.payments) {
-                        const stampedPayments = cloudState.payments.map((p: any) => ({
-                            ...p,
-                            schoolId: idToUse
-                        }));
-                        setPayments(stampedPayments);
+                        const stampedPayments = cloudState.payments.map((p: any) => ({ ...p, schoolId: idToUse }));
+                        setPayments(prev => unionMerge(prev, stampedPayments));
                     }
                     if (cloudState.billings) {
-                        const stampedBillings = cloudState.billings.map((b: any) => ({
-                            ...b,
-                            schoolId: idToUse
-                        }));
-                        setBillings(stampedBillings);
+                        const stampedBillings = cloudState.billings.map((b: any) => ({ ...b, schoolId: idToUse }));
+                        setBillings(prev => unionMerge(prev, stampedBillings));
                     }
                     if (cloudState.generalTransactions) {
-                        const stampedGT = cloudState.generalTransactions.map((t: any) => ({
-                            ...t,
-                            schoolId: idToUse
-                        }));
-                        setGeneralTransactions(stampedGT);
+                        const stampedGT = cloudState.generalTransactions.map((t: any) => ({ ...t, schoolId: idToUse }));
+                        setGeneralTransactions(prev => unionMerge(prev, stampedGT));
                     }
-                    if (cloudState.requisitions) setRequisitions(cloudState.requisitions);
-                    if (cloudState.requisitionQueue) setRequisitionQueue(cloudState.requisitionQueue);
+                    if (cloudState.requisitions) {
+                        setRequisitions(prev => unionMerge(prev, cloudState.requisitions));
+                    }
+                    if (cloudState.requisitionQueue) {
+                        setRequisitionQueue(prev => unionMerge(prev as any, cloudState.requisitionQueue));
+                    }
+
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
                     if (cloudState.programmes) setProgrammes(cloudState.programmes);
                     if (cloudState.services) setServices(cloudState.services);
@@ -5358,26 +5419,35 @@ function useSchoolDataInternal() {
                     if (cloudState.incomeCategories) setIncomeCategories(cloudState.incomeCategories);
 
                     // Academic Data
-                    if (cloudState.courseUnits) setCourseUnits(cloudState.courseUnits);
-                    if (cloudState.resultPageConfigs) setResultPageConfigs(cloudState.resultPageConfigs);
-                    if (cloudState.studentResults) setStudentResults(cloudState.studentResults);
-                    if (cloudState.studentPageSummaries) setStudentPageSummaries(cloudState.studentPageSummaries);
-                    if (cloudState.resultArchives) setResultArchives(cloudState.resultArchives);
-                    if (cloudState.promotionBatches) setPromotionBatches(cloudState.promotionBatches);
+                    if (cloudState.courseUnits) setCourseUnits(prev => unionMerge(prev, cloudState.courseUnits));
+                    if (cloudState.resultPageConfigs) setResultPageConfigs(prev => unionMerge(prev, cloudState.resultPageConfigs));
+                    if (cloudState.studentResults) setStudentResults(prev => unionMerge(prev as any, cloudState.studentResults));
+                    if (cloudState.studentPageSummaries) setStudentPageSummaries(prev => unionMerge(prev as any, cloudState.studentPageSummaries));
+                    if (cloudState.resultArchives) setResultArchives(prev => unionMerge(prev, cloudState.resultArchives));
+                    if (cloudState.promotionBatches) setPromotionBatches(prev => unionMerge(prev, cloudState.promotionBatches));
 
                     // Inventory Data
-                    if (cloudState.inventoryItems) setInventoryItems(cloudState.inventoryItems.map((i: any) => ({ ...i, schoolId: idToUse })));
-                    if (cloudState.inventoryLists) setInventoryLists(cloudState.inventoryLists);
-                    if (cloudState.inventoryGroups) setInventoryGroups(cloudState.inventoryGroups);
-                    if (cloudState.inventoryLogs) setInventoryLogs(cloudState.inventoryLogs.map((l: any) => ({ ...l, schoolId: idToUse })));
-                    if (cloudState.inventoryTransfers) setInventoryTransfers(cloudState.inventoryTransfers.map((t: any) => ({ ...t, schoolId: idToUse })));
+                    if (cloudState.inventoryItems) {
+                        const stampedItems = cloudState.inventoryItems.map((i: any) => ({ ...i, schoolId: idToUse }));
+                        setInventoryItems(prev => unionMerge(prev, stampedItems));
+                    }
+                    if (cloudState.inventoryLists) setInventoryLists(prev => unionMerge(prev, cloudState.inventoryLists));
+                    if (cloudState.inventoryGroups) setInventoryGroups(prev => unionMerge(prev, cloudState.inventoryGroups));
+                    if (cloudState.inventoryLogs) {
+                        const stampedLogs = cloudState.inventoryLogs.map((l: any) => ({ ...l, schoolId: idToUse }));
+                        setInventoryLogs(prev => unionMerge(prev, stampedLogs));
+                    }
+                    if (cloudState.inventoryTransfers) {
+                        const stampedTransfers = cloudState.inventoryTransfers.map((t: any) => ({ ...t, schoolId: idToUse }));
+                        setInventoryTransfers(prev => unionMerge(prev, stampedTransfers));
+                    }
                     if (cloudState.inventoryLocations) setInventoryLocations(cloudState.inventoryLocations);
 
                     // Branding
                     if (cloudState.portalBranding) setPortalBranding(cloudState.portalBranding);
 
                     // Financial Accounts
-                    if (cloudState.accounts) setAccounts(cloudState.accounts);
+                    if (cloudState.accounts) setAccounts(prev => unionMerge(prev, cloudState.accounts));
                     if (cloudState.accountGroups) setAccountGroups(cloudState.accountGroups);
 
                     // Misc
@@ -5534,16 +5604,17 @@ function useSchoolDataInternal() {
         updateProgramme,
         deleteProgramme,
         updateStudent,
+        addStudent,
         batchUpdateStudents,
         batchUpdateData,
         isProcessingPromotion,
         setIsProcessingPromotion,
-        setStudents, // Exposing raw setter for flexibility in complex pages
-        setRegistrarStudents,
-        setPayments,
-        setBillings,
-        setServices, // Exposing raw setter
-        setBursaries, // Exposing raw setter
+        setStudents: (val: any) => { triggerManualActionLock(); setStudents(val); }, // Exposing raw setter for flexibility in complex pages
+        setRegistrarStudents: (val: any) => { triggerManualActionLock(); setRegistrarStudents(val); },
+        setPayments: (val: any) => { triggerManualActionLock(); setPayments(val); },
+        setBillings: (val: any) => { triggerManualActionLock(); setBillings(val); },
+        setServices: (val: any) => { triggerManualActionLock(); setServices(val); }, // Exposing raw setter
+        setBursaries: (val: any) => { triggerManualActionLock(); setBursaries(val); }, // Exposing raw setter
         postHistory, addPostHistory, deletePostHistory, // New Actions
         updateTemplate,
         addBilling,
@@ -5563,7 +5634,7 @@ function useSchoolDataInternal() {
         deleteStudents, // New Bulk
         unclaimedPayments, // New
         filteredUnclaimedPayments,
-        setUnclaimedPayments, // Helper
+        setUnclaimedPayments: (val: any) => { triggerManualActionLock(); setUnclaimedPayments(val); }, // Helper
         generateAutomaticBillings, // New: Auto-generate billings for students
         news,
         addNews,
@@ -5679,18 +5750,20 @@ function useSchoolDataInternal() {
         addSchoolApplication,
         submitSchoolApplication,
         updateSchoolApplicationStatus,
-        addStudent,
         addStaffAccount,
 
         // Results
-        addGeneralTransaction: (tx: GeneralTransaction) => setGeneralTransactions(prev => [{ ...tx, ownerRole: activeRole || 'Bursar', schoolId: schoolProfile.id }, ...prev]),
+        addGeneralTransaction: (tx: GeneralTransaction) => { triggerManualActionLock(); setGeneralTransactions(prev => [{ ...tx, ownerRole: activeRole || 'Bursar', schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }, ...prev]); },
         updateGeneralTransaction: (tx: GeneralTransaction) => {
-            setGeneralTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
+            triggerManualActionLock();
+            setGeneralTransactions(prev => prev.map(t => t.id === tx.id ? { ...tx, lastUpdated: new Date().toISOString() } : t));
         },
         deleteGeneralTransaction: (id: string) => {
+            triggerManualActionLock();
             setGeneralTransactions(prev => prev.filter(t => t.id !== id));
         },
         updateBudget: (budget: Budget) => { // Added updateBudget action
+            triggerManualActionLock();
             setBudgets(prev => {
                 const existingIndex = prev.findIndex(b => b.id === budget.id);
                 if (existingIndex >= 0) {
@@ -5706,41 +5779,47 @@ function useSchoolDataInternal() {
         incomeCategories,
 
         // Specific Actions for Full Object Updates (Fixes Edit Modal & Page Requirements)
-        addExpenseCategory: (cat: TransactionCategoryItem) => setExpenseCategories(prev => [...prev, { ...cat, id: cat.id || `exp_${Date.now()} ` }]),
-        updateExpenseCategory: (cat: TransactionCategoryItem) => setExpenseCategories(prev => prev.map(c => c.id === cat.id ? cat : c)),
-        deleteExpenseCategory: (id: string) => setExpenseCategories(prev => prev.filter(c => c.id !== id)),
+        addExpenseCategory: (cat: TransactionCategoryItem) => { triggerManualActionLock(); setExpenseCategories(prev => [...prev, { ...cat, id: cat.id || `exp_${Date.now()} ` }]); },
+        updateExpenseCategory: (cat: TransactionCategoryItem) => { triggerManualActionLock(); setExpenseCategories(prev => prev.map(c => c.id === cat.id ? cat : c)); },
+        deleteExpenseCategory: (id: string) => { triggerManualActionLock(); setExpenseCategories(prev => prev.filter(c => c.id !== id)); },
 
-        addIncomeCategory: (cat: TransactionCategoryItem) => setIncomeCategories(prev => [...prev, { ...cat, id: cat.id || `inc_${Date.now()} ` }]),
-        updateIncomeCategory: (cat: TransactionCategoryItem) => setIncomeCategories(prev => prev.map(c => c.id === cat.id ? cat : c)),
-        deleteIncomeCategory: (id: string) => setIncomeCategories(prev => prev.filter(c => c.id !== id)),
+        addIncomeCategory: (cat: TransactionCategoryItem) => { triggerManualActionLock(); setIncomeCategories(prev => [...prev, { ...cat, id: cat.id || `inc_${Date.now()} ` }]); },
+        updateIncomeCategory: (cat: TransactionCategoryItem) => { triggerManualActionLock(); setIncomeCategories(prev => prev.map(c => c.id === cat.id ? cat : c)); },
+        deleteIncomeCategory: (id: string) => { triggerManualActionLock(); setIncomeCategories(prev => prev.filter(c => c.id !== id)); },
 
         addCategory: (type: string, name: string) => {
+            triggerManualActionLock();
             const newItem = { id: `${type.toLowerCase()}_${Date.now()} `, name, subcategories: [] };
             if (type === 'Expense') setExpenseCategories(prev => [...prev, newItem]);
             else setIncomeCategories(prev => [...prev, newItem]);
         },
         updateCategory: (type: string, id: string, name: string) => {
+            triggerManualActionLock();
             // Legacy/Simple update support
             const updater = (prev: TransactionCategoryItem[]) => prev.map(c => c.id === id ? { ...c, name } : c);
             if (type === 'Expense') setExpenseCategories(updater);
             else setIncomeCategories(updater);
         },
         deleteCategory: (type: string, id: string) => {
+            triggerManualActionLock();
             const updater = (prev: TransactionCategoryItem[]) => prev.filter(c => c.id !== id);
             if (type === 'Expense') setExpenseCategories(updater);
             else setIncomeCategories(updater);
         },
         addSubcategory: (type: string, catId: string, subName: string) => {
+            triggerManualActionLock();
             const updater = (prev: TransactionCategoryItem[]) => prev.map(c => c.id === catId ? { ...c, subcategories: [...(c.subcategories || []), subName] } : c);
             if (type === 'Expense') setExpenseCategories(updater);
             else setIncomeCategories(updater);
         },
         updateSubcategory: (type: string, catId: string, oldSub: string, newSub: string) => {
+            triggerManualActionLock();
             const updater = (prev: TransactionCategoryItem[]) => prev.map(c => c.id === catId ? { ...c, subcategories: (c.subcategories || []).map(s => s === oldSub ? newSub : s) } : c);
             if (type === 'Expense') setExpenseCategories(updater);
             else setIncomeCategories(updater);
         },
         deleteSubcategory: (type: string, catId: string, subName: string) => {
+            triggerManualActionLock();
             const updater = (prev: TransactionCategoryItem[]) => prev.map(c => c.id === catId ? { ...c, subcategories: (c.subcategories || []).filter(s => s !== subName) } : c);
             if (type === 'Expense') setExpenseCategories(updater);
             else setIncomeCategories(updater);
@@ -5748,31 +5827,31 @@ function useSchoolDataInternal() {
 
         // --- BUDGET ACTIONS ---
         budgetPeriods,
-        addBudgetPeriod: (period: BudgetPeriod) => setBudgetPeriods(prev => [...prev, period]),
-        updateBudgetPeriod: (period: BudgetPeriod) => setBudgetPeriods(prev => prev.map(p => p.id === period.id ? period : p)),
-        deleteBudgetPeriod: (id: string) => setBudgetPeriods(prev => prev.filter(p => p.id !== id)),
+        addBudgetPeriod: (period: BudgetPeriod) => { triggerManualActionLock(); setBudgetPeriods(prev => [...prev, period]); },
+        updateBudgetPeriod: (period: BudgetPeriod) => { triggerManualActionLock(); setBudgetPeriods(prev => prev.map(p => p.id === period.id ? period : p)); },
+        deleteBudgetPeriod: (id: string) => { triggerManualActionLock(); setBudgetPeriods(prev => prev.filter(p => p.id !== id)); },
 
         transactionSettings,
-        updateTransactionSettings: (settings: Partial<TransactionSettings>) => setTransactionSettings(prev => ({ ...prev, ...settings })),
+        updateTransactionSettings: (settings: Partial<TransactionSettings>) => { triggerManualActionLock(); setTransactionSettings(prev => ({ ...prev, ...settings })); },
 
         // Inventory Exports
         inventoryLists,
-        addInventoryList: (l: InventoryList) => setInventoryLists(prev => [...prev, l]),
-        deleteInventoryList: (id: string) => setInventoryLists(prev => prev.filter(p => p.id !== id)),
+        addInventoryList: (l: InventoryList) => { triggerManualActionLock(); setInventoryLists(prev => [...prev, { ...l, lastUpdated: new Date().toISOString() }]); },
+        deleteInventoryList: (id: string) => { triggerManualActionLock(); setInventoryLists(prev => prev.filter(p => p.id !== id)); },
 
         inventoryGroups,
-        addInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => [...prev, g]); },
-        updateInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => prev.map(p => p.id === g.id ? g : p)); },
+        addInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => [...prev, { ...g, lastUpdated: new Date().toISOString() }]); },
+        updateInventoryGroup: (g: InventoryGroup) => { triggerManualActionLock(); setInventoryGroups(prev => prev.map(p => p.id === g.id ? { ...g, lastUpdated: new Date().toISOString() } : p)); },
         deleteInventoryGroup: (id: string) => { triggerManualActionLock(); setInventoryGroups(prev => prev.filter(p => p.id !== id)); },
 
         inventoryItems,
-        addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, { ...i, schoolId: schoolProfile.id }]); },
+        addInventoryItem: (i: InventoryItem) => { triggerManualActionLock(); setInventoryItems(prev => [...prev, { ...i, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }]); },
         updateInventoryItem,
         applyInventoryDelta,
         deleteInventoryItem,
 
         inventorySettings,
-        updateInventorySettings,
+        updateInventorySettings: (settings: InventorySettings) => { triggerManualActionLock(); setInventorySettings(settings); },
 
         inventoryLogs,
         addInventoryLog,
@@ -5784,19 +5863,19 @@ function useSchoolDataInternal() {
         updateInventoryTransfer,
 
         inventoryLocations,
-        addInventoryLocation,
+        addInventoryLocation: (l: string) => { triggerManualActionLock(); setInventoryLocations(prev => [...new Set([...prev, l])]); },
 
         admissionFormData,
         setAdmissionFormData,
 
         // Payment Modes
         paymentIntegrations,
-        updatePaymentIntegration: (integration: PaymentIntegration) => setPaymentIntegrations(prev => prev.map(p => p.id === integration.id ? integration : p)),
+        updatePaymentIntegration: (integration: PaymentIntegration) => { triggerManualActionLock(); setPaymentIntegrations(prev => prev.map(p => p.id === integration.id ? integration : p)); },
 
         manualPaymentMethods,
-        addManualPaymentMethod: (method: ManualPaymentMethod) => setManualPaymentMethods(prev => [...prev, method]),
-        updateManualPaymentMethod: (method: ManualPaymentMethod) => setManualPaymentMethods(prev => prev.map(p => p.id === method.id ? method : p)),
-        deleteManualPaymentMethod: (id: string) => setManualPaymentMethods(prev => prev.filter(p => p.id !== id)),
+        addManualPaymentMethod: (method: ManualPaymentMethod) => { triggerManualActionLock(); setManualPaymentMethods(prev => [...prev, method]); },
+        updateManualPaymentMethod: (method: ManualPaymentMethod) => { triggerManualActionLock(); setManualPaymentMethods(prev => prev.map(p => p.id === method.id ? method : p)); },
+        deleteManualPaymentMethod: (id: string) => { triggerManualActionLock(); setManualPaymentMethods(prev => prev.filter(p => p.id !== id)); },
 
         appUpdates, addAppUpdate, updateAppUpdate, deleteAppUpdate,
         appOffers, addAppOffer, updateAppOffer, deleteAppOffer,
@@ -5816,9 +5895,9 @@ function useSchoolDataInternal() {
         updateStaffProfile,
         portalBranding,
         updatePortalBranding,
-        setCourseUnits,
-        setTutors,
-        setProgrammes,
+        setCourseUnits: (val: any) => { triggerManualActionLock(); setCourseUnits(val); },
+        setTutors: (val: any) => { triggerManualActionLock(); setTutors(val); },
+        setProgrammes: (val: any) => { triggerManualActionLock(); setProgrammes(val); },
 
         // Cloud Actions
         loadTutorContentFromCloud,

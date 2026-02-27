@@ -13,7 +13,7 @@ function EnrollmentContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    const { filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials, registrarStudents, activeRole, unclaimedPayments } = useSchoolData(); // Use global data
+    const { schoolProfile, filteredProgrammes: programmes, services, bursaries, hydrated, filteredStudents: enrolledStudents, setStudents: setEnrolledStudents, updateStudent, addStudent, addBilling, filteredBillings: billings, filteredPayments: payments, addPayment, generalTransactions, deleteGeneralTransaction, deleteStudent, deleteStudents, calculateStudentInitialFinancials, registrarStudents, activeRole, unclaimedPayments } = useSchoolData(); // Use global data
     const isDirector = activeRole === 'Director';
 
     // Marketing Agent Autocompletion
@@ -571,23 +571,37 @@ function EnrollmentContent() {
         }
 
         if (enrollmentData.id) {
-            setEnrolledStudents(prev => prev.map(s => s.id === enrollmentData.id ? {
-                ...s,
+            updateStudent({
+                id: enrollmentData.id,
+                name: studentInfo.name.toUpperCase(),
+                payCode: studentInfo.payCode,
                 programme: enrollmentData.programme,
                 semester: enrollmentData.entryLevel,
+                level: enrollmentData.entryLevel,
                 services: enrollmentData.selectedServices,
                 bursary: selectedBursary,
                 previousBalance: enrollmentData.previousBalance,
                 balance: grandTotal,
                 physicalRequirements: studentRequirements,
-                marketingAgent: studentInfo.marketingAgent // Preserve marketing agent on update
-            } : s));
+                marketingAgent: studentInfo.marketingAgent, // Preserve marketing agent on update
+                admissionNumber: '', // Ensure it passes Bursar Purge filter
+                walletBalance: 0,
+                paymentRequests: [],
+                tutorSubscriptions: []
+            } as any);
             alert("Enrollment details updated!");
         } else {
             // Check for duplicate enrollment (by Pay Code)
-            const isDuplicate = enrolledStudents.some(s => s.payCode === studentInfo.payCode && s.origin === 'bursar');
+            const isDuplicate = enrolledStudents.some(s =>
+                s.payCode !== 'N/A' &&
+                s.payCode === studentInfo.payCode &&
+                s.status === 'active' &&
+                s.name.toUpperCase() !== studentInfo.name.toUpperCase()
+            );
+
             if (isDuplicate) {
-                alert(`Student with Pay Code ${studentInfo.payCode} is already enrolled.`);
+                const existing = enrolledStudents.find(s => s.payCode === studentInfo.payCode);
+                alert(`Student with Pay Code ${studentInfo.payCode} is already enrolled as ${existing?.name}.`);
                 return;
             }
 
@@ -624,6 +638,7 @@ function EnrollmentContent() {
                 level: enrollmentData.entryLevel, // Added required field
                 origin: 'bursar' as const, // Tag as Bursar Enrollment
                 schoolId: schoolProfile.id, // Tag with school ID
+                admissionNumber: '', // EXPLICIT: Ensures visibility in Bursar list (Filter Bypass)
                 compassNumber: nextCompassNumber, // Auto-generated Compass Number
                 marketingAgent: studentInfo.marketingAgent, // Persist marketing agent
                 walletBalance: 0,
@@ -631,7 +646,7 @@ function EnrollmentContent() {
                 tutorSubscriptions: []
             };
 
-            setEnrolledStudents(prev => [newStudent, ...prev]);
+            addStudent(newStudent);
 
             // 2. Billing Generation is handled automatically by the store function
             // We pass the student object with the correct services and programme

@@ -47,7 +47,7 @@ export default function StudentDashboard() {
     }, [studentProfile, hydrated, router]);
 
     // Unified Expiry Date - Prioritize the institutional record, fallback to cloud profile
-    const effectiveExpiry = displayStudent?.subscriptionExpiry || studentProfile.subscriptionEndDate;
+    const effectiveExpiry = displayStudent?.subscriptionExpiry || studentProfile.subscriptionExpiry;
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
     useEffect(() => {
@@ -113,6 +113,8 @@ export default function StudentDashboard() {
 
     const tierTitle = isActive ? "PLATINUM MEMBER" : isTrial ? "TRIAL ACCESS" : "MEMBERSHIP EXPIRED";
 
+    const effectiveBalance = (linkedStudent?.walletBalance ?? 0) || (studentProfile.walletBalance ?? 0);
+
     return (
         <div className="max-w-7xl mx-auto pb-16 p-6 md:p-12 space-y-12 animate-fade-in">
 
@@ -126,7 +128,7 @@ export default function StudentDashboard() {
                     </p>
                 </div>
 
-                {linkedStudent && (
+                {(isLinked || effectiveBalance > 0) && (
                     <div className="bg-[#111] p-6 rounded-[2.5rem] border border-white/5 flex items-center gap-8 shadow-2xl">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500">
@@ -134,7 +136,7 @@ export default function StudentDashboard() {
                             </div>
                             <div>
                                 <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Compass Wallet</p>
-                                <p className="text-2xl font-black text-white">{formatMoney(linkedStudent.walletBalance || 0)}</p>
+                                <p className="text-2xl font-black text-white">{formatMoney(effectiveBalance)}</p>
                             </div>
                         </div>
                         <button

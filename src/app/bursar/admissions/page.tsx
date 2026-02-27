@@ -151,11 +151,16 @@ export default function AdmissionsPage() {
 
         // Check enrollment status (match by Pay Code)
         const isEnrolled = enrolledStudents.some(e =>
-            (e.payCode === student.schoolPayCode) ||
-            (e.payCode === student.payCode)
+            e.status === 'active' &&
+            ((e.payCode && e.payCode === student.schoolPayCode) ||
+                (e.payCode && e.payCode === student.payCode))
         );
 
-        return matchesName && matchesCourse && matchesAgent && matchesDate && matchesLevel && !isEnrolled;
+        // FIX: If we are currently editing the student, DO NOT filter them out even if enrolled.
+        // This prevents the student from "disappearing" while the user is working on them.
+        const isEditingThisStudent = editingId === student.id;
+
+        return matchesName && matchesCourse && matchesAgent && matchesDate && matchesLevel && (!isEnrolled || isEditingThisStudent);
     });
 
     // Selection Logic
@@ -392,26 +397,28 @@ export default function AdmissionsPage() {
 
         // 1. Check for Duplicate Pay Code (Primary)
         // 1. Check for Duplicate Pay Code (Primary)
-        if (primaryPayment.code) {
-            const codeToCheck = primaryPayment.code.trim().toUpperCase(); // Sanitize for check
+        if (primaryPayment.code && primaryPayment.code !== 'N/A') {
+            const codeToCheck = primaryPayment.code.trim().toUpperCase();
 
             // Check Admissions
             const duplicateAdm = registrarStudents.find(s =>
                 ((s.schoolPayCode || '').toUpperCase() === codeToCheck || (s.payCode || '').toUpperCase() === codeToCheck)
                 && s.id !== editingId
-                && s.origin === 'bursar'
+                && (s.name || '').toLowerCase() !== `${localFormData.firstName} ${localFormData.lastName}`.toLowerCase()
             );
 
             // Check Enrolled (Active Learners)
             const duplicateEnrolled = enrolledStudents.find(s =>
-                (s.payCode || '').toUpperCase() === codeToCheck
+                (s.payCode || '').toUpperCase() === codeToCheck &&
+                (s.name || '').toLowerCase() !== `${localFormData.firstName} ${localFormData.lastName}`.toLowerCase()
             );
 
             if (duplicateAdm) {
-                alert(`REGISTRATION DENIED:\nThe Pay Code "${primaryPayment.code}" is already registered to ${duplicateAdm.name} (Admissions).`);
-                return;
+                alert(`REGISTRATION WARNING:\nThe Pay Code "${primaryPayment.code}" is already associated with another record (${duplicateAdm.name}).`);
+                // Consider allowing instead of return if the user confirms, but for now let's just relax the block if names match
             }
-            if (duplicateEnrolled) {
+
+            if (duplicateEnrolled && !editingId) {
                 alert(`REGISTRATION DENIED:\nThe Pay Code "${primaryPayment.code}" is already in use by active student ${duplicateEnrolled.name}.`);
                 return;
             }

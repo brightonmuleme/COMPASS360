@@ -122,6 +122,12 @@ function AuthContent() {
                     setSchoolProfile({ status: 'Active' });
                     router.push('/developer');
                 } else if (userRole === 'student') {
+                    setStudentProfile({
+                        id: user!.id,
+                        name: attributes['name'] || user!.user_metadata?.full_name || 'Student',
+                        email: userEmail || '',
+                        subscriptionStatus: 'active'
+                    } as any);
                     router.push('/student');
                 } else {
                     router.push('/portal');

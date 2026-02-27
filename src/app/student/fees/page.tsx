@@ -121,9 +121,9 @@ export default function FeesPage() {
                                 </div>
                             </div>
 
-                            {studentProfile.subscriptionEndDate && (
+                            {studentProfile.subscriptionExpiry && (
                                 <p className="text-gray-500 text-[10px] mt-4 uppercase tracking-widest flex items-center gap-2">
-                                    <Clock size={12} /> Expires: {new Date(studentProfile.subscriptionEndDate).toLocaleDateString()}
+                                    <Clock size={12} /> Expires: {new Date(studentProfile.subscriptionExpiry).toLocaleDateString()}
                                 </p>
                             )}
                         </div>

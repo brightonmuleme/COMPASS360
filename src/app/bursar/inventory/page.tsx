@@ -113,9 +113,9 @@ export default function InventoryPage() {
         let reqListId = reqList?.id;
 
         if (!reqList) {
-            reqListId = crypto.randomUUID();
+            reqListId = 'inventory_list_requirements';
             addInventoryList({ id: reqListId, name: 'Requirements' });
-            addInventoryGroup({ id: crypto.randomUUID(), listId: reqListId, name: 'General' });
+            addInventoryGroup({ id: 'inventory_group_requirements_general', listId: reqListId, name: 'General' });
         }
 
         // 2. Ensure Items Exist
@@ -126,10 +126,11 @@ export default function InventoryPage() {
         }
 
         Object.keys(studentRequirements).forEach(reqName => {
-            const exists = inventoryItems.some(i => i.groupId === reqGroup.id && i.name === reqName);
+            const stableId = `req_item_${reqName.toLowerCase().replace(/\s/g, '_')}`;
+            const exists = inventoryItems.some(i => i.id === stableId || (i.groupId === reqGroup.id && i.name === reqName));
             if (!exists) {
                 addInventoryItem({
-                    id: crypto.randomUUID(),
+                    id: stableId,
                     name: reqName,
                     groupId: reqGroup.id,
                     quantity: 0,
@@ -143,18 +144,7 @@ export default function InventoryPage() {
 
         setTimeout(async () => {
             setIsSyncing(false);
-            // FORCE CLOUD SYNC
-            try {
-                await databaseService.saveSchoolCloudState(schoolProfile.id, {
-                    inventoryLists: [reqList || { id: reqListId, name: 'Requirements' }, ...inventoryLists.filter(l => l.name !== 'Requirements')],
-                    inventoryGroups,
-                    inventoryItems,
-                    inventoryLogs,
-                    inventorySettings
-                });
-            } catch (err) {
-                console.error("Cloud sync error during requirements repair:", err);
-            }
+            console.log("🛠️ Requirements: Repair completed locally. Cloud auto-sync will follow.");
         }, 800);
     };
 
@@ -185,6 +175,17 @@ export default function InventoryPage() {
             if (comboTimeoutRef.current) clearTimeout(comboTimeoutRef.current);
         };
     }, [combo?.key]);
+
+    // 🛠️ AUTO-REPAIR REQUIREMENTS ON LOAD
+    useEffect(() => {
+        if (selectedListId && inventoryLists.find(l => l.id === selectedListId)?.name === 'Requirements') {
+            // Give the store 1 second to hydrate before checking requirements
+            const timer = setTimeout(() => {
+                handleSyncRequirements();
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedListId]);
 
     // --- ACTIONS ---
     const handleAddList = () => {
@@ -780,18 +781,33 @@ export default function InventoryPage() {
                                                                 {/* Calculate counters for requirements */}
                                                                 {(() => {
                                                                     const brought = studentRequirements[item.name] || 0;
+
+                                                                    // Normalize name for robust matching
+                                                                    const normalizedName = item.name.trim().toLowerCase();
+
                                                                     const transferIns = inventoryLogs
-                                                                        .filter(l => l.itemId === item.id && (
-                                                                            l.comment?.toLowerCase().includes('transfer in') ||
-                                                                            (l.action === 'add' && !l.comment?.toLowerCase().includes('transfer out'))
-                                                                        ))
+                                                                        .filter(l => {
+                                                                            const matchById = l.itemId === item.id;
+                                                                            const matchByName = l.itemName && l.itemName.trim().toLowerCase() === normalizedName;
+                                                                            if (!matchById && !matchByName) return false;
+
+                                                                            const isTransferIn = l.comment?.toLowerCase().includes('transfer in') ||
+                                                                                (l.action === 'add' && !l.comment?.toLowerCase().includes('transfer out'));
+                                                                            return isTransferIn;
+                                                                        })
                                                                         .reduce((acc, l) => acc + l.quantityChange, 0);
+
                                                                     const used = inventoryLogs
-                                                                        .filter(l => l.itemId === item.id && (
-                                                                            l.comment?.toLowerCase().includes('transfer out') ||
-                                                                            (l.action === 'reduce' && !l.comment?.toLowerCase().includes('transfer in'))
-                                                                        ))
-                                                                        .reduce((acc, l) => acc + l.quantityChange, 0);
+                                                                        .filter(l => {
+                                                                            const matchById = l.itemId === item.id;
+                                                                            const matchByName = l.itemName && l.itemName.trim().toLowerCase() === normalizedName;
+                                                                            if (!matchById && !matchByName) return false;
+
+                                                                            const isUage = l.comment?.toLowerCase().includes('transfer out') ||
+                                                                                (l.action === 'reduce' && !l.comment?.toLowerCase().includes('transfer in'));
+                                                                            return isUage;
+                                                                        })
+                                                                        .reduce((acc, l) => acc + (l.quantityChange || 0), 0);
 
                                                                     return (
                                                                         <>
