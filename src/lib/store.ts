@@ -5493,10 +5493,16 @@ function useSchoolDataInternal() {
         }
     };
 
-    // 3. AUTO-PULL ON LOGIN/MOUNT
     useEffect(() => {
         if (hydrated && schoolProfile.id) {
             pullFromCloud();
+
+            // 💓 INSTITUTIONAL HEARTBEAT: Sync core data (Inventory/Students) every 10 seconds
+            const interval = setInterval(() => {
+                pullFromCloud();
+            }, 10000);
+
+            return () => clearInterval(interval);
         }
     }, [hydrated, schoolProfile.id]);
 
