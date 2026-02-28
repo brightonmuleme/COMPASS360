@@ -9,7 +9,8 @@ export default function StudentDashboard() {
     const {
         students, adverts, studentProfile, hydrated,
         appUpdates, appOffers, developerSettings,
-        schoolProfile, news, suggestions, tutors, developerProfile
+        schoolProfile, news, suggestions, tutors, developerProfile,
+        pullFromCloud, isCloudSyncing
     } = useSchoolData();
     const router = useRouter();
 
@@ -38,6 +39,14 @@ export default function StudentDashboard() {
 
     // Priority Data: Use linkedStudent (institutional record) if available
     const displayStudent = linkedStudent || STUDENT;
+
+    // ☁️ CLOUD SYNC BRIDGE: Force a pull on mount to resolve Local vs Live discrepancies
+    useEffect(() => {
+        if (hydrated && studentProfile?.id !== 'std_user_1') {
+            console.log("☁️ DASHBOARD: Triggering background cloud pull...");
+            pullFromCloud(true);
+        }
+    }, [hydrated, studentProfile?.id]);
 
     useEffect(() => {
         // Only redirect if there is absolutely no profile (which shouldn't happen due to store defaults)
@@ -128,25 +137,37 @@ export default function StudentDashboard() {
                     </p>
                 </div>
 
-                {(isLinked || effectiveBalance > 0) && (
-                    <div className="bg-[#111] p-6 rounded-[2.5rem] border border-white/5 flex items-center gap-8 shadow-2xl">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500">
-                                <Wallet size={24} />
+                <div className="flex items-center gap-4">
+                    {/* SYNC BUTTON */}
+                    <button
+                        onClick={() => pullFromCloud(true)}
+                        disabled={isCloudSyncing}
+                        className={`bg-[#111] border border-white/5 px-6 py-4 rounded-2xl flex items-center gap-3 transition-all hover:bg-white/5 ${isCloudSyncing ? 'opacity-50 grayscale' : ''}`}
+                    >
+                        <div className={`w-2 h-2 rounded-full ${isCloudSyncing ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{isCloudSyncing ? 'Syncing...' : 'Cloud Active'}</span>
+                    </button>
+
+                    {(isLinked || effectiveBalance > 0) && (
+                        <div className="bg-[#111] p-6 rounded-[2.5rem] border border-white/5 flex items-center gap-8 shadow-2xl">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500">
+                                    <Wallet size={24} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Compass Wallet</p>
+                                    <p className="text-2xl font-black text-white">{formatMoney(effectiveBalance)}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Compass Wallet</p>
-                                <p className="text-2xl font-black text-white">{formatMoney(effectiveBalance)}</p>
-                            </div>
+                            <button
+                                onClick={() => router.push('/student/fees')}
+                                className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-2xl transition-all hover:scale-105 active:scale-95"
+                            >
+                                <ArrowRight size={20} />
+                            </button>
                         </div>
-                        <button
-                            onClick={() => router.push('/student/fees')}
-                            className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-2xl transition-all hover:scale-105 active:scale-95"
-                        >
-                            <ArrowRight size={20} />
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Membership & Active Passes */}
