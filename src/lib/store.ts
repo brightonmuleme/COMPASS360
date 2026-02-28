@@ -2029,96 +2029,57 @@ function useSchoolDataInternal() {
                 }
             } else if ((activeRole as string) === 'student' || studentProfile.id) {
                 try {
-                    // 1. IDENTITY: Use Auth UID (Cloud Wallet Cabin)
+                    // 1. IDENTITY: Use Auth UUID (The only source of truth)
                     const { data: { user } } = await supabase.auth.getUser();
                     const activeId = user?.id || studentProfile.id;
 
                     if (!activeId || activeId === 'std_user_1') return;
 
-                    // 2. DOUBLE-FETCH: Profiles (Sub/Bio) + Financial Ledger (Balance/History)
+                    // 2. FETCH: Pull strictly by UUID from both Profile and Financial Ledger
                     const [profileRes, financeRes] = await Promise.all([
                         supabase.from('profiles').select('*').eq('id', activeId).maybeSingle(),
                         supabase.from('financial_ledger').select('*').eq('id', activeId).maybeSingle()
                     ]);
 
-                    let profile = profileRes.data;
-                    let finance = financeRes.data;
-
-                    // 🛡️ IDENTITY RECONCILIATION: Strict Email Lock (Bridging Multiple Accounts)
-                    // We target your verified identity to ignore empty 'Brighton' accounts.
-                    const MASTER_EMAIL = 'callmebreyton502@gmail.com';
-                    const MASTER_ID = '72e442ca-3c8a-4af7-9d0d-713a8f8b1f4f';
-
-                    // 1. If we don't have a profile OR the balance is zero, search by MASTER EMAIL
-                    if (!profile || (Number(finance?.wallet_balance || 0) <= 0 && profile.subscription_status !== 'active')) {
-                        const searchEmail = user?.email || studentProfile.email || MASTER_EMAIL;
-                        console.log(`🔎 Identity Bridge: Searching for Master Record by email (${searchEmail})...`);
-
-                        const [masterProfileRes, masterFinanceRes] = await Promise.all([
-                            supabase.from('profiles').select('*').eq('email', searchEmail).maybeSingle(),
-                            supabase.from('financial_ledger').select('*').eq('email', searchEmail).maybeSingle()
-                        ]);
-
-                        if (masterProfileRes.data) {
-                            profile = masterProfileRes.data;
-                            console.log(`✅ Bridge: Found Profile Master (${profile.id})`);
-                        }
-                        if (masterFinanceRes.data) {
-                            finance = masterFinanceRes.data;
-                            console.log(`✅ Bridge: Found Financial Master (Balance: ${finance.wallet_balance})`);
-                        }
-
-                        // FINAL EMERGENCY: If still 0, force pull by the hard UUID from your screenshot
-                        if (!finance || (Number(finance?.wallet_balance || 0) <= 0)) {
-                            const { data: force } = await supabase.from('financial_ledger').select('*').eq('id', MASTER_ID).maybeSingle();
-                            if (force) {
-                                finance = force;
-                                console.log(`🚨 Emergency Bridge: Force-pinned balance from ${MASTER_ID}`);
-                            }
-                        }
-                    }
+                    const profile = profileRes.data;
+                    const finance = financeRes.data;
 
                     if (profile || finance) {
                         setStudentProfile(prev => {
-                            // Link requests, logs, and subscriptions to the active UI state
+                            // Merge Payment Requests
                             const cloudRequests = [...(profile?.payment_requests || []), ...(finance?.payment_requests || [])];
                             const requestMap = new Map();
                             [...(prev.paymentRequests || []), ...cloudRequests].forEach(r => {
                                 if (r && r.id) requestMap.set(r.id, r);
                             });
-                            const mergedRequests = Array.from(requestMap.values())
-                                .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
+                            // Merge Activity Logs
                             const cloudLogs = [...(profile?.activity_logs || []), ...(finance?.activity_logs || [])];
                             const logMap = new Map();
                             cloudLogs.forEach((l: any) => { if (l?.id) logMap.set(l.id, l); });
                             (prev.activityLogs || []).forEach(l => { if (l?.id && !logMap.has(l.id)) logMap.set(l.id, l); });
 
-                            const mergedLogs = Array.from(logMap.values())
-                                .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
                             return {
                                 ...prev,
-                                id: profile?.id || finance?.id || activeId,
+                                id: activeId, // Stick to the authenticated UUID
                                 name: finance?.full_name || profile?.full_name || prev.name,
                                 email: finance?.email || profile?.email || prev.email,
                                 walletBalance: Number(finance?.wallet_balance ?? profile?.wallet_balance ?? 0),
-                                paymentRequests: mergedRequests,
                                 subscriptionStatus: profile?.subscription_status || finance?.subscription_status || prev.subscriptionStatus,
                                 subscriptionExpiry: profile?.subscription_expiry || finance?.subscription_expiry || prev.subscriptionExpiry,
-                                tutorSubscriptions: profile?.subscribed_tutors || finance?.subscribed_tutors || prev.tutorSubscriptions,
-                                activityLogs: mergedLogs
+                                paymentRequests: Array.from(requestMap.values()).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()),
+                                activityLogs: Array.from(logMap.values()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                             };
                         });
                     }
                 } catch (err) {
-                    console.error("❌ Link Refusal (Identity):", err);
+                    console.error("❌ Sync Registry Error:", err);
                 }
             }
         };
 
         syncPlatformData();
-        const interval = setInterval(syncPlatformData, 10000); // 10s refresh for live data
+        const interval = setInterval(syncPlatformData, 10000);
         return () => clearInterval(interval);
     }, [hydrated, activeRole, studentProfile.id]);
 
