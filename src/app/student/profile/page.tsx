@@ -226,7 +226,7 @@ export default function StudentProfile() {
                                     <LinkIcon size={20} /> Link School Record
                                 </button>
                                 <p className="text-center text-[10px] text-gray-600 font-bold uppercase tracking-tighter">
-                                    Secure Verification Powered by VINE Institute
+                                    Secure Verification Powered by COMPASS 360
                                 </p>
                             </form>
                         </div>

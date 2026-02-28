@@ -32,7 +32,7 @@ export default function TutorsPage() {
             sub.status === 'Active' &&
             new Date(sub.expiryDate) > new Date()
         );
-        const isSelectedSub = studentProfile.subscribedTutorIds.includes(tutorId);
+        const isSelectedSub = studentProfile?.subscribedTutorIds?.includes(tutorId) || false;
         return hasFinancialSub || isSelectedSub;
     };
 

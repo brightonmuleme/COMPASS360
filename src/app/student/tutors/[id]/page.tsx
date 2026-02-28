@@ -53,7 +53,7 @@ export default function TutorProfilePage() {
             sub.status === 'Active' &&
             new Date(sub.expiryDate) > new Date()
         );
-        return hasFinancialSub || studentProfile.subscribedTutorIds.includes(tid);
+        return hasFinancialSub || studentProfile?.subscribedTutorIds?.includes(tid) || false;
     };
 
     const hasAccess = checkTutorAccess(tutorId);

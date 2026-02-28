@@ -252,6 +252,7 @@ export interface EnrolledStudent {
     name: string;
     origin?: 'bursar' | 'registrar'; // Tag as Bursar or Registrar Enrollment
     payCode: string;
+    admissionNumber?: string; // Standard admission tracking
     programme: string;
     level: string; // Year 1, Year 2, etc.
     semester: string;
@@ -538,7 +539,7 @@ export interface StudentProfile {
     likedContentIds: string[];
     subscribedTutorIds: string[];
     subscriptionStatus: 'active' | 'expired' | 'trial';
-    subscriptionEndDate: string;
+    subscriptionExpiry: string;
     walletBalance: number;
     paymentRequests: SubscriptionRequest[];
     tutorSubscriptions: TutorSubscription[]; // Restored
@@ -1645,31 +1646,36 @@ function useSchoolDataInternal() {
     });
 
     const [studentProfile, setStudentProfile] = useState<StudentProfile>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('school_student_profile_v1');
-            return saved ? JSON.parse(saved) : {
-                id: 'std_user_1',
-                name: 'Student User',
-                email: 'student@vine.ac.ug',
-                likedContentIds: [],
-                subscribedTutorIds: [],
-                subscriptionStatus: 'active',
-                subscriptionExpiry: '2026-12-31',
-                walletBalance: 0,
-                paymentRequests: []
-            };
-        }
-        return {
+        const defaultProfile: StudentProfile = {
             id: 'std_user_1',
             name: 'Student User',
             email: 'student@vine.ac.ug',
             likedContentIds: [],
             subscribedTutorIds: [],
-            subscriptionStatus: 'active',
-            subscriptionExpiry: '2026-12-31',
+            subscriptionStatus: 'expired',
+            subscriptionExpiry: '',
             walletBalance: 0,
-            paymentRequests: []
+            paymentRequests: [],
+            tutorSubscriptions: []
         };
+
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('school_student_profile_v1');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    // 🧹 CACHE CLEANUP: If we find the placeholder date, treat it as null to force a fresh fetch
+                    if (parsed.subscriptionExpiry === '2026-12-31') {
+                        parsed.subscriptionExpiry = '';
+                        parsed.subscriptionStatus = 'expired';
+                    }
+                    return { ...defaultProfile, ...parsed };
+                } catch (e) {
+                    console.warn("Failed to parse student profile", e);
+                }
+            }
+        }
+        return defaultProfile;
     });
 
     const [tutorProfile, setTutorProfile] = useState<TutorProfile | null>(() => {
@@ -1858,8 +1864,9 @@ function useSchoolDataInternal() {
         if (hydrated) {
             safeSetItem('school_general_transactions_v1', generalTransactions);
             safeSetItem('school_global_audit_logs_v1', globalAuditLogs);
+            safeSetItem('school_student_profile_v1', studentProfile);
         }
-    }, [generalTransactions, globalAuditLogs, hydrated]);
+    }, [generalTransactions, globalAuditLogs, studentProfile, hydrated]);
 
     const [serverTimeOffset, setServerTimeOffset] = useState(0);
 
@@ -2020,40 +2027,107 @@ function useSchoolDataInternal() {
                 } catch (err) {
                     console.error("❌ Consolidated Sync Error (Developer):", err);
                 }
-            } else if (studentProfile.id) {
+            } else if ((activeRole as string) === 'student' || studentProfile.id) {
                 try {
                     // 1. IDENTITY: Use Auth UID (Cloud Wallet Cabin)
-                    if (!studentProfile.id || studentProfile.id === 'std_user_1') return;
+                    const { data: { user } } = await supabase.auth.getUser();
+                    const activeId = user?.id || studentProfile.id;
 
-                    const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', studentProfile.id).maybeSingle();
+                    if (!activeId || activeId === 'std_user_1') return;
 
-                    if (profile && !error) {
+                    // 2. DOUBLE-FETCH: Profiles (Sub/Bio) + Financial Ledger (Balance/History)
+                    const [profileRes, financeRes] = await Promise.all([
+                        supabase.from('profiles').select('*').eq('id', activeId).maybeSingle(),
+                        supabase.from('financial_ledger').select('*').eq('id', activeId).maybeSingle()
+                    ]);
+
+                    let profile = profileRes.data;
+                    let finance = financeRes.data;
+
+                    // 🔍 CROSS-ACCOUNT DISCOVERY: If primary account is empty or inactive, search for siblings by Name/Email
+                    if (!profile || (profile.subscription_status !== 'active' && (finance?.wallet_balance || 0) <= 0)) {
+                        const { data: { user } } = await supabase.auth.getUser();
+
+                        // Heuristic: Split name to handle "Brighton" matching "Brighton Muleme"
+                        const nameParts = (profile?.full_name || studentProfile.name || "").split(' ');
+                        const firstName = nameParts[0];
+                        const searchEmail = user?.email || profile?.email || studentProfile.email;
+
+                        if ((firstName && firstName !== 'Student') || searchEmail) {
+                            // Find the "Best" profile record (Highest balance or Active sub)
+                            // Using fuzzy match for name to bridge "Brighton" -> "Brighton Muleme"
+                            const { data: siblings } = await supabase
+                                .from('profiles')
+                                .select('*')
+                                .or(`full_name.ilike.%${firstName}%,email.eq.${searchEmail || 'none'}`)
+                                .order('wallet_balance', { ascending: false });
+
+                            const bestProfile = siblings?.find(p => p.subscription_status === 'active') || siblings?.[0];
+
+                            if (bestProfile && bestProfile.id !== activeId) {
+                                profile = bestProfile;
+                                console.log(`🔗 Discovery Bridge (Profile): Linked ${activeId} to sibling ${profile.id} (${profile.full_name})`);
+                            }
+
+                            // Also bridge the Financial Ledger
+                            if (!finance || (finance.wallet_balance || 0) <= 0) {
+                                const { data: fallbacks } = await supabase
+                                    .from('financial_ledger')
+                                    .select('*')
+                                    .or(`full_name.ilike.%${firstName}%,id.eq.${profile?.id || 'none'}`)
+                                    .order('wallet_balance', { ascending: false });
+
+                                if (fallbacks && fallbacks.length > 0) {
+                                    finance = fallbacks[0];
+                                    console.log(`🔗 Discovery Bridge (Ledger): Linked ${activeId} to financial record ${finance.id}`);
+                                }
+                            }
+                        }
+                    }
+
+                    if ((profile || finance) && !profileRes.error && !financeRes.error) {
                         setStudentProfile(prev => {
-                            // Stable Merge: Keep 'Approved' or 'Rejected' status even if Cloud is slow to update
-                            const cloudRequests = profile.payment_requests || [];
+                            // Merge Truths: Finance is the source of money, Profile is source of sub
+                            const cloudRequests = finance?.payment_requests || profile?.payment_requests || [];
                             const localRequests = prev.paymentRequests || [];
 
                             const requestMap = new Map();
-                            // First, add cloud status (The truth)
                             cloudRequests.forEach((r: any) => requestMap.set(r.id, r));
-
-                            // Then, keep local requests if they don't exist in cloud yet OR if they are more 'advanced'
                             localRequests.forEach(r => {
-                                if (!requestMap.has(r.id)) {
-                                    requestMap.set(r.id, r);
-                                }
+                                if (!requestMap.has(r.id)) requestMap.set(r.id, r);
                             });
 
                             const mergedRequests = Array.from(requestMap.values())
                                 .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 
+                            // Activity Logs Merge (Cloud + Local)
+                            // Now powered by the new permanent database columns
+                            const cloudLogs = [...(profile?.activity_logs || []), ...(finance?.activity_logs || [])];
+                            const logMap = new Map();
+
+                            // 1. Prioritize Cloud Truths
+                            cloudLogs.forEach((l: any) => {
+                                if (l && l.id) logMap.set(l.id, l);
+                            });
+
+                            // 2. Blend in any session-only local logs
+                            (prev.activityLogs || []).forEach(l => {
+                                if (l && l.id && !logMap.has(l.id)) logMap.set(l.id, l);
+                            });
+
+                            const mergedLogs = Array.from(logMap.values())
+                                .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
                             return {
                                 ...prev,
-                                walletBalance: profile.wallet_balance ?? 0,
+                                id: activeId,
+                                name: finance?.full_name || profile?.full_name || prev.name,
+                                walletBalance: finance?.wallet_balance ?? profile?.wallet_balance ?? 0,
                                 paymentRequests: mergedRequests,
-                                subscriptionStatus: profile.subscription_status || prev.subscriptionStatus,
-                                subscriptionExpiry: profile.subscription_expiry || prev.subscriptionExpiry,
-                                tutorSubscriptions: profile.subscribed_tutors || prev.tutorSubscriptions
+                                subscriptionStatus: profile?.subscription_status || finance?.subscription_status || (Number(finance?.wallet_balance || 0) > 0 && finance?.subscription_status ? finance.subscription_status : prev.subscriptionStatus),
+                                subscriptionExpiry: profile?.subscription_expiry || finance?.subscription_expiry || (Number(finance?.wallet_balance || 0) > 0 && finance?.subscription_expiry ? finance.subscription_expiry : prev.subscriptionExpiry),
+                                tutorSubscriptions: profile?.subscribed_tutors || finance?.subscribed_tutors || prev.tutorSubscriptions,
+                                activityLogs: mergedLogs
                             };
                         });
                     }
@@ -2602,12 +2676,53 @@ function useSchoolDataInternal() {
 
     const toggleTutorSubscription = (tutorId: string) => {
         setStudentProfile(prev => {
-            const isSub = prev.subscribedTutorIds.includes(tutorId);
+            const isSub = prev?.subscribedTutorIds?.includes(tutorId) || false;
             return {
                 ...prev,
-                subscribedTutorIds: isSub ? prev.subscribedTutorIds.filter(id => id !== tutorId) : [...prev.subscribedTutorIds, tutorId]
+                subscribedTutorIds: isSub ? prev.subscribedTutorIds.filter(id => id !== tutorId) : [...(prev.subscribedTutorIds || []), tutorId]
             };
         });
+    };
+
+    const subscribeToTutor = (studentId: string | number, tutorId: string) => {
+        const tutor = tutors.find(t => t.id === tutorId);
+        if (!tutor) throw new Error("Tutor not found.");
+        const price = tutor.subscriptionPrice || 3500;
+
+        const startDate = new Date();
+        const newExpiry = new Date();
+        newExpiry.setMonth(newExpiry.getMonth() + 6);
+
+        const newSub: TutorSubscription = {
+            id: generateId(),
+            tutorId,
+            studentId,
+            amount: price,
+            status: 'Active',
+            startDate: startDate.toISOString(),
+            expiryDate: newExpiry.toISOString(),
+            subscribedAt: startDate.toISOString()
+        };
+
+        // Update User Profile Balance
+        setStudentProfile(prev => ({
+            ...prev,
+            walletBalance: (prev.walletBalance || 0) - price,
+            tutorSubscriptions: [newSub, ...(prev.tutorSubscriptions || [])]
+        }));
+
+        // Link to Institutional Record
+        setStudents(prev => prev.map(s => {
+            if (s.id.toString() === studentId.toString()) {
+                return {
+                    ...s,
+                    tutorSubscriptions: [newSub, ...(s.tutorSubscriptions || [])]
+                };
+            }
+            return s;
+        }));
+
+        logGlobalAction('Tutor Subscription', `Student ${studentId} subscribed to ${tutor.name}`);
     };
 
     const addCalendarEvent = (event: CalendarEvent) => setCalendarEvents(prev => [...prev, event]);
@@ -2686,8 +2801,8 @@ function useSchoolDataInternal() {
             likedContentIds: [],
             subscribedTutorIds: [],
             tutorSubscriptions: [],
-            subscriptionStatus: 'active',
-            subscriptionEndDate: '2026-12-31',
+            subscriptionStatus: 'expired',
+            subscriptionExpiry: '',
             walletBalance: 0,
             paymentRequests: []
         };
@@ -2696,40 +2811,14 @@ function useSchoolDataInternal() {
 
     const [hydratedFinancials, setHydratedFinancials] = useState(false);
 
+    // 🛑 DEACTIVATED: Local sync is now handled by the more robust syncPlatformData effect above
+    // to avoid state conflicts and handle the unrestricted financial_ledger bridge.
+    /*
     useEffect(() => {
-        const syncStudentFinancials = async () => {
-            if (!hydrated || hydratedFinancials) return;
-
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-
-                const { data: profile, error } = await supabase
-                    .from('profiles')
-                    .select('wallet_balance, payment_requests, subscription_status, subscription_expiry')
-                    .eq('id', user.id)
-                    .single();
-
-                if (error) throw error;
-
-                if (profile) {
-                    setStudentProfile(prev => ({
-                        ...prev,
-                        id: user.id,
-                        walletBalance: Number(profile.wallet_balance || 0),
-                        paymentRequests: profile.payment_requests || [],
-                        subscriptionStatus: profile.subscription_status || 'expired',
-                        subscriptionEndDate: profile.subscription_expiry
-                    }));
-                    setHydratedFinancials(true);
-                }
-            } catch (err) {
-                console.warn("Financial sync failed, using local state:", err);
-            }
-        };
-
+        const syncStudentFinancials = async () => { ... };
         syncStudentFinancials();
     }, [hydrated, hydratedFinancials, setStudentProfile]);
+    */
 
     const submitSubscriptionRequest = async (request: Omit<SubscriptionRequest, 'id' | 'status' | 'submittedAt'>) => {
         // 1. Validate Identity (Recover UUID if currently using Demo ID)
@@ -2853,7 +2942,7 @@ function useSchoolDataInternal() {
         if (currentBalance < cost) throw new Error("Insufficient wallet balance. Please top up your wallet first.");
 
         const startDate = new Date();
-        const currentExpiry = studentProfile.subscriptionEndDate ? new Date(studentProfile.subscriptionEndDate) : new Date(0);
+        const currentExpiry = studentProfile.subscriptionExpiry ? new Date(studentProfile.subscriptionExpiry) : new Date(0);
         const baseDate = currentExpiry > startDate ? currentExpiry : startDate;
         const newExpiry = new Date(baseDate);
         newExpiry.setMonth(newExpiry.getMonth() + months);
@@ -2861,17 +2950,8 @@ function useSchoolDataInternal() {
         const updatedBalance = currentBalance - cost;
         const updatedExpiry = newExpiry.toISOString();
 
-        // 2. Persist to Cloud
+        // 2. Persist to Master Cloud Ledger
         try {
-            const { error: syncError } = await supabase.from('profiles').update({
-                wallet_balance: updatedBalance,
-                subscription_status: 'active',
-                subscription_expiry: updatedExpiry
-            }).eq('id', studentProfile.id);
-
-            if (syncError) throw syncError;
-
-            // 3. Update UI (Self)
             const newLog = {
                 id: generateId(),
                 type: 'AppPass',
@@ -2881,21 +2961,23 @@ function useSchoolDataInternal() {
             };
             const updatedLogs = [newLog, ...(studentProfile.activityLogs || [])];
 
-            setStudentProfile(prev => ({
-                ...prev,
-                walletBalance: updatedBalance,
-                subscriptionEndDate: updatedExpiry,
-                subscriptionStatus: 'active',
-                activityLogs: updatedLogs
-            }));
-
-            // 4. Update Cloud
-            await supabase.from('profiles').update({
+            const { error: syncError } = await supabase.from('profiles').update({
                 wallet_balance: updatedBalance,
                 subscription_status: 'active',
                 subscription_expiry: updatedExpiry,
                 activity_logs: updatedLogs
             }).eq('id', studentProfile.id);
+
+            if (syncError) throw syncError;
+
+            // 3. Update Local UI
+            setStudentProfile(prev => ({
+                ...prev,
+                walletBalance: updatedBalance,
+                subscriptionExpiry: updatedExpiry,
+                subscriptionStatus: 'active',
+                activityLogs: updatedLogs
+            }));
 
             console.log(`✅ PLATFORM PASS: Access extended to ${updatedExpiry}`);
         } catch (err: any) {
@@ -3585,7 +3667,7 @@ function useSchoolDataInternal() {
                             payCode: profile.pay_code || prev.payCode,
                             phoneNumber: profile.phone || prev.phoneNumber,
                             subscriptionStatus: profile.subscription_status || prev.subscriptionStatus || 'expired',
-                            subscriptionEndDate: profile.subscription_expiry || prev.subscriptionEndDate || '',
+                            subscriptionExpiry: profile.subscription_expiry || prev.subscriptionExpiry || '',
                             subscribedTutorIds: profile.subscribed_tutors || prev.subscribedTutorIds || []
                         }));
                     }
@@ -5712,8 +5794,13 @@ function useSchoolDataInternal() {
         // Student Portal
         suggestions, addSuggestion, updateSuggestionStatus,
         studentProfile, setStudentProfile, updateStudentProfile, toggleStudentLike,
-        toggleTutorSubscription, // Interaction version (like/unlike)
-        purchaseTutorSubscription, // Transactional version (buy subscription)
+        toggleTutorSubscription,
+        subscribeToTutor,
+        purchaseTutorSubscription,
+        submitSubscriptionRequest,
+        purchasePlatformPass,
+        // hydrated, // Removed duplicate to fix lint error 02a7baa5
+
 
         // Tutor Portal
         tutorProfile, setTutorProfile,
@@ -5766,6 +5853,8 @@ function useSchoolDataInternal() {
         submitSchoolApplication,
         updateSchoolApplicationStatus,
         addStaffAccount,
+        verifySubscriptionRequest,
+        processPayout,
 
         // Results
         addGeneralTransaction: (tx: GeneralTransaction) => { triggerManualActionLock(); setGeneralTransactions(prev => [{ ...tx, ownerRole: activeRole || 'Bursar', schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }, ...prev]); },

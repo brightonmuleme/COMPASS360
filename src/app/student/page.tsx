@@ -18,7 +18,7 @@ export default function StudentDashboard() {
         ...studentProfile,
         id: studentProfile.id,
         name: studentProfile.name,
-        subscriptionExpiry: studentProfile.subscriptionEndDate,
+        subscriptionExpiry: studentProfile.subscriptionExpiry,
         totalFees: 0,
         balance: 0,
         programme: 'Independent Learner',
@@ -88,7 +88,7 @@ export default function StudentDashboard() {
             new Date(sub.expiryDate) > new Date()
         );
 
-        const isSelectedSub = studentProfile.subscribedTutorIds.includes(tutorId);
+        const isSelectedSub = studentProfile?.subscribedTutorIds?.includes(tutorId) || false;
         return hasFinancialSub || isSelectedSub;
     };
 
@@ -121,10 +121,10 @@ export default function StudentDashboard() {
             {/* Header + Quick Wallet */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-8 border-b border-white/5">
                 <div>
-                    <h1 className="text-5xl font-black text-white tracking-tighter">Welcome, {STUDENT.name.split(' ')[0]}</h1>
+                    <h1 className="text-5xl font-black text-white tracking-tighter">Welcome, {(STUDENT.name || 'Student').split(' ')[0]}</h1>
                     <p className="text-gray-500 font-medium mt-2 flex items-center gap-2">
                         {isLinked ? <ShieldCheck size={16} className="text-blue-500" /> : <Clock size={16} className="text-gray-600" />}
-                        {isLinked ? 'Verified Academic Account' : 'Independent Learner Account'} • {schoolProfile?.name || 'COMPASS 360'}
+                        {isLinked ? `Verified Academic Account • ${schoolProfile?.name}` : 'Independent Learner Account • COMPASS 360'}
                     </p>
                 </div>
 
@@ -201,7 +201,7 @@ export default function StudentDashboard() {
                                 <Link href="/student/resources" key={tutor.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all group">
                                     <div className="flex items-center gap-4">
                                         <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-xs font-black">
-                                            {tutor.name[0]}
+                                            {tutor.name?.[0] || 'T'}
                                         </div>
                                         <div>
                                             <p className="font-bold text-white text-sm group-hover:text-blue-400 transition-colors">{tutor.name}</p>

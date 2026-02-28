@@ -17,7 +17,7 @@ export default function StudentLayout({
 
             {/* Mobile Header (Fixed Top) - Visible only on Mobile */}
             <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#181818] border-b border-gray-800 z-40 flex items-center justify-between px-4 shadow-md bg-opacity-90 backdrop-blur-sm">
-                <div className="font-bold text-white text-lg tracking-wider">VINE Portal</div>
+                <div className="font-bold text-white text-lg tracking-wider">COMPASS 360</div>
                 <button
                     onClick={() => setIsMobileMenuOpen(true)}
                     className="p-2 text-gray-400 hover:text-white transition-colors"

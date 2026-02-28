@@ -59,8 +59,8 @@ export default function RoleSelectionPage() {
                 email: 'student@vine.ac.ug',
                 likedContentIds: [],
                 subscribedTutorIds: [],
-                subscriptionStatus: 'active',
-                subscriptionEndDate: '2026-12-31',
+                subscriptionStatus: 'expired',
+                subscriptionExpiry: '',
                 walletBalance: 0,
                 paymentRequests: []
             });

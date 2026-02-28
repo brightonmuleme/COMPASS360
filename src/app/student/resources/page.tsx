@@ -197,7 +197,7 @@ export default function ResourceCenter() {
             sub.status === 'Active' &&
             new Date(sub.expiryDate) > new Date()
         );
-        return hasFinancialSub || studentProfile.subscribedTutorIds.includes(tutorId);
+        return hasFinancialSub || (studentProfile?.subscribedTutorIds?.includes(tutorId) || false);
     };
 
     const handleViewContent = (content: TutorContent) => {

@@ -32,7 +32,7 @@ export default function FinancialCenter() {
         try {
             setLoadingLedger(true);
             const { data, error } = await supabase
-                .from('profiles')
+                .from('financial_ledger')
                 .select('*')
                 .order('created_at', { ascending: false });
 
@@ -82,31 +82,18 @@ export default function FinancialCenter() {
     const appPassPurchases = useMemo(() => {
         const all: (any)[] = [];
         cloudProfiles.forEach(p => {
-            // 1. Try explicit logs first
-            let logs = p.activity_logs || p.activityLogs || [];
+            // Reading from the unified activity_logs column
+            let logs = p.activity_logs || [];
             if (typeof logs === 'string') try { logs = JSON.parse(logs); } catch (e) { logs = []; }
 
-            const explicitLogs = Array.isArray(logs) ? logs.filter((l: any) => l.type === 'AppPass') : [];
+            const appPassLogs = Array.isArray(logs) ? logs.filter((l: any) => l.type === 'AppPass') : [];
 
-            if (explicitLogs.length > 0) {
-                explicitLogs.forEach((l: any) => all.push({ ...l, userName: p.full_name || p.name, amount: l.amount || 5000, date: l.timestamp || l.date || p.created_at }));
-            }
-            // 2. Smart Recovery: If wallet < deposits and user has active sub, derive the spend
-            else {
-                const totalDeposits = (p.payment_requests || []).reduce((sum: number, r: any) => r.status === 'Approved' ? sum + Number(r.amount) : sum, 0);
-                const currentWallet = Number(p.wallet_balance || 0);
-                const spendingGap = totalDeposits - currentWallet;
-
-                if (spendingGap > 0 && p.subscription_status === 'active') {
-                    all.push({
-                        type: 'AppPass',
-                        userName: p.full_name || p.name,
-                        amount: spendingGap, // Likely the 5,000 or 9,000
-                        date: p.subscription_expiry || p.created_at,
-                        isDerived: true
-                    });
-                }
-            }
+            appPassLogs.forEach((l: any) => all.push({
+                ...l,
+                userName: p.full_name || p.name,
+                amount: l.amount || 5000,
+                date: l.timestamp || l.date || p.created_at
+            }));
         });
         return all;
     }, [cloudProfiles]);
