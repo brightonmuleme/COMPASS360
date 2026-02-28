@@ -21,8 +21,18 @@ export default function FeesPage() {
         students,
         submitSubscriptionRequest,
         purchasePlatformPass,
-        hydrated
+        hydrated,
+        pullFromCloud,
+        isCloudSyncing
     } = useSchoolData();
+
+    // ☁️ CLOUD SYNC BRIDGE: Force a pull on mount to resolve Local vs Live discrepancies
+    React.useEffect(() => {
+        if (hydrated && studentProfile?.id !== 'std_user_1') {
+            console.log("☁️ WALLET: Triggering background cloud pull...");
+            pullFromCloud(true);
+        }
+    }, [hydrated, studentProfile?.id]);
 
     const [transactionId, setTransactionId] = useState('');
     const [reference, setReference] = useState('');
@@ -87,14 +97,26 @@ export default function FeesPage() {
                 </div>
             ) : (
                 <div className="max-w-6xl mx-auto animate-fade-in">
-                    <header className="mb-12">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-red-600 rounded-lg">
-                                <Wallet size={24} className="text-white" />
+                    <header className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                        <div>
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 bg-red-600 rounded-lg">
+                                    <Wallet size={24} className="text-white" />
+                                </div>
+                                <h1 className="text-3xl font-black tracking-tighter uppercase">Wallet & Plans</h1>
                             </div>
-                            <h1 className="text-3xl font-black tracking-tighter uppercase">Wallet & Plans</h1>
+                            <p className="text-gray-500 font-medium">Manage your COMPASS 360 balance and learning subscriptions.</p>
                         </div>
-                        <p className="text-gray-500 font-medium">Manage your COMPASS 360 balance and learning subscriptions.</p>
+
+                        {/* SYNC BRIDGE */}
+                        <button
+                            onClick={() => pullFromCloud(true)}
+                            disabled={isCloudSyncing}
+                            className={`bg-[#111] border border-white/5 px-6 py-4 rounded-2xl flex items-center gap-3 transition-all hover:bg-white/5 ${isCloudSyncing ? 'opacity-50 grayscale' : ''}`}
+                        >
+                            <div className={`w-2 h-2 rounded-full ${isCloudSyncing ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{isCloudSyncing ? 'Syncing...' : 'Cloud Active'}</span>
+                        </button>
                     </header>
 
                     {error && (
@@ -298,8 +320,8 @@ export default function FeesPage() {
                                             <div key={item.id} className="bg-[#111] p-5 rounded-2xl border border-[#222] flex items-center justify-between group hover:border-[#333] transition-colors">
                                                 <div className="flex items-center gap-4">
                                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'Approved' ? 'bg-green-500/10 text-green-500' :
-                                                            item.status === 'Rejected' ? 'bg-red-500/10 text-red-500' :
-                                                                'bg-amber-500/10 text-amber-500'
+                                                        item.status === 'Rejected' ? 'bg-red-500/10 text-red-500' :
+                                                            'bg-amber-500/10 text-amber-500'
                                                         }`}>
                                                         {item.type === 'purchase' ? <Zap size={18} /> :
                                                             item.status === 'Approved' ? <CheckCircle2 size={18} /> :
@@ -318,8 +340,8 @@ export default function FeesPage() {
                                                 </div>
                                                 <div className="text-right">
                                                     <div className={`text-[10px] font-black uppercase tracking-widest ${item.status === 'Approved' ? (item.isIncome ? 'text-green-500' : 'text-red-400') :
-                                                            item.status === 'Rejected' ? 'text-red-500' :
-                                                                'text-amber-500'
+                                                        item.status === 'Rejected' ? 'text-red-500' :
+                                                            'text-amber-500'
                                                         }`}>
                                                         {item.status}
                                                     </div>
