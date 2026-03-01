@@ -4291,43 +4291,24 @@ function useSchoolDataInternal() {
     const deleteStudent = (studentId: number | string) => deleteStudents([studentId]);
 
     const deleteStudents = (studentIds: (number | string)[]) => {
+        triggerManualActionLock();
         if (studentIds.length === 0) return;
 
         // 1. COLLECT PAYMENT ACTIONS (Batch)
+        // ... (rest of function logic) ...
         const paymentIdsToRemove = new Set<string>();
         const newUnclaimed: Payment[] = [];
         const newDeletedPayments: Payment[] = [];
 
-        // Iterate updates
         payments.forEach(p => {
             if (studentIds.some(id => id.toString() === p.studentId.toString())) {
                 paymentIdsToRemove.add(p.id);
-
                 const methodLower = (p.method || '').toLowerCase().replace(/\s/g, '');
                 const isDigital = ['schoolpay', 'pegpay'].includes(methodLower) || methodLower.includes('schoolpay') || methodLower.includes('pegpay');
-
                 if (isDigital) {
-                    // MOVE TO UNCLAIMED
-                    newUnclaimed.push({
-                        ...p,
-                        studentId: 0, // Detach
-                        billingId: undefined, // Detach billing
-                        description: `Unclaimed: ${p.description} (Was linked to deleted student ${p.studentId})`,
-                        term: undefined
-                    });
+                    newUnclaimed.push({ ...p, studentId: 0, billingId: undefined, description: `Unclaimed: ${p.description} (Was linked to deleted student ${p.studentId})`, term: undefined });
                 } else {
-                    // MOVE TO TRASH
-                    newDeletedPayments.push({
-                        ...p,
-                        status: 'rejected',
-                        history: [...(p.history || []), {
-                            id: generateId(),
-                            action: 'Deleted',
-                            details: "Student Account Deleted (Batch)",
-                            user: 'Bursar',
-                            timestamp: new Date().toISOString()
-                        }]
-                    });
+                    newDeletedPayments.push({ ...p, status: 'rejected', history: [...(p.history || []), { id: generateId(), action: 'Deleted', details: "Student Account Deleted (Batch)", user: 'Bursar', timestamp: new Date().toISOString() }] });
                 }
             }
         });
@@ -4335,31 +4316,17 @@ function useSchoolDataInternal() {
         // 2. COLLECT BILLING ACTIONS (Batch)
         const billingIdsToRemove = new Set<string>();
         const newDeletedBillings: Billing[] = [];
-
         billings.forEach(b => {
             if (studentIds.some(id => id.toString() === b.studentId.toString())) {
                 billingIdsToRemove.add(b.id);
-                newDeletedBillings.push({
-                    ...b,
-                    status: 'Void', // Mark void
-                    history: [...(b.history || []), {
-                        id: generateId(),
-                        action: 'Deleted',
-                        details: "Student Account Deleted (Batch)",
-                        user: 'Bursar',
-                        timestamp: new Date().toISOString()
-                    }]
-                });
+                newDeletedBillings.push({ ...b, status: 'Void', history: [...(b.history || []), { id: generateId(), action: 'Deleted', details: "Student Account Deleted (Batch)", user: 'Bursar', timestamp: new Date().toISOString() }] });
             }
         });
 
         // 3. APPLY UPDATES (Batch)
-        // Payments
         if (newUnclaimed.length > 0) setUnclaimedPayments(prev => [...newUnclaimed, ...prev]);
         if (newDeletedPayments.length > 0) setDeletedPayments(prev => [...newDeletedPayments, ...prev]);
         if (paymentIdsToRemove.size > 0) setPayments(prev => prev.filter(p => !paymentIdsToRemove.has(p.id)));
-
-        // Billings
         if (newDeletedBillings.length > 0) setDeletedBillings(prev => [...newDeletedBillings, ...prev]);
         if (billingIdsToRemove.size > 0) setBillings(prev => prev.filter(b => !billingIdsToRemove.has(b.id)));
 
@@ -4369,6 +4336,15 @@ function useSchoolDataInternal() {
             const sid = s.schoolPayCode || s.id;
             return !studentIds.some(id => id.toString() === (sid || '').toString());
         }));
+
+        // 🪦 TOMBSTONE: Locally record these student deletions to prevent cloud resurrection
+        if (typeof window !== 'undefined') {
+            try {
+                const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
+                const newTombstones = [...new Set([...current, ...studentIds.map(id => id.toString())])];
+                localStorage.setItem('school_tombstones_v1', JSON.stringify(newTombstones));
+            } catch (e) { console.error("Tombstone save error", e); }
+        }
 
         logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students. IDs: ${studentIds.join(', ')}`);
     };
@@ -5433,14 +5409,19 @@ function useSchoolDataInternal() {
 
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
 
-                    // 💎 DELTA MERGING: Use unionMerge to preserve unpushed local changes
+                    const tombstones = new Set(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
+
                     if (cloudState.students) {
-                        const stampedStudents = cloudState.students.map((s: any) => ({ ...s, schoolId: idToUse }));
+                        const stampedStudents = cloudState.students
+                            .filter((s: any) => !tombstones.has(s.id?.toString()) && !tombstones.has((s.schoolPayCode || '').toString()))
+                            .map((s: any) => ({ ...s, schoolId: idToUse }));
                         setStudents(prev => unionMerge(prev, stampedStudents));
                     }
 
                     if (cloudState.registrarStudents) {
-                        const stampedRegistrar = cloudState.registrarStudents.map((s: any) => ({ ...s, schoolId: idToUse }));
+                        const stampedRegistrar = cloudState.registrarStudents
+                            .filter((s: any) => !tombstones.has(s.id?.toString()) && !tombstones.has((s.schoolPayCode || '').toString()))
+                            .map((s: any) => ({ ...s, schoolId: idToUse }));
                         setRegistrarStudents(prev => unionMerge(prev, stampedRegistrar));
                     }
 
@@ -5456,7 +5437,6 @@ function useSchoolDataInternal() {
                         const stampedGT = cloudState.generalTransactions.map((t: any) => ({ ...t, schoolId: idToUse }));
                         setGeneralTransactions(prev => unionMerge(prev, stampedGT));
                     }
-                    const tombstones = new Set(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
 
                     if (cloudState.requisitions) {
                         const filtered = cloudState.requisitions.filter((r: any) => !tombstones.has(r.id));
