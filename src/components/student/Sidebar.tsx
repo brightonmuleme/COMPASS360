@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useSchoolData } from "@/lib/store";
+import { useSchoolData, formatMoney } from "@/lib/store";
 import {
     LayoutDashboard,
     BookOpen,
@@ -120,9 +120,9 @@ export function StudentSidebar({ className = "", onMobileClose }: StudentSidebar
                         >
                             <item.icon size={18} className={`${isActive ? 'text-white' : 'text-gray-500 group-hover:text-red-400'} transition-colors`} />
                             <span className="text-sm">{item.label}</span>
-                            {item.label === "Wallet & Plans" && linkedStudent?.walletBalance ? (
-                                <span className="ml-auto text-[10px] bg-white/10 px-2 py-0.5 rounded-md text-gray-300">
-                                    {linkedStudent.walletBalance.toLocaleString()}
+                            {item.label === "Wallet & Plans" && (studentProfile.walletBalance > 0 || linkedStudent?.walletBalance) ? (
+                                <span className="ml-auto text-[10px] bg-red-500/10 px-2 py-0.5 rounded-md text-red-500 font-black border border-red-500/20">
+                                    {formatMoney(studentProfile.walletBalance || linkedStudent?.walletBalance || 0)}
                                 </span>
                             ) : null}
                         </Link>

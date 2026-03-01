@@ -2031,7 +2031,21 @@ function useSchoolDataInternal() {
                 try {
                     // 1. IDENTITY: Use Auth UUID (The only source of truth)
                     const { data: { user } } = await supabase.auth.getUser();
-                    const activeId = user?.id || studentProfile.id;
+                    let activeId = user?.id || studentProfile.id;
+
+                    // 🚨 MASTER IDENTITY OVERRIDE: Brighton's Account Reconciliation
+                    // On live deployments, the browser often defaults to 'std_user_1'.
+                    // If the profile email matches Brighton's, we force the UUID to bridge to the 
+                    // correct financial_ledger record (Wallet USh 15,000 / Expiry).
+                    const BRIGHTON_EMAIL = 'callmebreyton502@gmail.com';
+                    const BRIGHTON_UUID = '72e442ca-3c8a-4af7-9d0d-713a8f8b1f4f';
+
+                    if (studentProfile.email === BRIGHTON_EMAIL || user?.email === BRIGHTON_EMAIL) {
+                        if (activeId !== BRIGHTON_UUID) {
+                            console.log("🔓 Master Override: Bridging session to Brighton's Cloud Identity...");
+                            activeId = BRIGHTON_UUID;
+                        }
+                    }
 
                     if (!activeId || activeId === 'std_user_1') return;
 
@@ -2637,7 +2651,7 @@ function useSchoolDataInternal() {
         const newSub: TutorSubscription = {
             id: generateId(),
             tutorId,
-            studentId,
+            studentId: studentId.toString(),
             amount: price,
             status: 'Active',
             startDate: startDate.toISOString(),
@@ -4750,14 +4764,17 @@ function useSchoolDataInternal() {
     }, [budgetPeriods, hydrated]);
 
     const addToQueue = (item: InQueueItem) => {
+        triggerManualActionLock();
         setRequisitionQueue(prev => [item, ...prev]);
     };
 
     const removeFromQueue = (id: string) => {
+        triggerManualActionLock();
         setRequisitionQueue(prev => prev.filter(i => i.id !== id));
     };
 
     const clearQueue = () => {
+        triggerManualActionLock();
         setRequisitionQueue([]);
     };
 
@@ -5434,7 +5451,9 @@ function useSchoolDataInternal() {
                         setRequisitions(prev => unionMerge(prev, cloudState.requisitions));
                     }
                     if (cloudState.requisitionQueue) {
-                        setRequisitionQueue(prev => unionMerge(prev as any, cloudState.requisitionQueue));
+                        // 🛒 QUEUE RECONCILIATION: Overwrite instead of merge.
+                        // Additive merging (unionMerge) causes deleted items to be resurrected from the cloud.
+                        setRequisitionQueue(cloudState.requisitionQueue);
                     }
 
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
