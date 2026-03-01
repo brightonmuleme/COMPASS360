@@ -4732,10 +4732,12 @@ function useSchoolDataInternal() {
     const resetRequisitionDraft = () => setRequisitionDraftState(INITIAL_REQUISITION_DRAFT);
 
     const deleteRequisition = (id: string) => {
+        triggerManualActionLock();
         setRequisitions(prev => prev.filter(r => r.id !== id));
     };
 
     const deleteRequisitionCascade = async (id: string) => {
+        triggerManualActionLock();
         // 0. Identify the requisition to find its readableId
         const targetReq = requisitions.find(r => r.id === id);
         const readableId = targetReq?.readableId;
@@ -5448,7 +5450,9 @@ function useSchoolDataInternal() {
                         setGeneralTransactions(prev => unionMerge(prev, stampedGT));
                     }
                     if (cloudState.requisitions) {
-                        setRequisitions(prev => unionMerge(prev, cloudState.requisitions));
+                        // 🛒 REQUISITION RECONCILIATION: Overwrite instead of merge.
+                        // Additive merging (unionMerge) causes deleted requisitions to be resurrected from the cloud.
+                        setRequisitions(cloudState.requisitions);
                     }
                     if (cloudState.requisitionQueue) {
                         // 🛒 QUEUE RECONCILIATION: Overwrite instead of merge.
