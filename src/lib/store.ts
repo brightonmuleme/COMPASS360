@@ -1898,6 +1898,14 @@ function useSchoolDataInternal() {
     useEffect(() => {
         const syncPlatformData = async () => {
             if (!hydrated) return;
+
+            // 🔒 SYNC HARMONY: Skip heartbeat if a manual action (like delete) happened recently (5s)
+            const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
+            if (Date.now() - lastManualAction < 5000) {
+                console.log("☁️ Compass Heartbeat: Skipping cycle due to recent manual action lock.");
+                return;
+            }
+
             const isAdmin = ['developer', 'director', 'bursar', 'expense manager', 'estate manager'].includes((activeRole || '').toLowerCase());
 
             if (isAdmin) {
