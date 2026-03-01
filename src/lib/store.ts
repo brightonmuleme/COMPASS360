@@ -2041,20 +2041,6 @@ function useSchoolDataInternal() {
                     const { data: { user } } = await supabase.auth.getUser();
                     let activeId = user?.id || studentProfile.id;
 
-                    // 🚨 MASTER IDENTITY OVERRIDE: Brighton's Account Reconciliation
-                    // On live deployments, the browser often defaults to 'std_user_1'.
-                    // If the profile email matches Brighton's, we force the UUID to bridge to the 
-                    // correct financial_ledger record (Wallet USh 15,000 / Expiry).
-                    const BRIGHTON_EMAIL = 'callmebreyton502@gmail.com';
-                    const BRIGHTON_UUID = '72e442ca-3c8a-4af7-9d0d-713a8f8b1f4f';
-
-                    if (studentProfile.email === BRIGHTON_EMAIL || user?.email === BRIGHTON_EMAIL) {
-                        if (activeId !== BRIGHTON_UUID) {
-                            console.log("🔓 Master Override: Bridging session to Brighton's Cloud Identity...");
-                            activeId = BRIGHTON_UUID;
-                        }
-                    }
-
                     if (!activeId || activeId === 'std_user_1') return;
 
                     // 2. FETCH: Pull strictly by UUID from both Profile and Financial Ledger
@@ -4742,6 +4728,11 @@ function useSchoolDataInternal() {
     const deleteRequisition = (id: string) => {
         triggerManualActionLock();
         setRequisitions(prev => prev.filter(r => r.id !== id));
+        // 🪦 TOMBSTONE: Locally record this deletion to prevent cloud resurrection
+        if (typeof window !== 'undefined') {
+            const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
+            localStorage.setItem('school_tombstones_v1', JSON.stringify([...current, id]));
+        }
     };
 
     const deleteRequisitionCascade = async (id: string) => {
@@ -4781,6 +4772,11 @@ function useSchoolDataInternal() {
     const removeFromQueue = (id: string) => {
         triggerManualActionLock();
         setRequisitionQueue(prev => prev.filter(i => i.id !== id));
+        // 🪦 TOMBSTONE: Locally record this deletion to prevent cloud resurrection
+        if (typeof window !== 'undefined') {
+            const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
+            localStorage.setItem('school_tombstones_v1', JSON.stringify([...current, id]));
+        }
     };
 
     const clearQueue = () => {
@@ -5270,8 +5266,11 @@ function useSchoolDataInternal() {
 
         const timer = setTimeout(async () => {
             try {
-                // Only push if we are currently logged in as a valid school schoolProfile
-                if (schoolProfile.status === 'Active' || (isLocalHost && schoolProfile.id)) {
+                const isAdmin = ['developer', 'director', 'bursar', 'expense manager', 'estate manager', 'accountant'].includes((activeRole || '').toLowerCase());
+
+                // Only push if we are currently logged in as a valid school schoolProfile 
+                // OR if the current user has an administrative staff role
+                if (schoolProfile.status === 'Active' || (isLocalHost && schoolProfile.id) || isAdmin) {
                     // SAFEGUARD: Don't push if both students and programmes are empty 
                     // OR if we are on SAMI and the count is suspiciously low (prevents mess-overwrite)
                     const isLocalStateEmpty = students.length === 0 && programmes.length === 0;
@@ -5304,7 +5303,7 @@ function useSchoolDataInternal() {
         courseUnits, resultPageConfigs, studentResults, studentPageSummaries, resultArchives,
         promotionBatches, inventoryItems, inventoryLists, inventoryGroups, inventoryLogs,
         inventoryTransfers, inventoryLocations, accounts, accountGroups, calendarEvents,
-        suggestions, hydrated
+        suggestions, hydrated, activeRole
     ]);
 
     // 🕒 THE TIME MACHINE: SNAPSHOT MANAGEMENT (Phase 4)
@@ -5457,15 +5456,15 @@ function useSchoolDataInternal() {
                         const stampedGT = cloudState.generalTransactions.map((t: any) => ({ ...t, schoolId: idToUse }));
                         setGeneralTransactions(prev => unionMerge(prev, stampedGT));
                     }
+                    const tombstones = new Set(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
+
                     if (cloudState.requisitions) {
-                        // 🛒 REQUISITION RECONCILIATION: Overwrite instead of merge.
-                        // Additive merging (unionMerge) causes deleted requisitions to be resurrected from the cloud.
-                        setRequisitions(cloudState.requisitions);
+                        const filtered = cloudState.requisitions.filter((r: any) => !tombstones.has(r.id));
+                        setRequisitions(filtered);
                     }
                     if (cloudState.requisitionQueue) {
-                        // 🛒 QUEUE RECONCILIATION: Overwrite instead of merge.
-                        // Additive merging (unionMerge) causes deleted items to be resurrected from the cloud.
-                        setRequisitionQueue(cloudState.requisitionQueue);
+                        const filtered = cloudState.requisitionQueue.filter((q: any) => !tombstones.has(q.id));
+                        setRequisitionQueue(filtered);
                     }
 
                     if (cloudState.bursaries) setBursaries(cloudState.bursaries);
