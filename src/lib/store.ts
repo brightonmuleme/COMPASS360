@@ -5285,7 +5285,7 @@ function useSchoolDataInternal() {
             } catch (e) {
                 console.error("☁️ Compass Cloud: Sync failed", e);
             }
-        }, 5000); // 5 second debounce (Layered Sync)
+        }, 1000); // 1 second debounce (Fast-Track Sync)
 
         return () => clearTimeout(timer);
     }, [
