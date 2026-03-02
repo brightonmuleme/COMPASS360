@@ -63,6 +63,22 @@ const safeSetItem = (key: string, value: any) => {
     }
 };
 
+/**
+ * 🪦 TOMBSTONE HELPER: Records IDs of deleted items to prevent cloud resurrection
+ */
+const triggerTombstone = (ids: (string | number)[]) => {
+    if (typeof window === 'undefined' || !ids || ids.length === 0) return;
+    try {
+        const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
+        const stringIds = ids.map(id => id.toString());
+        const newTombstones = Array.from(new Set([...current, ...stringIds]));
+        localStorage.setItem('school_tombstones_v1', JSON.stringify(newTombstones));
+        console.log(`🪦 Sync: Recorded ${ids.length} tombstones to prevent local resurrection.`);
+    } catch (e) {
+        console.error("Tombstone save error", e);
+    }
+};
+
 const SchoolContext = createContext<ReturnType<typeof useSchoolDataInternal> | null>(null);
 const SchoolContextProvider = SchoolContext.Provider;
 
@@ -4037,12 +4053,17 @@ function useSchoolDataInternal() {
     };
 
     const updateBilling = (b: Billing) => {
+        triggerManualActionLock();
         setBillings(prev => prev.map(old => old.id === b.id ? { ...b, lastUpdated: new Date().toISOString() } : old));
     };
 
     const deleteBilling = (id: string, reason: string = 'Moved to Trash') => {
+        triggerManualActionLock();
         const bill = billings.find(b => b.id === id);
         if (!bill) return;
+
+        // 🪦 TOMBSTONE: Locally record this deletion to prevent cloud resurrection
+        triggerTombstone([id]);
 
         // 1. Move to Trash (Soft Delete)
         const deletedBill = {
@@ -4107,20 +4128,22 @@ function useSchoolDataInternal() {
     };
 
     const updatePayment = (p: Payment) => {
+        triggerManualActionLock();
+        const updatedPayment = { ...p, lastUpdated: new Date().toISOString() };
         const oldPayment = payments.find(o => o.id === p.id);
 
         // 1. Update the payments list
-        setPayments(prev => prev.map(old => old.id === p.id ? p : old));
+        setPayments(prev => prev.map(old => old.id === p.id ? updatedPayment : old));
 
         // 2. Adjust Student Balance if necessary
         if (oldPayment) {
             // Revert old student balance if it was linked
             if (oldPayment.studentId) {
-                setStudents(prev => prev.map(s => s.id.toString() === oldPayment.studentId.toString() ? { ...s, balance: (s.balance || 0) + oldPayment.amount } : s));
+                setStudents(prev => prev.map(s => s.id.toString() === oldPayment.studentId.toString() ? { ...s, balance: (s.balance || 0) + oldPayment.amount, lastUpdated: new Date().toISOString() } : s));
             }
             // Apply new student balance
             if (p.studentId) {
-                setStudents(prev => prev.map(s => s.id.toString() === p.studentId.toString() ? { ...s, balance: (s.balance || 0) - p.amount } : s));
+                setStudents(prev => prev.map(s => s.id.toString() === p.studentId.toString() ? { ...s, balance: (s.balance || 0) - p.amount, lastUpdated: new Date().toISOString() } : s));
             }
         }
     };
@@ -4177,8 +4200,12 @@ function useSchoolDataInternal() {
     };
 
     const deletePayment = (id: string, reason: string) => {
+        triggerManualActionLock();
         const payment = payments.find(p => p.id === id);
         if (!payment) return;
+
+        // 🪦 TOMBSTONE: Locally record this deletion to prevent cloud resurrection
+        triggerTombstone([id]);
 
         const methodLower = (payment.method || '').toLowerCase().trim();
         const isDigitalIntegration = methodLower.includes('schoolpay') || methodLower.includes('pegpay');
@@ -4232,7 +4259,7 @@ function useSchoolDataInternal() {
         // 4. Reverse Balance
         setStudents(prev => prev.map(s => {
             if (s.id.toString() === payment.studentId.toString()) {
-                return { ...s, balance: (s.balance || 0) + payment.amount };
+                return { ...s, balance: (s.balance || 0) + payment.amount, lastUpdated: new Date().toISOString() };
             }
             return s;
         }));
@@ -4337,14 +4364,8 @@ function useSchoolDataInternal() {
             return !studentIds.some(id => id.toString() === (sid || '').toString());
         }));
 
-        // 🪦 TOMBSTONE: Locally record these student deletions to prevent cloud resurrection
-        if (typeof window !== 'undefined') {
-            try {
-                const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
-                const newTombstones = [...new Set([...current, ...studentIds.map(id => id.toString())])];
-                localStorage.setItem('school_tombstones_v1', JSON.stringify(newTombstones));
-            } catch (e) { console.error("Tombstone save error", e); }
-        }
+        // 🪦 TOMBSTONE: Locally record these deletions to prevent cloud resurrection
+        triggerTombstone([...studentIds, ...Array.from(paymentIdsToRemove), ...Array.from(billingIdsToRemove)]);
 
         logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students. IDs: ${studentIds.join(', ')}`);
     };
@@ -4703,16 +4724,15 @@ function useSchoolDataInternal() {
 
     const deleteRequisition = (id: string) => {
         triggerManualActionLock();
+        // 🪦 TOMBSTONE
+        triggerTombstone([id]);
         setRequisitions(prev => prev.filter(r => r.id !== id));
-        // 🪦 TOMBSTONE: Locally record this deletion to prevent cloud resurrection
-        if (typeof window !== 'undefined') {
-            const current = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
-            localStorage.setItem('school_tombstones_v1', JSON.stringify([...current, id]));
-        }
     };
 
     const deleteRequisitionCascade = async (id: string) => {
         triggerManualActionLock();
+        // 🪦 TOMBSTONE
+        triggerTombstone([id]);
         // 0. Identify the requisition to find its readableId
         const targetReq = requisitions.find(r => r.id === id);
         const readableId = targetReq?.readableId;
@@ -5409,7 +5429,14 @@ function useSchoolDataInternal() {
 
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
 
-                    const tombstones = new Set(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
+                    const tombstones = new Set<string>(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
+
+                    // Helper for robust merging and filtering
+                    const filterAndMerge = (prev: any[], incoming: any[] | undefined) => {
+                        if (!incoming) return prev;
+                        const filtered = incoming.filter((item: any) => !tombstones.has(item.id?.toString()));
+                        return unionMerge(prev, filtered);
+                    };
 
                     if (cloudState.students) {
                         const stampedStudents = cloudState.students
@@ -5427,61 +5454,59 @@ function useSchoolDataInternal() {
 
                     if (cloudState.payments) {
                         const stampedPayments = cloudState.payments.map((p: any) => ({ ...p, schoolId: idToUse }));
-                        setPayments(prev => unionMerge(prev, stampedPayments));
+                        setPayments(prev => filterAndMerge(prev, stampedPayments));
                     }
                     if (cloudState.billings) {
                         const stampedBillings = cloudState.billings.map((b: any) => ({ ...b, schoolId: idToUse }));
-                        setBillings(prev => unionMerge(prev, stampedBillings));
+                        setBillings(prev => filterAndMerge(prev, stampedBillings));
                     }
                     if (cloudState.generalTransactions) {
                         const stampedGT = cloudState.generalTransactions.map((t: any) => ({ ...t, schoolId: idToUse }));
-                        setGeneralTransactions(prev => unionMerge(prev, stampedGT));
+                        setGeneralTransactions(prev => filterAndMerge(prev, stampedGT));
                     }
 
                     if (cloudState.requisitions) {
-                        const filtered = cloudState.requisitions.filter((r: any) => !tombstones.has(r.id));
-                        setRequisitions(filtered);
+                        setRequisitions(prev => filterAndMerge(prev, cloudState.requisitions));
                     }
                     if (cloudState.requisitionQueue) {
-                        const filtered = cloudState.requisitionQueue.filter((q: any) => !tombstones.has(q.id));
-                        setRequisitionQueue(filtered);
+                        setRequisitionQueue(prev => filterAndMerge(prev, cloudState.requisitionQueue));
                     }
 
-                    if (cloudState.bursaries) setBursaries(cloudState.bursaries);
-                    if (cloudState.programmes) setProgrammes(cloudState.programmes);
-                    if (cloudState.services) setServices(cloudState.services);
-                    if (cloudState.staffAccounts) setStaffAccounts(cloudState.staffAccounts);
+                    if (cloudState.bursaries) setBursaries(prev => filterAndMerge(prev, cloudState.bursaries));
+                    if (cloudState.programmes) setProgrammes(prev => filterAndMerge(prev, cloudState.programmes));
+                    if (cloudState.services) setServices(prev => filterAndMerge(prev, cloudState.services));
+                    if (cloudState.staffAccounts) setStaffAccounts(prev => filterAndMerge(prev, cloudState.staffAccounts));
                     if (cloudState.paymentIntegrations) setPaymentIntegrations(cloudState.paymentIntegrations);
                     if (cloudState.manualPaymentMethods) setManualPaymentMethods(cloudState.manualPaymentMethods);
                     if (cloudState.financialSettings) setFinancialSettings(cloudState.financialSettings);
-                    if (cloudState.unclaimedPayments) setUnclaimedPayments(cloudState.unclaimedPayments);
+                    if (cloudState.unclaimedPayments) setUnclaimedPayments(prev => filterAndMerge(prev, cloudState.unclaimedPayments));
                     if (cloudState.documentTemplates) setDocumentTemplates(cloudState.documentTemplates);
                     if (cloudState.budgetPeriods) setBudgetPeriods(cloudState.budgetPeriods);
                     if (cloudState.expenseCategories) setExpenseCategories(cloudState.expenseCategories);
                     if (cloudState.incomeCategories) setIncomeCategories(cloudState.incomeCategories);
 
                     // Academic Data
-                    if (cloudState.courseUnits) setCourseUnits(prev => unionMerge(prev, cloudState.courseUnits));
-                    if (cloudState.resultPageConfigs) setResultPageConfigs(prev => unionMerge(prev, cloudState.resultPageConfigs));
-                    if (cloudState.studentResults) setStudentResults(prev => unionMerge(prev as any, cloudState.studentResults));
-                    if (cloudState.studentPageSummaries) setStudentPageSummaries(prev => unionMerge(prev as any, cloudState.studentPageSummaries));
-                    if (cloudState.resultArchives) setResultArchives(prev => unionMerge(prev, cloudState.resultArchives));
-                    if (cloudState.promotionBatches) setPromotionBatches(prev => unionMerge(prev, cloudState.promotionBatches));
+                    if (cloudState.courseUnits) setCourseUnits(prev => filterAndMerge(prev, cloudState.courseUnits));
+                    if (cloudState.resultPageConfigs) setResultPageConfigs(prev => filterAndMerge(prev, cloudState.resultPageConfigs));
+                    if (cloudState.studentResults) setStudentResults(prev => filterAndMerge(prev as any, cloudState.studentResults));
+                    if (cloudState.studentPageSummaries) setStudentPageSummaries(prev => filterAndMerge(prev as any, cloudState.studentPageSummaries));
+                    if (cloudState.resultArchives) setResultArchives(prev => filterAndMerge(prev, cloudState.resultArchives));
+                    if (cloudState.promotionBatches) setPromotionBatches(prev => filterAndMerge(prev, cloudState.promotionBatches));
 
                     // Inventory Data
                     if (cloudState.inventoryItems) {
                         const stampedItems = cloudState.inventoryItems.map((i: any) => ({ ...i, schoolId: idToUse }));
-                        setInventoryItems(prev => unionMerge(prev, stampedItems));
+                        setInventoryItems(prev => filterAndMerge(prev, stampedItems));
                     }
-                    if (cloudState.inventoryLists) setInventoryLists(prev => unionMerge(prev, cloudState.inventoryLists));
-                    if (cloudState.inventoryGroups) setInventoryGroups(prev => unionMerge(prev, cloudState.inventoryGroups));
+                    if (cloudState.inventoryLists) setInventoryLists(prev => filterAndMerge(prev, cloudState.inventoryLists));
+                    if (cloudState.inventoryGroups) setInventoryGroups(prev => filterAndMerge(prev, cloudState.inventoryGroups));
                     if (cloudState.inventoryLogs) {
                         const stampedLogs = cloudState.inventoryLogs.map((l: any) => ({ ...l, schoolId: idToUse }));
-                        setInventoryLogs(prev => unionMerge(prev, stampedLogs));
+                        setInventoryLogs(prev => filterAndMerge(prev, stampedLogs));
                     }
                     if (cloudState.inventoryTransfers) {
                         const stampedTransfers = cloudState.inventoryTransfers.map((t: any) => ({ ...t, schoolId: idToUse }));
-                        setInventoryTransfers(prev => unionMerge(prev, stampedTransfers));
+                        setInventoryTransfers(prev => filterAndMerge(prev, stampedTransfers));
                     }
                     if (cloudState.inventoryLocations) setInventoryLocations(cloudState.inventoryLocations);
 
@@ -5489,14 +5514,14 @@ function useSchoolDataInternal() {
                     if (cloudState.portalBranding) setPortalBranding(cloudState.portalBranding);
 
                     // Financial Accounts
-                    if (cloudState.accounts) setAccounts(prev => unionMerge(prev, cloudState.accounts));
+                    if (cloudState.accounts) setAccounts(prev => filterAndMerge(prev, cloudState.accounts));
                     if (cloudState.accountGroups) setAccountGroups(cloudState.accountGroups);
 
                     // Misc
-                    if (cloudState.calendarEvents) setCalendarEvents(cloudState.calendarEvents);
-                    if (cloudState.suggestions) setSuggestions(cloudState.suggestions);
-                    if (cloudState.news) setNews(cloudState.news);
-                    if (cloudState.adverts) setAdverts(cloudState.adverts);
+                    if (cloudState.calendarEvents) setCalendarEvents(prev => filterAndMerge(prev, cloudState.calendarEvents));
+                    if (cloudState.suggestions) setSuggestions(prev => filterAndMerge(prev, cloudState.suggestions));
+                    if (cloudState.news) setNews(prev => filterAndMerge(prev, cloudState.news));
+                    if (cloudState.adverts) setAdverts(prev => filterAndMerge(prev, cloudState.adverts));
 
                     setLastCloudSync(cloudState.timestamp);
                     localStorage.setItem('school_last_cloud_sync', cloudState.timestamp);
@@ -5536,17 +5561,25 @@ function useSchoolDataInternal() {
     };
 
     useEffect(() => {
-        if (hydrated && schoolProfile.id) {
+        if (!hydrated || !schoolProfile.id) return;
+
+        // 🟢 SMARTER SYNC: Trigger on Focus, Page Navigation, or Initial Load
+        // This drastically reduces egress while keeping data fresh when the user needs it.
+        const syncData = () => {
+            console.log("💓 Compass Sync: Smarter heartbeat triggered (Focus/Navigation).");
             pullFromCloud();
+        };
 
-            // 💓 INSTITUTIONAL HEARTBEAT: Sync core data (Inventory/Students) every 10 seconds
-            const interval = setInterval(() => {
-                pullFromCloud();
-            }, 10000);
+        // 1. Initial Load & Page Navigation (handled by pathname in deps)
+        syncData();
 
-            return () => clearInterval(interval);
-        }
-    }, [hydrated, schoolProfile.id]);
+        // 2. Tab Shift: Trigger when user switches back to this tab
+        window.addEventListener('focus', syncData);
+
+        return () => {
+            window.removeEventListener('focus', syncData);
+        };
+    }, [hydrated, schoolProfile.id, pathname]);
 
     // 4. REMOVED AGGRESSIVE LINKING EFFECT (Caused infinite loops)
     // We will implement a stable background task for this in the background sync interval instead.
