@@ -159,6 +159,7 @@ export default function PaymentModesPage() {
                     term: student ? student.semester : 'Unknown',
                     status: 'approved', // FIXED: store.ts uses 'approved' | 'pending' | 'rejected'
                     recordedBy: 'SchoolPay System',
+                    allocations: { 'Tuition Fees': parseFloat(tx.amount) },
                     metadata: {
                         syncSource: 'Manual Range Sync',
                         payCode: tx.studentPaymentCode,

@@ -5332,6 +5332,7 @@ function useSchoolDataInternal() {
                 resultArchives, promotionBatches, inventoryItems, inventoryLists, inventoryGroups,
                 inventoryLogs, inventoryTransfers, inventoryLocations, accounts, accountGroups,
                 calendarEvents, suggestions,
+                tombstones: JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'),
                 timestamp: new Date().toISOString()
             };
 
@@ -5442,13 +5443,17 @@ function useSchoolDataInternal() {
 
                     console.log("☁️ Compass Cloud: Pulling fresher data from server...");
 
+                    const tombstonesData = cloudState.tombstones || [];
+                    if (tombstonesData.length > 0) {
+                        triggerTombstone(tombstonesData);
+                    }
                     const tombstones = new Set<string>(JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]'));
 
                     // Helper for robust merging and filtering
                     const filterAndMerge = (prev: any[], incoming: any[] | undefined) => {
-                        if (!incoming) return prev;
+                        if (!incoming) return prev.filter((item: any) => !tombstones.has(item.id?.toString()));
                         const filtered = incoming.filter((item: any) => !tombstones.has(item.id?.toString()));
-                        return unionMerge(prev, filtered);
+                        return unionMerge(prev, filtered).filter((item: any) => !tombstones.has(item.id?.toString()));
                     };
 
                     if (cloudState.students) {
@@ -6054,7 +6059,7 @@ export const calculateClearancePercentage = (
     if (student.origin === 'registrar' && student.payCode && allStudents) {
         const bursarRecord = allStudents.find(s =>
             s.origin === 'bursar' &&
-            s.payCode === student.payCode
+            s.payCode?.toString() === student.payCode?.toString()
         );
 
         if (bursarRecord) {
@@ -6069,7 +6074,7 @@ export const calculateClearancePercentage = (
 
     // 1. Tuition Bill
     let totalTuitionBilled = billings.filter(b => {
-        if (b.studentId !== financialAuthority.id || b.term !== term) return false;
+        if (b.studentId.toString() !== financialAuthority.id.toString() || b.term !== term) return false;
         const isTuition = /tuition/i.test(b.description || "") || /tuition/i.test(b.type || "");
         const isArrearsBill = isArrears(b.description || "") || isArrears(b.type || "");
         return isTuition && !isArrearsBill;

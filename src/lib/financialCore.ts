@@ -32,8 +32,8 @@ export const calculateStudentFinancials = (
     programmes: any[] = [] // Optional programmes for tuition fallback
 ): FinancialSummary => {
     // 1. FILTER RELEVANT DATA
-    const studentBillings = billings.filter(b => b.studentId === student.id);
-    const studentPayments = payments.filter(p => p.studentId === student.id);
+    const studentBillings = billings.filter(b => b.studentId.toString() === student.id.toString());
+    const studentPayments = payments.filter(p => p.studentId.toString() === student.id.toString());
 
     // Term Isolation Logic
     const currentTerm = targetTerm || student.semester;
