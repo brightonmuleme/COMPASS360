@@ -1293,7 +1293,7 @@ function LearnersContent() {
     };
 
     return (
-        <div style={{ padding: '2rem' }}>
+        <div className="page-container">
             <style jsx global>{`
                 .account-row:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
                 .req-box {
@@ -1340,19 +1340,132 @@ function LearnersContent() {
                     background-color: #1a1a1a; /* Dark background for dropdowns */
                 }
 
+                /* Mobile-First Layout Reset */
+                .page-container {
+                    padding: 2rem;
+                }
+
                 @media (max-width: 768px) {
+                    .page-container {
+                        padding: 0.5rem !important;
+                    }
                     .matrix-container {
                         width: 100% !important;
                         max-width: 100vw !important;
                         padding-right: 0 !important;
-                        margin: 0 -1rem;
+                        margin: 0;
                         border-radius: 0 !important;
+                        border: none !important;
                     }
+                    /* Sticky Columns for Matrix on Mobile - Minimalist */
+                    .sticky-col {
+                        position: sticky !important;
+                        left: 0 !important;
+                        z-index: 10 !important;
+                        background: #111 !important;
+                        box-shadow: 2px 0 5px rgba(0,0,0,0.5) !important;
+                        min-width: unset !important;
+                        width: auto !important;
+                    }
+                    th.sticky-col:nth-child(2), td.sticky-col:nth-child(2) {
+                        min-width: 100px !important; /* Narrow student name */
+                        max-width: 100px !important;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                    td.sticky-col {
+                        background: #1a1a1a !important;
+                        font-size: 0.7rem !important;
+                    }
+
                     header {
                         flex-direction: column !important;
                         align-items: stretch !important;
-                        gap: 1.5rem;
+                        gap: 1rem;
+                        margin-bottom: 1rem !important;
+                        padding: 0 0.5rem;
                     }
+                    header h1 { font-size: 1.5rem !important; }
+
+                    .momentum-bar {
+                        padding: 1rem !important;
+                        margin-bottom: 1.5rem !important;
+                        gap: 1rem !important;
+                    }
+                    .momentum-bar .momentum-header {
+                        flex-direction: column !important;
+                        align-items: flex-start !important;
+                        gap: 1rem !important;
+                    }
+                    .momentum-bar .percentage-text {
+                        font-size: 1.8rem !important;
+                    }
+                    .momentum-bar .collected-label {
+                        font-size: 0.7rem !important;
+                        display: block;
+                        margin-top: -2px;
+                    }
+                    .momentum-bar .stat-grid {
+                        display: grid !important;
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 1rem !important;
+                        width: 100% !important;
+                    }
+                    .momentum-bar .stat-item {
+                        text-align: left !important;
+                    }
+                    .momentum-bar .stat-value {
+                        font-size: 1rem !important;
+                    }
+                    .momentum-bar .progress-container {
+                        height: 8px !important;
+                    }
+
+                    header.header-main {
+                        margin-bottom: 1.5rem !important;
+                        gap: 1rem !important;
+                    }
+                    .header-main > div:first-child {
+                        gap: 0.75rem !important;
+                    }
+                    .header-main > div:first-child > div:first-child {
+                        width: 48px !important;
+                        height: 48px !important;
+                        font-size: 1.2rem !important;
+                        border-radius: 12px !important;
+                    }
+                    .header-main h1 {
+                        font-size: 1.4rem !important;
+                    }
+                    .header-main p {
+                        display: none; /* Hide subtitle to save space */
+                    }
+
+                    .filter-shelf {
+                        padding: 0.6rem !important;
+                        margin-bottom: 1rem !important;
+                        gap: 0.5rem !important;
+                        border-radius: 12px !important;
+                    }
+
+                    .bulk-bar {
+                        padding: 0.8rem 1.2rem !important;
+                        gap: 1rem !important;
+                        width: calc(100% - 20px) !important;
+                        bottom: 1.5rem !important;
+                        border-radius: 16px !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        text-align: center !important;
+                    }
+                    .bulk-bar > div {
+                        align-items: center !important;
+                    }
+                    .bulk-bar .glass-button {
+                        padding: 0.5rem 0.75rem !important;
+                        font-size: 0.75rem !important;
+                    }
+
                     .no-print {
                         align-items: stretch !important;
                     }
@@ -1363,28 +1476,96 @@ function LearnersContent() {
                     .no-print input {
                         width: 100% !important;
                     }
-                    .mobile-card-grid {
+                    
+                    .desktop-table {
                         display: none !important;
                     }
-                    .desktop-table {
-                        display: table !important;
-                        font-size: 0.85rem;
+                    .mobile-card-grid {
+                        display: flex !important;
+                        flex-direction: column;
+                        gap: 1px; /* Divider effect */
+                        background: rgba(255,255,255,0.05);
+                        border-radius: 12px;
+                        overflow: hidden;
+                        margin: 0 0.5rem;
                     }
-                    .desktop-table th,
-                    .desktop-table td {
-                        padding: 0.75rem !important;
+                    .student-card {
+                        padding: 0.6rem 0.6rem !important; /* Tight WhatsApp-style padding */
+                        gap: 0.2rem !important;
+                        border-radius: 0 !important;
+                        border: none !important;
+                        border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+                        background: #000 !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        position: relative !important; /* Anchor for the ring badge */
                     }
-                    /* Removing sticky column on mobile to prevent overlapping content */
-                    .desktop-table th:nth-child(3),
-                    .desktop-table td:nth-child(3) {
-                        position: static !important;
-                        background: transparent !important;
-                        box-shadow: none !important;
+                    .student-card .name-row {
+                        width: 100%;
+                        display: block !important;
+                        margin-bottom: 0.15rem;
+                        padding-right: 32px; /* Clearance for the ring badge */
+                    }
+                    .student-card .status-badge {
+                        position: absolute !important;
+                        top: 0.6rem;
+                        right: 2rem; /* Buffer from chevron */
+                        z-index: 5;
+                    }
+                    .student-card .name-text {
+                        font-weight: 700 !important;
+                        font-size: 0.85rem !important; /* WhatsApp font size */
+                        color: #fff;
+                        white-space: normal !important; /* Allow wrapping if name is crazy long */
+                        line-height: 1.2;
+                    }
+                    .student-card .detail-row {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                        align-items: center !important;
+                        width: 100%;
+                        padding-right: 1.5rem; /* Space for chevron */
+                    }
+                    .student-card .metadata {
+                        font-size: 0.65rem !important;
+                        opacity: 0.5;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        flex: 1;
+                    }
+                    .student-card .financials {
+                        display: flex !important;
+                        align-items: center !important;
+                        gap: 0.5rem;
+                        flex-shrink: 0;
+                    }
+                    .student-card .amount {
+                        font-weight: 800 !important;
+                        font-size: 0.8rem !important;
+                    }
+                    .student-card .percentage {
+                        font-size: 0.65rem !important;
+                        font-weight: 700;
+                        opacity: 0.8;
+                    }
+                    .student-card .chevron-box {
+                        position: absolute !important;
+                        right: 0.6rem;
+                        top: 50%;
+                        transform: translateY(-50%);
+                        opacity: 0.2;
+                    }
+                    .student-card:last-child {
+                        border-bottom: none !important;
                     }
                 }
                 @media (min-width: 769px) {
                     .mobile-card-grid {
                         display: none !important;
+                    }
+                    .desktop-table {
+                        display: table !important;
                     }
                 }
                     color: white;
@@ -1439,6 +1620,12 @@ function LearnersContent() {
                     padding: 0.5rem;
                     font-size: 0.75rem;
                     white-space: nowrap;
+                }
+                @media (max-width: 768px) {
+                    .matrix-table th, .matrix-table td {
+                        padding: 0.4rem;
+                        font-size: 0.65rem;
+                    }
                 }
                 .matrix-container::-webkit-scrollbar {
                     height: 14px !important;
@@ -1550,7 +1737,7 @@ function LearnersContent() {
                 </div>
             </div>
 
-            <header className="flex flex-col md:flex-row justify-between items-center gap-6" style={{ marginBottom: '3rem' }}>
+            <header className="flex flex-col md:flex-row justify-between items-center gap-6 no-print header-main" style={{ marginBottom: '3rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                     <div style={{
                         width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
@@ -1710,7 +1897,7 @@ function LearnersContent() {
                 </div>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="filter-shelf no-print" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ position: 'relative' }}>
                     <button
                         onClick={() => setShowParticularsDropdown(!showParticularsDropdown)}
@@ -2095,9 +2282,9 @@ function LearnersContent() {
                 }
             </div >
 
-            <div className="card print-area" style={{ padding: '2rem', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px' }}>
+            <div className="card print-area" style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px' }}>
                 {/* OVERALL CLEARANCE PROGRESS BAR */}
-                <div className="no-print" style={{
+                <div className="no-print momentum-bar" style={{
                     marginBottom: '3rem',
                     background: 'linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
                     padding: '2rem',
@@ -2113,28 +2300,28 @@ function LearnersContent() {
                     {/* Decorative Background Glow */}
                     <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', background: 'rgba(59, 130, 246, 0.1)', filter: 'blur(60px)', borderRadius: '50%' }} />
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', position: 'relative', zIndex: 1 }}>
+                    <div className="momentum-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', position: 'relative', zIndex: 1 }}>
                         <div>
                             <div style={{ fontSize: '0.75rem', opacity: 0.5, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '800', marginBottom: '8px', color: '#60a5fa' }}>
                                 Collection Momentum • {filteredStudents.length} Students
                             </div>
-                            <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#fff', lineHeight: 1 }}>
-                                {globalStats.percentage.toFixed(1)}% <span style={{ fontSize: '1rem', opacity: 0.5, fontWeight: '600', color: '#10b981', verticalAlign: 'middle', marginLeft: '0.5rem' }}>COLLECTED</span>
+                            <div className="percentage-text" style={{ fontSize: '2.5rem', fontWeight: '900', color: '#fff', lineHeight: 1 }}>
+                                {globalStats.percentage.toFixed(1)}% <span className="collected-label" style={{ fontSize: '1rem', opacity: 0.5, fontWeight: '600', color: '#10b981', verticalAlign: 'middle', marginLeft: '0.5rem' }}>COLLECTED</span>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '4rem' }}>
-                            <div style={{ textAlign: 'right' }}>
+                        <div className="stat-grid" style={{ display: 'flex', gap: '4rem' }}>
+                            <div className="stat-item" style={{ textAlign: 'right' }}>
                                 <div style={{ fontSize: '0.7rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Avg. Arrears</div>
-                                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fbbf24' }}>{formatMoney(globalStats.avgArrears)}</div>
+                                <div className="stat-value" style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fbbf24' }}>{globalStats.avgArrears.toLocaleString()}</div>
                             </div>
-                            <div style={{ textAlign: 'right' }}>
+                            <div className="stat-item" style={{ textAlign: 'right' }}>
                                 <div style={{ fontSize: '0.7rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Projected Target</div>
-                                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#60a5fa' }}>{formatMoney(globalStats.totalTarget)}</div>
+                                <div className="stat-value" style={{ fontSize: '1.6rem', fontWeight: '900', color: '#60a5fa' }}>{globalStats.totalTarget.toLocaleString()}</div>
                             </div>
                         </div>
                     </div>
 
-                    <div style={{ height: '14px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                    <div className="progress-container" style={{ height: '14px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
                         <div style={{
                             width: `${globalStats.percentage}%`,
                             height: '100%',
@@ -2320,113 +2507,50 @@ function LearnersContent() {
                                 return (
                                     <div key={student.id}
                                         onClick={() => handleViewStudent(student)}
-                                        style={{
-                                            background: 'rgba(255,255,255,0.03)',
-                                            borderRadius: '16px',
-                                            padding: '1.25rem',
-                                            border: '1px solid rgba(255,255,255,0.05)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '1rem'
-                                        }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <div>
-                                                <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    {student.name}
-                                                    {isDirector && pendingTransactionCounts[student.id] > 0 && (
-                                                        <span
-                                                            title={`${pendingTransactionCounts[student.id]} pending`}
-                                                            style={{
-                                                                fontSize: '0.65rem',
-                                                                background: '#f59e0b',
-                                                                color: 'white',
-                                                                padding: '2px 6px',
-                                                                borderRadius: '10px',
-                                                                fontWeight: '900',
-                                                                boxShadow: '0 0 8px rgba(245, 158, 11, 0.6)',
-                                                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                                                            }}
-                                                        >
-                                                            {pendingTransactionCounts[student.id]}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.2rem' }}>
-                                                    {student.payCode} • {student.semester}
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                                {student.compassNumber && (
-                                                    <span style={{ fontSize: '0.6rem', background: '#ec4899', color: 'white', padding: '2px 6px', borderRadius: '10px' }}>
-                                                        #{student.compassNumber}
-                                                    </span>
-                                                )}
-                                                <StatusRing
-                                                    student={student}
-                                                    size={30}
-                                                    percentage={stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100}
-                                                />
+                                        className="student-card"
+                                        style={{ cursor: 'pointer' }}>
+
+                                        {/* Status Badge Ring (Top Right Corner) */}
+                                        <div className="status-badge">
+                                            <StatusRing
+                                                student={student}
+                                                size={20}
+                                                percentage={stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100}
+                                            />
+                                        </div>
+
+                                        {/* Line 1: Identity */}
+                                        <div className="name-row">
+                                            <div className="name-text">
+                                                {student.name}
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '12px' }}>
-                                            <div>
-                                                <div style={{ fontSize: '0.65rem', opacity: 0.4, textTransform: 'uppercase' }}>Balance</div>
-                                                <div style={{ fontWeight: '800', color: student.balance > 0 ? '#ef4444' : '#10b981' }}>
-                                                    {formatMoney(student.balance)}
-                                                </div>
+                                        {/* Line 2: Details & Financials Combined */}
+                                        <div className="detail-row">
+                                            <div className="metadata">
+                                                {student.payCode} • {student.semester}
                                             </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: '0.65rem', opacity: 0.4, textTransform: 'uppercase' }}>% Cleared</div>
-                                                <div style={{
-                                                    fontWeight: '800',
+
+                                            <div className="financials">
+                                                <div className="percentage" style={{
                                                     color: (stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100) >= localClearancePct
                                                         ? '#10b981'
                                                         : (stats.clearanceTarget > 0 ? (stats.clearancePaid / stats.clearanceTarget) * 100 : 100) >= localProbationPct
                                                             ? '#8b5cf6'
                                                             : '#ef4444'
                                                 }}>
-                                                    {stats.clearanceTarget > 0 ? ((stats.clearancePaid / stats.clearanceTarget) * 100).toFixed(1) : '100.0'}%
+                                                    {stats.clearanceTarget > 0 ? ((stats.clearancePaid / stats.clearanceTarget) * 100).toFixed(0) : '100'}%
+                                                </div>
+                                                <div className="amount" style={{ color: student.balance > 0 ? '#ef4444' : '#10b981' }}>
+                                                    {student.balance.toLocaleString()}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            {!isDirector && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handlePostToPortal(student); }}
-                                                    style={{
-                                                        flex: 1,
-                                                        background: '#3b82f6',
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        padding: '0.6rem',
-                                                        borderRadius: '10px',
-                                                        fontSize: '0.8rem',
-                                                        fontWeight: 'bold',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: '0.5rem'
-                                                    }}
-                                                >
-                                                    🚀 Post to Portal
-                                                </button>
-                                            )}
-                                            <button
-                                                style={{
-                                                    flex: 1,
-                                                    background: 'rgba(255,255,255,0.05)',
-                                                    color: 'white',
-                                                    border: '1px solid rgba(255,255,255,0.1)',
-                                                    padding: '0.6rem',
-                                                    borderRadius: '10px',
-                                                    fontSize: '0.8rem',
-                                                    fontWeight: 'bold'
-                                                }}
-                                            >
-                                                View Details
-                                            </button>
+                                        {/* Pure Chevron Indicator */}
+                                        <div className="chevron-box">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
                                         </div>
                                     </div>
                                 );
@@ -2441,7 +2565,7 @@ function LearnersContent() {
                                 overflowX: 'auto',
                                 overflowY: 'auto',
                                 maxHeight: '80vh',
-                                width: 'calc(100vw - 300px)',
+                                width: '100%',
                                 borderRadius: '12px',
                                 border: '1px solid #333',
                                 position: 'relative',
@@ -2451,8 +2575,8 @@ function LearnersContent() {
                             <table className="matrix-table" style={{ width: 'max-content', borderCollapse: 'collapse', borderSpacing: 0, background: 'rgba(0,0,0,0.2)' }}>
                                 <thead style={{ position: 'sticky', top: 0, zIndex: 20 }}>
                                     <tr style={{ background: '#111', color: '#666', fontSize: '0.7rem', textTransform: 'uppercase' }}>
-                                        <th style={{ background: '#111', width: '40px' }}>SN</th>
-                                        <th style={{ background: '#111', textAlign: 'left', minWidth: '200px' }}>Student Name</th>
+                                        <th style={{ background: '#111', width: '40px' }} className="sticky-col">SN</th>
+                                        <th style={{ background: '#111', textAlign: 'left', minWidth: '200px' }} className="sticky-col">Student Name</th>
                                         <th style={{ background: '#111', textAlign: 'left' }}>Pay Code</th>
 
                                         {/* Main Billings */}
@@ -2543,9 +2667,10 @@ function LearnersContent() {
 
                                         return (
                                             <tr key={student.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                                <td style={{ background: '#1a1a1a', textAlign: 'center' }}>{idx + 1}</td>
+                                                <td style={{ background: '#1a1a1a', textAlign: 'center' }} className="sticky-col">{idx + 1}</td>
                                                 <td
                                                     onClick={() => handleViewStudent(student)}
+                                                    className="sticky-col"
                                                     style={{
                                                         background: '#1a1a1a',
                                                         cursor: 'pointer', fontWeight: 'bold', color: '#3b82f6'
@@ -2629,7 +2754,7 @@ function LearnersContent() {
                                 </tbody>
                                 <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 20 }}>
                                     <tr style={{ background: '#222', fontWeight: 'bold' }}>
-                                        <td colSpan={3} style={{ position: 'sticky', left: 0, background: '#222', zIndex: 10, textAlign: 'right' }}>MATRIX TOTALS:</td>
+                                        <td colSpan={3} style={{ position: 'sticky', left: 0, background: '#222', zIndex: 10, textAlign: 'right' }} className="sticky-col">MATRIX TOTALS:</td>
 
                                         {matrixColumns.priority.map(col => {
                                             const sum = filteredStudents.reduce((acc, s) => acc + getCellData(s.id, col).paid, 0);
@@ -2678,7 +2803,7 @@ function LearnersContent() {
             {/* --- BULK ACTION BAR --- */}
             {
                 selectedIds.length > 0 && (
-                    <div style={{
+                    <div className="bulk-bar" style={{
                         position: 'fixed',
                         bottom: '2.5rem',
                         left: '50%',

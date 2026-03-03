@@ -132,6 +132,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
     const [isPosting, setIsPosting] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [reviewTx, setReviewTx] = useState<any>(null); // Transaction being reviewed for approval
+    const [expandedTxId, setExpandedTxId] = useState<string | null>(null); // Mobile: Expanded ledger state
 
     // --- INITIALIZATION ---
     useEffect(() => {
@@ -1203,6 +1204,145 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
                         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
                         .animate-scale-up { animation: scale-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+                        /* MOBILE OPTIMIZATIONS */
+                        @media (max-width: 768px) {
+                            #learner-modal-body {
+                                border-radius: 0 !important;
+                                padding: 0.5rem !important;
+                            }
+                            .modal-header-section {
+                                flex-direction: column !important;
+                                align-items: flex-start !important;
+                                gap: 1rem !important;
+                                padding-bottom: 1.5rem !important;
+                            }
+                            .header-buttons-row {
+                                width: 100% !important;
+                                display: grid !important;
+                                grid-template-columns: 1fr 1fr !important;
+                                gap: 0.5rem !important;
+                            }
+                            .header-buttons-row button {
+                                padding: 0.6rem 0.5rem !important;
+                                font-size: 0.65rem !important;
+                                width: 100% !important;
+                                justify-content: center !important;
+                            }
+                            .status-ring-container {
+                                transform: scale(0.7) !important;
+                                margin-left: -10px !important;
+                                margin-right: -10px !important;
+                            }
+                            .student-name-text {
+                                font-size: 1.1rem !important;
+                                line-height: 1.1 !important;
+                            }
+                            .desktop-tx-table {
+                                display: none !important;
+                            }
+                            .mobile-tx-list {
+                                display: flex !important;
+                                flex-direction: column;
+                                gap: 0.3rem;
+                                padding: 0.5rem !important;
+                            }
+                            .tx-strip {
+                                background: rgba(255,255,255,0.02);
+                                border: 1px solid rgba(255,255,255,0.04);
+                                border-radius: 12px;
+                                overflow: hidden;
+                                transition: all 0.2s ease;
+                            }
+                            .tx-strip:active { transform: scale(0.98); }
+                            .tx-strip-main {
+                                padding: 0.75rem;
+                            }
+                            .tx-line-1 {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: flex-start;
+                                margin-bottom: 2px;
+                            }
+                            .tx-line-2 {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                margin-top: 1px;
+                            }
+                            .status-dot {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 50%;
+                                display: inline-block;
+                                margin-right: 4px;
+                            }
+                            .status-dot.approved { background: #10b981; box-shadow: 0 0 6px #10b981; }
+                            .status-dot.pending { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+                            
+                            .tx-action-icons {
+                                display: flex;
+                                gap: 0.75rem;
+                                font-size: 0.9rem;
+                                color: rgba(255,255,255,0.4);
+                            }
+                            .tx-action-icons button {
+                                background: transparent;
+                                border: none;
+                                padding: 2px;
+                                transition: color 0.2s;
+                            }
+                            .tx-action-icons button:active { color: white; }
+                            
+                            .tx-ledger-expand {
+                                background: rgba(0,0,0,0.2);
+                                border-top: 1px solid rgba(255,255,255,0.03);
+                                padding: 0.75rem;
+                                font-family: monospace;
+                                font-size: 0.6rem;
+                                color: rgba(255,255,255,0.6);
+                                display: flex;
+                                flex-direction: column;
+                                gap: 4px;
+                            }
+                            .ledger-item {
+                                display: flex;
+                                justify-content: space-between;
+                                border-bottom: 1px dashed rgba(255,255,255,0.05);
+                                padding-bottom: 2px;
+                            }
+                            
+                            .fees-structure-header {
+                                flex-direction: column !important;
+                                align-items: flex-start !important;
+                                gap: 0.75rem !important;
+                            }
+                            .fees-structure-actions {
+                                width: 100% !important;
+                                display: grid !important;
+                                grid-template-columns: 1fr 1fr !important;
+                                gap: 0.5rem !important;
+                            }
+                            .fees-structure-actions select {
+                                width: 100% !important;
+                                font-size: 0.6rem !important;
+                                padding: 0.5rem 0.3rem !important;
+                            }
+                            .arrears-card {
+                                padding: 1.25rem !important;
+                                border-radius: 20px !important;
+                            }
+                            .arrears-card h4 {
+                                font-size: 0.55rem !important;
+                            }
+                            .arrears-card .text-4xl {
+                                font-size: 1.75rem !important;
+                            }
+                            .requirement-card {
+                                padding: 0.8rem !important;
+                                border-radius: 16px !important;
+                            }
+                        }
                     `}</style>
 
                 {/* Audit Context Header */}
@@ -1220,16 +1360,18 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                 )}
 
                 {/* --- HEADER --- */}
-                <div className="flex flex-col md:flex-row items-center gap-6 pb-8 border-b border-white/5">
+                <div className="modal-header-section flex flex-col md:flex-row items-center gap-6 pb-8 border-b border-white/5">
                     <div className="flex items-center gap-6">
-                        <StatusRing
-                            student={selectedStudent}
-                            size={72}
-                            percentage={clearancePercentage}
-                            onClick={() => setShowClearanceHistory(true)}
-                        />
+                        <div className="status-ring-container origin-left">
+                            <StatusRing
+                                student={selectedStudent}
+                                size={72}
+                                percentage={clearancePercentage}
+                                onClick={() => setShowClearanceHistory(true)}
+                            />
+                        </div>
                         <div>
-                            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight uppercase m-0 leading-none">
+                            <h2 className="student-name-text text-2xl md:text-3xl font-black text-white tracking-tight uppercase m-0 leading-none">
                                 {selectedStudent.name}
                             </h2>
                             <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -1263,7 +1405,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="header-buttons-row flex items-center gap-4 ml-auto">
                         {!isStudentView && !isDirectorView && (
                             <>
                                 <button
@@ -1277,7 +1419,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                         boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
                                     }}
                                 >
-                                    <span className="relative z-10">🖨️ Reporting Form</span>
+                                    <span className="relative z-10">🖨️ <span className="md:inline hidden">Reporting Form</span><span className="md:hidden inline">Report</span></span>
                                 </button>
                                 <button
                                     onClick={handlePostToPortal}
@@ -1290,7 +1432,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                         boxShadow: isPosting ? 'none' : '0 8px 30px rgba(37, 99, 235, 0.4)'
                                     }}
                                 >
-                                    <span className="relative z-10">{isPosting ? '📡 Syncing...' : '🚀 Post to Portal'}</span>
+                                    <span className="relative z-10">{isPosting ? '📡 Syncing...' : <>🚀 <span className="md:inline hidden">Post to Portal</span><span className="md:hidden inline">Post</span></>}</span>
                                     {!isPosting && (
                                         <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12"></div>
                                     )}
@@ -1393,7 +1535,8 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                             <div className="overflow-x-auto -mx-4 md:mx-0 custom-scrollbar">
                                 <div style={{ background: 'rgba(255,255,255,0.01)', border: PREMIUM_BORDER, borderRadius: '24px', overflow: 'hidden' }}>
                                     <div className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-premium">
-                                        <table className="w-full text-left border-collapse">
+                                        {/* Desktop Table View */}
+                                        <table className="desktop-tx-table w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="bg-white/[0.02]">
                                                     <th className="p-4 text-[0.6rem] font-black uppercase tracking-[0.2em] text-slate-500">Date</th>
@@ -1543,6 +1686,105 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                                 )}
                                             </tbody>
                                         </table>
+
+                                        {/* Mobile High-Density Strip List */}
+                                        <div className="mobile-tx-list hidden p-2 flex flex-col gap-2">
+                                            {(() => {
+                                                const sorted = [...transactions].sort((a, b) => new Date(b.date || "").getTime() - new Date(a.date || "").getTime());
+                                                const visible = sorted.slice(0, txLimit);
+
+                                                if (visible.length === 0) {
+                                                    return (
+                                                        <div className="p-8 text-center opacity-40 text-xs text-slate-500">No transactions found for {viewContext.targetTerm}.</div>
+                                                    );
+                                                }
+
+                                                return visible.map((tx, idx) => {
+                                                    const isBilled = tx.type === 'Billed' || tx.type === 'billed';
+                                                    const isAdjustment = tx.type === 'adjustment' || tx.subMode === 'Balance Fix' || tx.mode === 'Balance Fix' || tx.method === 'Adjustment' || tx.type === 'Adjustment';
+                                                    const txId = (tx.id || idx).toString();
+                                                    const isExpanded = expandedTxId === txId;
+                                                    const isApproved = tx.status?.toLowerCase() === 'approved';
+
+                                                    return (
+                                                        <div key={txId} className="tx-strip">
+                                                            <div
+                                                                className="tx-strip-main"
+                                                                onClick={() => setExpandedTxId(isExpanded ? null : txId)}
+                                                            >
+                                                                {/* Line 1: Particulars & Amount */}
+                                                                <div className="tx-line-1">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        {isAdjustment && <span className="text-[0.75rem]">🔧</span>}
+                                                                        <span className="text-[0.75rem] font-bold text-white uppercase tracking-tight truncate max-w-[180px]">
+                                                                            {isAdjustment && !tx.allocations ? 'Adjustment' : tx.particulars}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className={`text-[0.8rem] font-black flex items-center gap-1.5 ${isBilled ? 'text-red-500' : 'text-emerald-400'}`}>
+                                                                        {(!isBilled || isAdjustment) && (
+                                                                            <span className={`status-dot ${isApproved ? 'approved' : 'pending'}`}></span>
+                                                                        )}
+                                                                        {isBilled ? '+' : '-'}{formatMoney(tx.amount)}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Line 2: Meta (Date/Mode) & Action Icons */}
+                                                                <div className="tx-line-2">
+                                                                    <div className="text-[0.6rem] text-slate-500 font-bold uppercase tracking-widest">
+                                                                        <span className="text-slate-400">{new Date(tx.date).getDate()}/{new Date(tx.date).getMonth() + 1}</span> • <span className="opacity-60">{tx.mode || tx.type || tx.method}</span>
+                                                                    </div>
+
+                                                                    <div className="tx-action-icons" onClick={e => e.stopPropagation()}>
+                                                                        {(!isBilled || isAdjustment) && !tx.isPseudo && (
+                                                                            <>
+                                                                                {/* Edit Button */}
+                                                                                {!isStudentView && !isDirectorView && viewContext.isCurrent && (
+                                                                                    <button onClick={() => handleEditTransaction(tx)} title="Edit">✎</button>
+                                                                                )}
+
+                                                                                {/* Print Receipt Button */}
+                                                                                {!isStudentView && (
+                                                                                    <button onClick={() => !isProcessingPromotion && printReceipt(tx)} title="Print">🖨️</button>
+                                                                                )}
+
+                                                                                {/* Approve Button (Director Only) */}
+                                                                                {isDirectorView && tx.txType === 'payment' && !isApproved && (
+                                                                                    <button onClick={() => handleApproveTransaction(tx)} title="Approve">✅</button>
+                                                                                )}
+
+                                                                                {/* Delete Button */}
+                                                                                {!isStudentView && !isDirectorView && viewContext.isCurrent && !isApproved && (
+                                                                                    <button onClick={() => !isProcessingPromotion && initiateDelete('transaction', String(tx.id))} style={{ color: 'rgba(239, 68, 68, 0.4)' }} title="Delete">🗑️</button>
+                                                                                )}
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Allocation Mini-Ledger (Expanded) */}
+                                                            {isExpanded && tx.allocations && Object.keys(tx.allocations).length > 0 && (
+                                                                <div className="tx-ledger-expand animate-fade-in">
+                                                                    <div className="text-[0.5rem] opacity-30 uppercase tracking-[0.2em] mb-1">Receipt Breakdown</div>
+                                                                    {Object.entries(tx.allocations).map(([key, val]) => (
+                                                                        <div key={key} className="ledger-item">
+                                                                            <span className="opacity-80">{key}</span>
+                                                                            <span className="text-white">{formatMoney(Number(val))}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                });
+                                            })()}
+
+                                            {transactions.length > txLimit && (
+                                                <button onClick={() => setTxLimit(prev => prev + 20)} className="w-full py-3 bg-white/5 rounded-xl text-[0.65rem] font-bold text-blue-400 uppercase tracking-widest active:scale-[0.98] transition-transform">
+                                                    Load More ({transactions.length - txLimit})
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1550,16 +1792,16 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
                         {/* FEES STRUCTURE SECTION */}
                         <section className="mb-12">
-                            <div className="flex justify-between items-center mb-6">
+                            <div className="fees-structure-header flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-black uppercase tracking-widest m-0 leading-none">Fees Structure</h3>
                                 {!isStudentView && !isDirectorView && entryLevelFilter === 'Current' && (
-                                    <div className="flex gap-2">
+                                    <div className="fees-structure-actions flex gap-2">
                                         <select
                                             disabled={isProcessingPromotion}
                                             className="px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg text-[0.65rem] font-black uppercase tracking-widest text-white/60 hover:text-white transition-all cursor-pointer"
                                             onChange={(e) => { if (e.target.value && !isProcessingPromotion) handleApplyBursary(e.target.value); e.target.value = ""; }}
                                         >
-                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Apply Bursary'}</option>
+                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Bursary'}</option>
                                             {bursaries.map(b => <option key={b.id} value={b.id} className="bg-slate-900">{b.name} ({formatMoney(b.value)} Off)</option>)}
                                         </select>
                                         <select
@@ -1567,7 +1809,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                             className="px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg text-[0.65rem] font-black uppercase tracking-widest text-red-500/60 hover:text-red-500 transition-all cursor-pointer"
                                             onChange={(e) => { if (e.target.value && !isProcessingPromotion) handleBillService(e.target.value); e.target.value = ""; }}
                                         >
-                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Bill Service'}</option>
+                                            <option value="" className="bg-slate-900">{isProcessingPromotion ? '🔒 Locked' : '＋ Billing'}</option>
                                             {services.map(s => <option key={s.id} value={s.id} className="bg-slate-900">{s.name} ({s.cost.toLocaleString()})</option>)}
                                         </select>
                                     </div>
@@ -1662,7 +1904,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                     {/* RIGHT COLUMN */}
                     <div className="flex flex-col gap-8">
                         {/* ARREARS CARD */}
-                        <div style={{
+                        <div className="arrears-card" style={{
                             background: 'linear-gradient(135deg, #0f172a, #1e1b4b)',
                             borderRadius: '32px',
                             padding: '2rem',
@@ -1711,7 +1953,7 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
                                     const pct = Math.min(100, (req.brought / req.required) * 100);
                                     return (
                                         <div key={i} className="group cursor-pointer" onClick={() => !isStudentView && !isDirectorView && setOpenReqMenu(req.name)}>
-                                            <div style={{
+                                            <div className="requirement-card" style={{
                                                 background: PREMIUM_GLASS,
                                                 border: PREMIUM_BORDER,
                                                 borderRadius: '24px',
