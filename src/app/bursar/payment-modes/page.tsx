@@ -17,7 +17,8 @@ export default function PaymentModesPage() {
         deletedPayments, unclaimedPayments, // Get deleted and unclaimed payments
         documentTemplates, programmes, // Added for receipt printing
         activeRole, updatePayment, developerSettings, schoolProfile,
-        linkPayment, releaseGhostPayments // Added releaseGhostPayments
+        linkPayment, releaseGhostPayments, // Added releaseGhostPayments
+        triggerAtomicCloudSync // Force immediate persistence
     } = useSchoolData();
 
     // --- STATE MANAGEMENT ---
@@ -175,6 +176,11 @@ export default function PaymentModesPage() {
                 addPayment(newPayment);
                 newCount++;
             });
+
+            // 🚀 CRITICAL FIX: Trigger atomic cloud sync to ensure persistence across all devices
+            // This forces the "mobile sync" to save to the "laptop" globally before the alert.
+            console.log("☁️ Compass Sync: Triggering atomic cloud push...");
+            await triggerAtomicCloudSync();
 
             alert(`Sync Complete!\n\nFound: ${allTxs.length} transactions.\nSaved: ${newCount} new records.`);
             setSyncRangeModal({ open: false, integration: null });

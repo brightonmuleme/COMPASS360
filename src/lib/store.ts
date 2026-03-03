@@ -2104,7 +2104,20 @@ function useSchoolDataInternal() {
 
         syncPlatformData();
         const interval = setInterval(syncPlatformData, 10000);
-        return () => clearInterval(interval);
+
+        // 🚀 MULTI-DEVICE HARMONY: Periodic Cloud Pull (30s)
+        // This ensures Device B reflects Device A's changes even if Device B stays focused.
+        const cloudPullInterval = setInterval(() => {
+            if (activeRole && ['bursar', 'director', 'developer', 'accountant'].includes(activeRole.toLowerCase())) {
+                console.log("🌦️ Compass Heartbeat: Periodic cloud pull for cross-device consistency...");
+                pullFromCloud();
+            }
+        }, 30000); // 30 seconds
+
+        return () => {
+            clearInterval(interval);
+            clearInterval(cloudPullInterval);
+        };
     }, [hydrated, activeRole, studentProfile.id]);
 
     const getSyncedDate = () => new Date(Date.now() + serverTimeOffset);
@@ -5990,6 +6003,10 @@ function useSchoolDataInternal() {
         // Cloud Actions
         loadTutorContentFromCloud,
         pullFromCloud,
+        triggerAtomicCloudSync: async () => {
+            // Force a snapshot now (bypasses debounce)
+            return await takeInstitutionalSnapshot("Atomic Platform Sync", true);
+        },
 
         // Time Utilities
         getSyncedDate,
