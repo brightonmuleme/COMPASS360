@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react';
+import React, { useState, useEffect, createContext, useContext, ReactNode, useMemo, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { developerService } from '@/services/developerService';
 import { databaseService } from '@/services/databaseService';
@@ -5209,6 +5209,7 @@ function useSchoolDataInternal() {
         return "";
     });
     const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+    const lastPullTimeRef = useRef<number>(0);
 
     // 1. MASTER PUSH EFFECT (Debounced)
     useEffect(() => {
@@ -5304,7 +5305,7 @@ function useSchoolDataInternal() {
             } catch (e) {
                 console.error("☁️ Compass Cloud: Sync failed", e);
             }
-        }, 1000); // 1 second debounce (Fast-Track Sync)
+        }, 5000); // 5 second debounce (Reduced frequency)
 
         return () => clearTimeout(timer);
     }, [
@@ -5452,6 +5453,15 @@ function useSchoolDataInternal() {
 
         const idToUse = targetSchoolId || schoolProfile.id;
         if (!idToUse) return;
+
+        // 🛡️ COOLDOWN SAFETY: Avoid rapid-fire pulls (Max once every 30 seconds)
+        const now = Date.now();
+        if (!isForce && now - lastPullTimeRef.current < 30000) {
+            console.log("☁️ Compass Sync: Pull skipped (Cooldown active).");
+            return;
+        }
+        lastPullTimeRef.current = now;
+
         setIsCloudSyncing(true);
         try {
             let cloudStateRaw = await databaseService.getSchoolCloudState(idToUse);
@@ -5650,7 +5660,7 @@ function useSchoolDataInternal() {
         return () => {
             window.removeEventListener('focus', syncData);
         };
-    }, [hydrated, schoolProfile.id, pathname]);
+    }, [hydrated, schoolProfile.id]); // Removed pathname to stop syncing on internal navigation
 
     // 4. REMOVED AGGRESSIVE LINKING EFFECT (Caused infinite loops)
     // We will implement a stable background task for this in the background sync interval instead.
