@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { developerService } from '@/services/developerService';
 import { databaseService } from '@/services/databaseService';
 import { supabase } from '@/lib/supabase';
+import LZString from 'lz-string';
 
 // --- HELPERS ---
 export const generateId = () => {
@@ -5291,7 +5292,9 @@ function useSchoolDataInternal() {
                     }
 
                     // 📸 TAKE INSTITUTIONAL SNAPSHOT (Phase 2 & 3)
-                    await databaseService.saveSchoolCloudState(schoolProfile.id, stateToCloud);
+                    // COMPRESSION: Shrink-wrap the state to save 90% egress
+                    const compressedState = LZString.compressToUTF16(JSON.stringify(stateToCloud));
+                    await databaseService.saveSchoolCloudState(schoolProfile.id, compressedState);
 
                     localStorage.setItem('school_last_pushed_hash', stateHash);
                     localStorage.setItem('school_last_cloud_sync', stateToCloud.timestamp);
@@ -5336,11 +5339,12 @@ function useSchoolDataInternal() {
                 timestamp: new Date().toISOString()
             };
 
-            // NEW: Use dedicated snapshot table
-            await databaseService.createSchoolSnapshot(schoolProfile.id, label, state);
+            // NEW: Use dedicated snapshot table (COMPRESSED)
+            const compressedSnapshot = LZString.compressToUTF16(JSON.stringify(state));
+            await databaseService.createSchoolSnapshot(schoolProfile.id, label, compressedSnapshot);
 
             // Also update the 'latest' cloud state for auto-sync
-            await databaseService.saveSchoolCloudState(schoolProfile.id, state);
+            await databaseService.saveSchoolCloudState(schoolProfile.id, compressedSnapshot);
 
             setLastCloudSync(state.timestamp);
             logGlobalAction('Manual Snapshot Created', `By ${activeRole}: ${label}`);
@@ -5374,38 +5378,61 @@ function useSchoolDataInternal() {
             // 🔒 CRITICAL: Lock auto-pull for 60 seconds to allow the restored state to settle and sync UP
             localStorage.setItem('school_manual_action_lock', Date.now().toString());
 
-            // Pillar Restoration
-            if (snapshot.students) setStudents(snapshot.students);
-            if (snapshot.registrarStudents) setRegistrarStudents(snapshot.registrarStudents);
-            if (snapshot.payments) setPayments(snapshot.payments);
-            if (snapshot.billings) setBillings(snapshot.billings);
-            if (snapshot.generalTransactions) setGeneralTransactions(snapshot.generalTransactions);
-            if (snapshot.requisitions) setRequisitions(snapshot.requisitions);
-            if (snapshot.bursaries) setBursaries(snapshot.bursaries);
-            if (snapshot.programmes) setProgrammes(snapshot.programmes);
-            if (snapshot.services) setServices(snapshot.services);
-            if (snapshot.staffAccounts) setStaffAccounts(snapshot.staffAccounts);
-            if (snapshot.documentTemplates) setDocumentTemplates(snapshot.documentTemplates);
-            if (snapshot.inventoryItems) setInventoryItems(snapshot.inventoryItems);
-            if (snapshot.accounts) setAccounts(snapshot.accounts);
-            if (snapshot.calendarEvents) setCalendarEvents(snapshot.calendarEvents);
-            if (snapshot.suggestions) setSuggestions(snapshot.suggestions);
-            if (snapshot.financialSettings) setFinancialSettings(snapshot.financialSettings);
-            if (snapshot.courseUnits) setCourseUnits(snapshot.courseUnits);
-            if (snapshot.resultPageConfigs) setResultPageConfigs(snapshot.resultPageConfigs);
-            if (snapshot.studentResults) setStudentResults(snapshot.studentResults);
-            if (snapshot.studentPageSummaries) setStudentPageSummaries(snapshot.studentPageSummaries);
-
-            // Update Sync Metadata
-            if (snapshot.timestamp) {
-                setLastCloudSync(snapshot.timestamp);
-                localStorage.setItem('school_last_cloud_sync', snapshot.timestamp);
+            // Fetch the full snapshot state if it's not present (required because getSchoolSnapshots is now lean)
+            let snapshotState = snapshot.state;
+            if (!snapshotState && snapshot.id) {
+                console.log("🕵️ Snapshot: Fetching full state for restoration...");
+                snapshotState = await databaseService.getSchoolSnapshotDetail(snapshot.id.toString());
             }
 
-            logGlobalAction('School Rollback', `To Version ${snapshot.timestamp || 'Unknown'} by Director`);
+            if (!snapshotState) {
+                throw new Error("Could not retrieve state for this version.");
+            }
+
+            // Handles both compressed and uncompressed snapshot states
+            let data = snapshotState;
+            if (typeof snapshotState === 'string') {
+                const decompressed = LZString.decompressFromUTF16(snapshotState);
+                if (decompressed) {
+                    try { data = JSON.parse(decompressed); } catch (e) { data = JSON.parse(snapshotState); }
+                } else {
+                    data = JSON.parse(snapshotState);
+                }
+            }
+
+            // Pillar Restoration
+            if (data.students) setStudents(data.students);
+            if (data.registrarStudents) setRegistrarStudents(data.registrarStudents);
+            if (data.payments) setPayments(data.payments);
+            if (data.billings) setBillings(data.billings);
+            if (data.generalTransactions) setGeneralTransactions(data.generalTransactions);
+            if (data.requisitions) setRequisitions(data.requisitions);
+            if (data.bursaries) setBursaries(data.bursaries);
+            if (data.programmes) setProgrammes(data.programmes);
+            if (data.services) setServices(data.services);
+            if (data.staffAccounts) setStaffAccounts(data.staffAccounts);
+            if (data.documentTemplates) setDocumentTemplates(data.documentTemplates);
+            if (data.inventoryItems) setInventoryItems(data.inventoryItems);
+            if (data.accounts) setAccounts(data.accounts);
+            if (data.calendarEvents) setCalendarEvents(data.calendarEvents);
+            if (data.suggestions) setSuggestions(data.suggestions);
+            if (data.financialSettings) setFinancialSettings(data.financialSettings);
+            if (data.courseUnits) setCourseUnits(data.courseUnits);
+            if (data.resultPageConfigs) setResultPageConfigs(data.resultPageConfigs);
+            if (data.studentResults) setStudentResults(data.studentResults);
+            if (data.studentPageSummaries) setStudentPageSummaries(data.studentPageSummaries);
+
+            // Update Sync Metadata
+            if (data.timestamp) {
+                setLastCloudSync(data.timestamp);
+                localStorage.setItem('school_last_cloud_sync', data.timestamp);
+            }
+
+            logGlobalAction('School Rollback', `To Version ${data.timestamp || 'Unknown'} by Director`);
 
             // Persist this restored state to the cloud immediately as the 'new' current state
-            await databaseService.saveSchoolCloudState(schoolProfile.id, snapshot);
+            const compressedResave = LZString.compressToUTF16(JSON.stringify(data));
+            await databaseService.saveSchoolCloudState(schoolProfile.id, compressedResave);
 
             alert("✅ Institutional State Restored Successfully! The school has been rolled back.");
             window.location.reload();
@@ -5427,7 +5454,33 @@ function useSchoolDataInternal() {
         if (!idToUse) return;
         setIsCloudSyncing(true);
         try {
-            const cloudState = await databaseService.getSchoolCloudState(idToUse);
+            let cloudStateRaw = await databaseService.getSchoolCloudState(idToUse);
+            let cloudState = null;
+
+            if (cloudStateRaw) {
+                if (typeof cloudStateRaw === 'string') {
+                    const decompressed = LZString.decompressFromUTF16(cloudStateRaw);
+                    if (decompressed) {
+                        try {
+                            cloudState = JSON.parse(decompressed);
+                        } catch (e) {
+                            console.warn("☁️ Compression: Decompressed string is not valid JSON, trying raw parse...");
+                            cloudState = JSON.parse(cloudStateRaw);
+                        }
+                    } else {
+                        // Fallback for legacy raw stringified JSON
+                        try {
+                            cloudState = JSON.parse(cloudStateRaw);
+                        } catch (e) {
+                            console.error("☁️ Sync Error: Failed to parse cloud state string", e);
+                        }
+                    }
+                } else {
+                    // Legacy: already a JSON object
+                    cloudState = cloudStateRaw;
+                }
+            }
+
             if (cloudState) {
                 // If cloud is newer OR forced, apply it
                 const cloudTime = new Date(cloudState.timestamp || 0).getTime();

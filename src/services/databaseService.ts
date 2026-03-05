@@ -146,7 +146,7 @@ export const databaseService = {
     getSchoolSnapshots: async (schoolId: string) => {
         const { data, error } = await supabase
             .from('school_snapshots')
-            .select('*')
+            .select('id, school_id, label, created_at')
             .eq('school_id', schoolId)
             .order('created_at', { ascending: false });
 
@@ -155,6 +155,20 @@ export const databaseService = {
             return [];
         }
         return data;
+    },
+
+    getSchoolSnapshotDetail: async (snapshotId: string) => {
+        const { data, error } = await supabase
+            .from('school_snapshots')
+            .select('state')
+            .eq('id', snapshotId)
+            .single();
+
+        if (error) {
+            console.error('🕵️ Snapshot Detail Error:', error);
+            return null;
+        }
+        return data?.state;
     },
 
     createSchoolSnapshot: async (schoolId: string, label: string, state: any) => {

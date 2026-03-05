@@ -57,22 +57,20 @@ export async function POST(req: NextRequest) {
         console.log('☁️ API CLOUD SYNC: Attempting to save with service role');
 
         // Update with service role (bypasses RLS)
-        const { error: updateError, data: updateData } = await supabase
+        const { error: updateError } = await supabase
             .from('schools')
             .update({ settings: updatedSettings })
-            .eq('id', schoolId)
-            .select();
+            .eq('id', schoolId);
 
         if (updateError) {
             console.error('☁️ API CLOUD SYNC ERROR: Update failed:', updateError);
             return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
 
-        console.log('☁️ API CLOUD SYNC SUCCESS: Rows updated:', updateData?.length);
+        console.log('☁️ API CLOUD SYNC SUCCESS');
 
         return NextResponse.json({
             success: true,
-            rowsUpdated: updateData?.length || 0,
             message: 'Cloud state saved successfully'
         });
 
