@@ -45,11 +45,25 @@ const DEFAULT_HERO = "https://images.unsplash.com/photo-1516534775068-ba3e84529e
 
 export default function ResourceCenter() {
     const router = useRouter();
+    const OFFICE_EXTENSIONS = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
+    const isOfficeDoc = (url: string) => {
+        if (!url) return false;
+        try {
+            const path = new URL(url).pathname;
+            const ext = path.split('.').pop()?.toLowerCase() || '';
+            return OFFICE_EXTENSIONS.includes(ext);
+        } catch (e) {
+            const ext = url.split('.').pop()?.toLowerCase() || '';
+            return OFFICE_EXTENSIONS.includes(ext);
+        }
+    };
+
     const {
         tutors,
+        officialLibrary,
         publishedTutorContents,
-        programmes,
-        courseUnits,
+        programmes: allProgrammes,
+        courseUnits: allCourseUnits,
         studentProfile,
         developerProfile,
         toggleStudentLike,
@@ -59,17 +73,29 @@ export default function ResourceCenter() {
         schoolProfile
     } = useSchoolData();
 
+    // --- VISION FILTER: ONLY DEVELOPER CONTENT IN OFFICIAL HUB ---
+    const programmes = useMemo(() =>
+        allProgrammes.filter(p => (p.ownerId === 'developer' || p.origin === 'official') && !p.id.includes('school_') && !p.name.toLowerCase().includes('kihp')),
+        [allProgrammes]);
+
+    const courseUnits = useMemo(() =>
+        allCourseUnits.filter(cu => (cu.ownerId === 'developer' || cu.origin === 'official') && !cu.id.includes('school_')),
+        [allCourseUnits]);
+
     const [searchQuery, setSearchQuery] = useState("");
     const [viewingContent, setViewingContent] = useState<TutorContent | null>(null);
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     const [activeTab, setActiveTab] = useState<'All' | 'Videos' | 'Notes' | 'Questions' | 'Tutors'>('All');
+    const [isDocLoading, setIsDocLoading] = useState(false);
+    const [docEngine, setDocEngine] = useState<'microsoft' | 'google'>('microsoft');
+    const [docTheaterMode, setDocTheaterMode] = useState(false);
 
     // HIERARCHICAL FILTERS (DEVELOPER CONFIGURED)
     const [selectedProg, setSelectedProg] = useState<string>('');
     const [selectedLevel, setSelectedLevel] = useState<string>('All Levels');
     const [theaterMode, setTheaterMode] = useState(false);
 
-    const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', 'dvid', 'compass_tutor', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
+    const SYSTEM_TUTOR_IDS = useMemo(() => ['system', 'admin_main', 'dvid', 'compass_tutor', 'developer', developerProfile?.id].filter(Boolean) as string[], [developerProfile]);
 
     const linkedStudent = useMemo(() => {
         if (!studentProfile.linkedStudentCode) return null;
@@ -79,6 +105,25 @@ export default function ResourceCenter() {
     const hasActivePass = useMemo(() => {
         return studentProfile.subscriptionStatus === 'active';
     }, [studentProfile.subscriptionStatus]);
+
+    // --- THE SHIELD: LOCKDOWN PROTOCOLS ---
+    useEffect(() => {
+        const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Block Save (Ctrl+S), Print (Ctrl+P), and Inspect (F12 / Ctrl+Shift+I)
+            if ((e.ctrlKey && (e.key === 's' || e.key === 'p' || e.key === 'u')) || e.key === 'F12') {
+                e.preventDefault();
+                alert("Security Protocol Active: Downloading and Printing is disabled for Faculty Resources.");
+            }
+        };
+
+        window.addEventListener('contextmenu', handleContextMenu);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('contextmenu', handleContextMenu);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     const repoLevels = useMemo(() => {
         if (!selectedProg) {
@@ -127,15 +172,19 @@ export default function ResourceCenter() {
 
         const rows: { title: string; type: string; descriptor: string; content: TutorContent[] }[] = [];
 
-        let filtered = publishedTutorContents.filter(c => {
-            // ONLY SHOW SYSTEM/OFFICIAL CONTENT IN THE MAIN GRID
-            if (!SYSTEM_TUTOR_IDS.includes(c.tutorId)) return false;
+        // --- THE GREAT WALL FILTER ---
+        // Main Grid only shows OFFICIAL content from the DEVELOPER library
+        let filtered = officialLibrary.filter(c => {
+            if (c.status === 'Draft') return false; // Never show drafts
+
+            // Strictly enforce official ownership/origin
+            const isOfficial = c.ownerId === 'developer' || c.origin === 'official' || SYSTEM_TUTOR_IDS.includes(c.tutorId);
+            if (!isOfficial) return false;
 
             const matchesSearch = !searchQuery ||
                 c.title.toLowerCase().includes(searchLower) ||
-                tutors.find(t => t.id === c.tutorId)?.name.toLowerCase().includes(searchLower) ||
                 programmes.find(p => c.programmeIds?.includes(p.id))?.name.toLowerCase().includes(searchLower) ||
-                officialCourseUnitMatches.some(cu => c.courseUnitIds?.includes(cu.id) || c.courseUnitId === cu.id);
+                courseUnits.some(cu => c.courseUnitIds?.includes(cu.id) || c.courseUnitId === cu.id);
 
             const matchesTab = activeTab === 'All' ||
                 (activeTab === 'Videos' && c.type === 'Video') ||
@@ -150,6 +199,10 @@ export default function ResourceCenter() {
 
         const featured = filtered.find(c => c.type === 'Video') || filtered[0] || null;
 
+        // --- ADD GLOBAL ARCHIVE ROW (CATCH-ALL) ---
+        // If there are videos not already in a programme row, or if we are in general view
+        const usedContentIds = new Set<string>();
+
         programmes.forEach(prog => {
             if (selectedProg && prog.id !== selectedProg) return;
 
@@ -158,20 +211,43 @@ export default function ResourceCenter() {
 
             if (activeTab === 'All' || activeTab === 'Videos') {
                 const videos = progContent.filter(c => c.type === 'Video');
-                if (videos.length > 0) rows.push({ title: prog.name, descriptor: 'Official Video Guides', type: 'Video', content: videos });
+                if (videos.length > 0) {
+                    rows.push({ title: prog.name, descriptor: 'Official Video Guides', type: 'Video', content: videos });
+                    videos.forEach(v => usedContentIds.add(v.id));
+                }
             }
             if (activeTab === 'All' || activeTab === 'Notes') {
                 const notes = progContent.filter(c => c.type === 'Note');
-                if (notes.length > 0) rows.push({ title: prog.name, descriptor: 'Faculty Lecture Notes', type: 'Note', content: notes });
+                if (notes.length > 0) {
+                    rows.push({ title: prog.name, descriptor: 'Faculty Lecture Notes', type: 'Note', content: notes });
+                    notes.forEach(n => usedContentIds.add(n.id));
+                }
             }
             if (activeTab === 'All' || activeTab === 'Questions') {
                 const questions = progContent.filter(c => c.type === 'Question');
-                if (questions.length > 0) rows.push({ title: prog.name, descriptor: 'Department Questions', type: 'Question', content: questions });
+                if (questions.length > 0) {
+                    rows.push({ title: prog.name, descriptor: 'Department Questions', type: 'Question', content: questions });
+                    questions.forEach(q => usedContentIds.add(q.id));
+                }
             }
         });
 
+        // Add remaining content to Global Archive
+        const remaining = filtered.filter(c => !usedContentIds.has(c.id));
+        if (remaining.length > 0 && !selectedProg) {
+            if (activeTab === 'All' || activeTab === 'Videos') {
+                const videos = remaining.filter(c => c.type === 'Video');
+                if (videos.length > 0) rows.unshift({ title: 'Global Archive', descriptor: 'Universal Video Resources', type: 'Video', content: videos });
+            }
+            if (activeTab === 'All' && rows.length === 0) {
+                // If totally empty or just notes, ensure we show something
+                const others = remaining.filter(c => c.type !== 'Video');
+                if (others.length > 0) rows.push({ title: 'Official Archive', descriptor: 'Academic Resources', type: 'Misc', content: others });
+            }
+        }
+
         return { resourceRows: rows, featuredContent: featured };
-    }, [publishedTutorContents, programmes, searchQuery, activeTab, tutors, SYSTEM_TUTOR_IDS, selectedProg, selectedLevel, officialCourseUnitMatches, searchLower]);
+    }, [officialLibrary, programmes, searchQuery, activeTab, tutors, SYSTEM_TUTOR_IDS, selectedProg, selectedLevel, officialCourseUnitMatches, searchLower]);
 
     const filteredTutors = useMemo(() => {
         if (activeTab !== 'Tutors') return [];
@@ -189,7 +265,8 @@ export default function ResourceCenter() {
     }, [tutors, activeTab, searchQuery, searchLower, developerProfile]);
 
     const checkTutorAccess = (tutorId: string) => {
-        if (SYSTEM_TUTOR_IDS.includes(tutorId)) return true;
+        // Official content (no specific tutorId or tagged as dev) is always accessible if student is active
+        if (SYSTEM_TUTOR_IDS.includes(tutorId) || tutorId === 'developer') return true;
         if (!linkedStudent) return false;
 
         const hasFinancialSub = linkedStudent.tutorSubscriptions?.some(sub =>
@@ -209,8 +286,8 @@ export default function ResourceCenter() {
             return;
         }
 
-        if (!content.url || content.url === '#') {
-            console.warn("?? Warning: Content has no valid URL.");
+        if (isOfficeDoc(content.url || '')) {
+            setIsDocLoading(true);
         }
 
         setViewingContent(content);
@@ -523,34 +600,114 @@ export default function ResourceCenter() {
             {viewingContent && (
                 <div className={isMiniPlayer ? "fixed bottom-12 right-12 z-[100] w-[400px] aspect-video rounded-[2.5rem] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,1)] border border-white/10 animate-scale-in" : "fixed inset-0 z-50 bg-black flex items-center justify-center p-0 md:p-16 animate-fade-in"}>
                     <div className="absolute top-10 right-10 z-[60] flex gap-5">
+                        {viewingContent.type !== 'Video' && (
+                            <button
+                                onClick={() => setDocTheaterMode(!docTheaterMode)}
+                                className="bg-black/50 p-4 rounded-full hover:bg-white/10 text-white backdrop-blur-2xl transition-all border border-white/5"
+                                title={docTheaterMode ? "Exit Full View" : "Enter Full View"}
+                            >
+                                {docTheaterMode ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
+                            </button>
+                        )}
                         {viewingContent.type === 'Video' && (
                             <button onClick={() => setIsMiniPlayer(!isMiniPlayer)} className="bg-black/50 p-4 rounded-full hover:bg-white/10 text-white backdrop-blur-2xl transition-all border border-white/5">
                                 <Maximize2 size={24} />
                             </button>
                         )}
-                        <button onClick={() => { setViewingContent(null); setIsMiniPlayer(false); }} className="bg-black/50 p-4 rounded-full hover:bg-white/10 text-white backdrop-blur-2xl transition-all border border-white/5">
+                        <button onClick={() => { setViewingContent(null); setIsMiniPlayer(false); setDocTheaterMode(false); }} className="bg-black/50 p-4 rounded-full hover:bg-white/10 text-white backdrop-blur-2xl transition-all border border-white/5">
                             <X size={24} />
                         </button>
                     </div>
 
-                    <div className="w-full h-full max-w-screen-2xl mx-auto flex flex-col lg:flex-row gap-12">
-                        <div className="flex-1 bg-black rounded-[3rem] overflow-hidden relative shadow-[0_0_100px_rgba(220,38,38,0.15)]">
+                    <div className={`w-full h-full ${docTheaterMode ? 'max-w-none' : 'max-w-screen-2xl'} mx-auto flex flex-col lg:flex-row gap-12 transition-all duration-700`}>
+                        <div className={`flex-1 bg-black ${docTheaterMode ? 'rounded-none' : 'rounded-[3rem]'} overflow-hidden relative shadow-[0_0_100px_rgba(220,38,38,0.15)] group/viewer transition-all duration-700`}>
                             {viewingContent.type === 'Video' ? (
                                 <CustomVideoPlayer id={viewingContent.id} src={viewingContent.url || ''} className="w-full h-full" autoPlay onNext={handleNext} />
+                            ) : viewingContent.url && isOfficeDoc(viewingContent.url) ? (
+                                <div className="w-full h-full bg-[#070707] relative">
+                                    {/* Advanced Loading State */}
+                                    {isDocLoading && (
+                                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
+                                            <div className="w-20 h-20 border-4 border-red-600/20 border-t-red-600 rounded-full animate-spin mb-6" />
+                                            <p className="text-[10px] font-black text-white uppercase tracking-[0.5em] animate-pulse">Initializing Portal Viewer...</p>
+                                        </div>
+                                    )}
+
+                                    {/* Engine Switcher Overlay */}
+                                    <div className="absolute top-6 left-6 z-20 flex gap-2 opacity-0 group-hover/viewer:opacity-100 transition-opacity duration-500">
+                                        <button
+                                            onClick={() => { setIsDocLoading(true); setDocEngine('microsoft'); }}
+                                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${docEngine === 'microsoft' ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-black/40 border-white/10 text-gray-400 hover:border-white/30'}`}
+                                        >
+                                            Microsoft Eng
+                                        </button>
+                                        <button
+                                            onClick={() => { setIsDocLoading(true); setDocEngine('google'); }}
+                                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${docEngine === 'google' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-black/40 border-white/10 text-gray-400 hover:border-white/30'}`}
+                                        >
+                                            Google Eng
+                                        </button>
+                                    </div>
+
+                                    <div className="w-full h-full relative overflow-hidden">
+                                        {/* The Corner Guard: Blocks Pop-out/Share button clicks */}
+                                        <div className="absolute top-0 right-0 w-32 h-32 z-30 bg-transparent cursor-default" title="Direct Access Disabled" />
+
+                                        <iframe
+                                            src={docEngine === 'microsoft'
+                                                ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewingContent.url)}&wdAr=0`
+                                                : `https://docs.google.com/viewer?url=${encodeURIComponent(viewingContent.url)}&embedded=true`
+                                            }
+                                            className="w-full h-full border-none scale-[1.05] origin-top translate-y-[-10px]"
+                                            style={{ height: 'calc(100% + 40px)' }} // Oversize to hide the bottom bar
+                                            title="SAMI Secure Viewer"
+                                            onLoad={() => setIsDocLoading(false)}
+                                        />
+                                        {/* Security Overlay for Bottom Bar */}
+                                        <div className="absolute bottom-0 left-0 w-full h-12 bg-black z-30 flex items-center justify-center border-t border-white/5">
+                                            <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.5em]">Secure Institutional View • No Download</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Expand Controls Callout */}
+                                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 opacity-0 group-hover/viewer:opacity-100 transition-opacity">
+                                        <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em] bg-black/80 px-4 py-2 rounded-full border border-white/5">Use Internal Controls to Navigate Slides</p>
+                                    </div>
+                                </div>
+                            ) : viewingContent.url?.toLowerCase().includes('.pdf') ? (
+                                <div className="w-full h-full relative overflow-hidden bg-black">
+                                    {/* The Shield: PDF Lockdown Overlays */}
+                                    <div className="absolute top-0 left-0 w-full h-16 bg-black z-30 border-b border-white/5 flex items-center px-8">
+                                        <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em]">Protected PDF Document • Read Only</p>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 w-full h-12 bg-black z-30 border-t border-white/5 flex items-center justify-center">
+                                        <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.5em]">COMPASS 360 Security Active</p>
+                                    </div>
+
+                                    <iframe
+                                        src={`${viewingContent.url}#toolbar=0&navpanes=0&scrollbar=0`}
+                                        className="w-full h-full border-none scale-[1.1] origin-center translate-y-[-10px]"
+                                        style={{ height: 'calc(100% + 100px)', marginTop: '-20px' }} // Oversize to crop top/bottom browser toolbars
+                                        title="SAMI PDF Viewer"
+                                    />
+                                </div>
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-[#070707] flex-col gap-10 p-16">
                                     <div className="w-40 h-40 bg-red-600/10 rounded-full flex items-center justify-center">
-                                        <FileText size={100} className="text-red-600" />
+                                        <ShieldCheck size={100} className="text-red-600" />
                                     </div>
                                     <div className="text-center space-y-6">
                                         <h3 className="font-black text-3xl md:text-5xl tracking-tighter uppercase leading-none">{viewingContent.title}</h3>
-                                        <p className="text-gray-500 mb-10 max-w-xl mx-auto leading-relaxed text-sm md:text-base">{viewingContent.description}</p>
-                                        <a href={viewingContent.url} target="_blank" className="bg-white text-black px-16 py-5 rounded-2xl font-black uppercase tracking-[0.3em] text-[11px] shadow-2xl active:scale-95 transition-all inline-block">Direct Access Viewer</a>
+                                        <div className="bg-red-600/10 border border-red-600/20 px-6 py-4 rounded-xl max-w-sm mx-auto">
+                                            <p className="text-red-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                                                This resource is secured. Unauthorized downloading or distribution is prohibited by SAMI Board policies.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {!isMiniPlayer && (
+                        {!isMiniPlayer && !docTheaterMode && (
                             <div className="hidden lg:flex w-[480px] flex-col bg-[#070707] rounded-[4rem] border border-white/5 p-16 overflow-y-auto custom-scrollbar shadow-2xl">
                                 <div className="space-y-6 mb-16 px-2">
                                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter uppercase leading-[0.9]">{viewingContent.title}</h2>
@@ -558,7 +715,7 @@ export default function ResourceCenter() {
                                 </div>
                                 <h4 className="text-[11px] font-black text-red-600 uppercase tracking-[0.5em] mb-12 underline underline-offset-8 decoration-red-600/20">Related Official Resource</h4>
                                 <div className="space-y-12">
-                                    {publishedTutorContents.filter(c => SYSTEM_TUTOR_IDS.includes(c.tutorId) && c.id !== viewingContent.id && c.type === viewingContent.type).slice(0, 5).map(c => (
+                                    {officialLibrary.filter(c => c.id !== viewingContent.id && c.type === viewingContent.type).slice(0, 5).map(c => (
                                         <div key={c.id} className="flex gap-8 group cursor-pointer" onClick={() => setViewingContent(c)}>
                                             <div className="w-36 aspect-video bg-gray-950 rounded-[1.5rem] overflow-hidden shrink-0 border border-white/5 shadow-xl">
                                                 <img src={c.thumbnailUrl || '/api/placeholder/100/60'} className="w-full h-full object-cover group-hover:scale-110 transition-all opacity-60" />

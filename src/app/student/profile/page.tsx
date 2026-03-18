@@ -1,8 +1,10 @@
 "use client";
 
 import { useSchoolData } from "@/lib/store";
+import { databaseService } from "@/services/databaseService";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import LZString from 'lz-string';
 import { User, Link as LinkIcon, Shield, CreditCard, School, CheckCircle, AlertCircle, Lock, Phone, Save, Eye, EyeOff } from "lucide-react";
 
 export default function StudentProfile() {
@@ -11,6 +13,7 @@ export default function StudentProfile() {
     const [selectedSchool, setSelectedSchool] = useState("");
     const [payCodeInput, setPayCodeInput] = useState("");
     const [compassInput, setCompassInput] = useState("");
+    const [isLinking, setIsLinking] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
@@ -24,42 +27,100 @@ export default function StudentProfile() {
         : null;
 
     const schoolName = linkedStudent
-        ? (availableSchools.find(s => s.id === studentProfile.schoolId)?.name || 'Vine International Institute')
+        ? (availableSchools.find(s => s.id === studentProfile.schoolId)?.name || 'SAMI HEALTH SCIENCE INSTITUTE')
         : '';
 
-    const handleLink = (e: React.FormEvent) => {
+    const handleLink = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
         setSuccess("");
+        setIsLinking(true);
 
         if (!selectedSchool) {
             setError("Please select your school first.");
+            setIsLinking(false);
             return;
         }
 
-        // Find student matching Pay Code and Compass Number (Prefer Registrar Origin)
-        const found = students.find(s => {
-            const matchesPayCode = s.payCode === payCodeInput.trim();
-            const matchesCompass = String(s.compassNumber).trim() === String(compassInput).trim();
-            return matchesPayCode && matchesCompass;
-        });
+        try {
+            // ☁️ CLOUD VERIFICATION BRIDGE
+            // Fetch the master roster for the selected institution directly from Supabase
+            const cloudStateRaw = await databaseService.getSchoolCloudState(selectedSchool);
+            let cloudState = cloudStateRaw;
 
-        if (found) {
-            updateStudentProfile({
-                linkedStudentCode: found.payCode,
-                schoolId: selectedSchool
+            // 🛡️ SYNC BRIDGE: RECONCILIATION
+            // Institutions often "Pack" their snapshots to save egress. We must unpack them.
+            if (typeof cloudStateRaw === 'string') {
+                try {
+                    const decompressed = LZString.decompressFromUTF16(cloudStateRaw);
+                    const unpacked = JSON.parse(decompressed || cloudStateRaw);
+                    // Normalization: Ensure we have a valid cloud state object
+                    cloudState = unpacked || {};
+                } catch (e) {
+                    console.warn("☁️ Packed State Error: Falling back to Raw JSON", e);
+                    try { cloudState = JSON.parse(cloudStateRaw); } catch (e2) { }
+                }
+            }
+
+            // Validation of data existence
+            if (!cloudState || (typeof cloudState !== 'object')) {
+                setError("Unable to reach the school's server. Please try again later.");
+                setIsLinking(false);
+                return;
+            }
+
+            // Institutions store learners in either 'students' or 'registrarStudents' depending on the source portal
+            const cloudLearners = cloudState.students || [];
+            const registrarLearners = cloudState.registrarStudents || [];
+            const masterRoster = [...cloudLearners, ...registrarLearners];
+
+            if (masterRoster.length === 0) {
+                setError("School record not found. Please ensure the school has synced its roster.");
+                setIsLinking(false);
+                return;
+            }
+
+            // 🔍 DEEP MATCHING ENGINE
+            // We search across multiple potential identity fields (Pay Code, Compass ID, School Pay Code)
+            // and sanitize inputs (strip hashes/labels) to ensure a match.
+            const cleanEnteredCode = payCodeInput.trim().toLowerCase();
+            const cleanEnteredId = compassInput.trim().toLowerCase().replace(/^#/, ''); // Strip leading # if entered
+
+            const found = masterRoster.find((s: any) => {
+                const sId = String(s.id || '').toLowerCase().replace(/^#/, '');
+                const sPayCode = String(s.payCode || '').toLowerCase();
+                const sSchoolCode = String(s.schoolPayCode || '').toLowerCase();
+                const sRef = String(s.reference || '').toLowerCase();
+
+                // Cross-match: User might enter compass ID in Pay Code field or vice-versa
+                const idMatch = sId === cleanEnteredId || sPayCode === cleanEnteredId || sSchoolCode === cleanEnteredId;
+                const codeMatch = sPayCode === cleanEnteredCode || sSchoolCode === cleanEnteredCode || sId === cleanEnteredCode || sRef === cleanEnteredCode;
+
+                return idMatch && codeMatch;
             });
-            setSuccess(`Successfully linked to ${found.name}!`);
-            setPayCodeInput("");
-            setCompassInput("");
-            setSelectedSchool("");
 
-            // Auto-redirect to the statement after a brief success delay
-            setTimeout(() => {
-                router.push('/student/statement');
-            }, 1000);
-        } else {
-            setError("Authentication failed. No student found with this Pay Code and Compass ID combination.");
+            if (found) {
+                updateStudentProfile({
+                    linkedStudentCode: found.payCode,
+                    schoolId: selectedSchool
+                });
+                setSuccess(`Successfully linked to ${found.name}!`);
+                setPayCodeInput("");
+                setCompassInput("");
+                setSelectedSchool("");
+
+                // Auto-redirect to the statement after a brief success delay
+                setTimeout(() => {
+                    router.push('/student/statement');
+                }, 1500);
+            } else {
+                setError("Authentication failed. No student found with this Pay Code and Compass ID combination at the selected institution.");
+            }
+        } catch (err: any) {
+            console.error("Link Error:", err);
+            setError("A connection error occurred. Please check your internet and try again.");
+        } finally {
+            setIsLinking(false);
         }
     };
 
@@ -221,9 +282,17 @@ export default function StudentProfile() {
 
                                 <button
                                     type="submit"
-                                    className="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-purple-700 shadow-lg shadow-purple-900/50 transition-all flex items-center justify-center gap-3 transform active:scale-[0.98]"
+                                    disabled={isLinking}
+                                    className="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-purple-700 shadow-lg shadow-purple-900/50 transition-all flex items-center justify-center gap-3 transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <LinkIcon size={20} /> Link School Record
+                                    {isLinking ? (
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Verifying Credentials...
+                                        </div>
+                                    ) : (
+                                        <><LinkIcon size={20} /> Link School Record</>
+                                    )}
                                 </button>
                                 <p className="text-center text-[10px] text-gray-600 font-bold uppercase tracking-tighter">
                                     Secure Verification Powered by COMPASS 360

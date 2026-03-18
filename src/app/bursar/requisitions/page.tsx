@@ -12,7 +12,8 @@ export default function RequisitionsPage() {
         requisitions, addRequisition, updateRequisition, deleteRequisition, approveRequisition,
         requisitionQueue, addToQueue, removeFromQueue, clearQueue,
         expenseCategories,
-        requisitionDraft, setRequisitionDraft, resetRequisitionDraft
+        requisitionDraft, setRequisitionDraft, resetRequisitionDraft,
+        portalBranding
     } = useSchoolData();
 
     const [activeTab, setActiveTab] = useState<'New' | 'Drafts' | 'In-Queue' | 'Approved'>('New');
@@ -153,6 +154,7 @@ export default function RequisitionsPage() {
                 <div style={{ display: activeTab === 'New' ? 'block' : 'none' }}>
                     <NewRequisitionForm
                         expenseCategories={expenseCategories}
+                        portalBranding={portalBranding}
                         // Pass State from Draft object
                         title={requisitionDraft.title} setTitle={(v) => setRequisitionDraft({ title: v })}
                         account={requisitionDraft.account} setAccount={(v) => setRequisitionDraft({ account: v })}
@@ -226,6 +228,7 @@ export default function RequisitionsPage() {
 
 interface FormProps {
     expenseCategories: any[];
+    portalBranding: any;
     title: string; setTitle: (v: string) => void;
     account: string; setAccount: (v: string) => void;
     date: string; setDate: (v: string) => void;
@@ -237,7 +240,7 @@ interface FormProps {
     isSaving: boolean;
 }
 
-function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAccount, date, setDate, notes, setNotes, items, setItems, onSave, onSubmit, onClear, isSaving }: FormProps) {
+function NewRequisitionForm({ expenseCategories, portalBranding, title, setTitle, account, setAccount, date, setDate, notes, setNotes, items, setItems, onSave, onSubmit, onClear, isSaving }: FormProps) {
     const { addToQueue, requisitions, generalTransactions, accounts } = useSchoolData();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [isManagingCategories, setIsManagingCategories] = useState(false);
@@ -366,7 +369,7 @@ function NewRequisitionForm({ expenseCategories, title, setTitle, account, setAc
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-slate-900/40 p-4 rounded-lg border border-slate-700">
                 <div>
                     <label className="text-xs text-slate-500 uppercase font-bold tracking-wider">School Name</label>
-                    <input type="text" value="VINE INTERNATIONAL SCHOOL" readOnly className="w-full bg-slate-800 text-slate-300 border-none rounded mt-1 opacity-70 cursor-not-allowed" />
+                    <input type="text" value={portalBranding.schoolName} readOnly className="w-full bg-slate-800 text-slate-300 border-none rounded mt-1 opacity-70 cursor-not-allowed font-bold" />
                 </div>
                 <div>
                     <label className="text-xs text-slate-500 uppercase font-bold tracking-wider">Date</label>
@@ -668,7 +671,7 @@ function RequisitionList({ title, requisitions, onEdit, onView, onDelete, onAppr
 
     return (
         <div>
-            <h2 className="text-lg font-bold text-white mb-4 px-2 border-l-4 border-purple-500">{title}</h2>
+            <h2 className="text-lg font-bold text-white mb-4 px-2 border-l-4 border-purple-500 uppercase tracking-tight">{title}</h2>
             <div className="space-y-4">
                 {requisitions.map((req: Requisition) => (
                     <div
@@ -683,11 +686,11 @@ function RequisitionList({ title, requisitions, onEdit, onView, onDelete, onAppr
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-[10px] md:text-xs font-mono text-slate-500 bg-slate-950 px-1 rounded shrink-0">{req.readableId || 'REQ-???'}</span>
-                                        <h3 className="font-bold text-slate-200 text-base md:text-lg truncate">{req.title}</h3>
-                                        {req.status === 'Rejected' && <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded border border-red-900">Rejected</span>}
-                                        {req.status === 'Submitted' && <span className="text-xs bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-800/50">Submitted</span>}
-                                        {req.status === 'Pending Approval' && <span className="text-xs bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-800/50">Pending Approval</span>}
+                                        <span className="text-[10px] md:text-xs font-mono text-slate-500 bg-slate-950 px-1 rounded shrink-0 uppercase">{req.readableId || 'REQ-???'}</span>
+                                        <h3 className="font-bold text-slate-200 text-base md:text-lg truncate tracking-tight">{req.title}</h3>
+                                        {req.status === 'Rejected' && <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded border border-red-900 font-bold uppercase text-[10px]">Rejected</span>}
+                                        {req.status === 'Submitted' && <span className="text-xs bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-800/50 font-bold uppercase text-[10px]">Submitted</span>}
+                                        {req.status === 'Pending Approval' && <span className="text-xs bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-800/50 font-bold uppercase text-[10px]">Pending Approval</span>}
                                     </div>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-1 uppercase tracking-wider font-medium">
                                         <span className="flex items-center gap-1 shrink-0"><Clock className="w-3 h-3" /> {req.date}</span>
@@ -713,12 +716,12 @@ function RequisitionList({ title, requisitions, onEdit, onView, onDelete, onAppr
                                 </div>
                                 {!isReadOnly && (
                                     <div className="flex gap-2 justify-end mt-3 sm:mt-4 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                        <button onClick={() => onEdit && onEdit(req)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded border border-slate-700 flex items-center gap-1">
-                                            <Edit className="w-3 h-3" /> Edit
+                                        <button onClick={() => onEdit && onEdit(req)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded border border-slate-700 flex items-center gap-1 font-bold">
+                                            Edit
                                         </button>
                                         <button onClick={() => {
                                             if (confirm("Delete?")) onDelete && onDelete(req.id);
-                                        }} className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/60 text-red-400 border border-red-900/50 text-xs rounded">
+                                        }} className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/60 text-red-400 border border-red-900/50 text-xs rounded font-bold">
                                             Delete
                                         </button>
                                     </div>
@@ -728,11 +731,11 @@ function RequisitionList({ title, requisitions, onEdit, onView, onDelete, onAppr
                                         <button onClick={(e) => {
                                             e.stopPropagation();
                                             onReuse && onReuse(req);
-                                        }} className="flex items-center gap-2 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/50 px-2 py-1.5 rounded hover:bg-purple-900/20">
+                                        }} className="flex items-center gap-2 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/50 px-2 py-1.5 rounded hover:bg-purple-900/20 font-bold uppercase tracking-tighter">
                                             <RotateCcw className="w-3 h-3" /> Reuse
                                         </button>
-                                        <button onClick={() => onView && onView(req)} className="flex items-center gap-2 text-xs text-slate-400 hover:text-white border border-slate-700 px-2 py-1.5 rounded hover:bg-slate-800">
-                                            <Eye className="w-3 h-3" /> View Details
+                                        <button onClick={() => onView && onView(req)} className="flex items-center gap-2 text-xs text-slate-400 hover:text-white border border-slate-700 px-2 py-1.5 rounded hover:bg-slate-800 font-bold uppercase tracking-tighter">
+                                            <Eye className="w-3 h-3" /> Details
                                         </button>
                                     </div>
                                 )}
@@ -742,6 +745,7 @@ function RequisitionList({ title, requisitions, onEdit, onView, onDelete, onAppr
                 ))}
             </div>
         </div>
+
     );
 }
 

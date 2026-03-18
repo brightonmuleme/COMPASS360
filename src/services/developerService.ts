@@ -91,12 +91,15 @@ export const developerService = {
     },
 
     updateUserProfile: async (userId: string, updates: any) => {
-        const { error } = await supabase
-            .from('profiles')
-            .update(updates)
-            .eq('id', userId);
+        // Enforce Dual-Table Consistency
+        const [profResult, ledgerResult] = await Promise.all([
+            supabase.from('profiles').update(updates).eq('id', userId),
+            supabase.from('financial_ledger').update(updates).eq('id', userId)
+        ]);
 
-        if (error) throw error;
+        if (profResult.error) throw profResult.error;
+        // Note: We don't throw on ledger error because some users (admins/legacy) 
+        // might not exist in the ledger yet.
         return true;
     }
 };

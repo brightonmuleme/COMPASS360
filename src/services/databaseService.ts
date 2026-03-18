@@ -67,6 +67,88 @@ export const databaseService = {
         return true;
     },
 
+    // --- OFFICIAL LIBRARY (Developer Content) ---
+
+    getOfficialLibrary: async () => {
+        const { data, error } = await supabase
+            .from('official_library')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.warn("official_library table might not exist yet, falling back to empty.");
+            return [];
+        }
+        return data;
+    },
+
+    saveOfficialContent: async (content: any) => {
+        const { data, error } = await supabase
+            .from('official_library')
+            .insert([content])
+            .select();
+
+        if (error) throw error;
+        return data[0];
+    },
+
+    updateOfficialContent: async (id: string, content: any) => {
+        const { data, error } = await supabase
+            .from('official_library')
+            .update(content)
+            .eq('id', id)
+            .select();
+
+        if (error) throw error;
+        return data[0];
+    },
+
+    deleteOfficialContent: async (id: string) => {
+        const { error } = await supabase
+            .from('official_library')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
+    },
+
+    saveOfficialProgramme: async (prog: any) => {
+        const { data, error } = await supabase
+            .from('programmes')
+            .upsert([prog])
+            .select();
+        if (error) throw error;
+        return data[0];
+    },
+
+    deleteOfficialProgramme: async (id: string) => {
+        const { error } = await supabase
+            .from('programmes')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        return true;
+    },
+
+    saveOfficialCourseUnit: async (cu: any) => {
+        const { data, error } = await supabase
+            .from('course_units')
+            .upsert([cu])
+            .select();
+        if (error) throw error;
+        return data[0];
+    },
+
+    deleteOfficialCourseUnit: async (id: string) => {
+        const { error } = await supabase
+            .from('course_units')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        return true;
+    },
+
     submitSchoolApplication: async (application: any) => {
         const { data, error } = await supabase
             .from('school_applications')
@@ -102,16 +184,10 @@ export const databaseService = {
         }
     },
 
-    saveSchoolCloudState: async (schoolId: string, state: any) => {
-        // 🛡️ SAFETY BOUNDARY: LOCALHOST LOCK
-        // This ensures Development/Localhost NEVER overwrites Production Data
-        if (typeof window !== 'undefined' &&
-            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-            console.warn("🛑 SAFETY BOUNDARY: Cloud Save Blocked on Localhost/Dev Environment.");
-            return true;
-        }
-
-
+    saveSchoolCloudState: async (schoolId: string, state: any, forceActiveRole?: string) => {
+        // 🛡️ SYNC BRIDGE: RE-ENABLED AT USER'S REQUEST
+        // This allows local development rosters to be pushed to the Cloud Sync engine,
+        // which is required to test the Student Account Linking feature locally.
         try {
             console.log('☁️ CLOUD SAVE: Starting for school ID:', schoolId);
 
@@ -187,6 +263,36 @@ export const databaseService = {
             throw error;
         }
         return data[0];
+    },
+
+    // --- CLOUD STORAGE (TikTok/YouTube Engine) ---
+
+    uploadFile: async (bucket: string, path: string, file: File) => {
+        const { data, error } = await supabase.storage
+            .from(bucket)
+            .upload(path, file, {
+                cacheControl: '3600',
+                upsert: true
+            });
+
+        if (error) throw error;
+        return data;
+    },
+
+    getFileUrl: (bucket: string, path: string) => {
+        const { data } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(path);
+
+        return data.publicUrl;
+    },
+
+    deleteFile: async (bucket: string, path: string) => {
+        const { error } = await supabase.storage
+            .from(bucket)
+            .remove([path]);
+        if (error) throw error;
+        return true;
     },
 
     applyInventoryTransaction: async (schoolId: string, itemId: string, delta: number, log: any) => {

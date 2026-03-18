@@ -1,8 +1,9 @@
 "use client";
 
 import { useSchoolData, TutorContent, TutorSettings, Programme, CourseUnit } from "@/lib/store";
-import { useState, useMemo, useRef, useEffect } from "react";
-import { Plus, Trash2, FileText, Video, HelpCircle, ArrowLeft, Play, Download, Eye, Pencil, ChevronDown, ChevronRight, Check, Settings, BookOpen, MoreVertical, X, Save, ArrowRight, Upload, Pause, SkipBack, SkipForward, Monitor, Volume2, VolumeX, Image as ImageIcon, Camera, Heart, Pin, Search } from "lucide-react";
+import { databaseService } from "@/services/databaseService";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Plus, Trash2, FileText, Video, HelpCircle, ArrowLeft, Play, Download, Eye, Pencil, ChevronDown, ChevronRight, Check, Settings, BookOpen, MoreVertical, X, Save, ArrowRight, Upload, Pause, SkipBack, SkipForward, Monitor, Volume2, VolumeX, Image as ImageIcon, Camera, Heart, Pin, Search, Loader2 } from "lucide-react";
 // Helper to generate PDF thumbnail
 const generatePDFThumbnail = async (file: File): Promise<string | null> => {
     try {
@@ -27,6 +28,29 @@ const generatePDFThumbnail = async (file: File): Promise<string | null> => {
         console.error("Error generating PDF thumbnail:", error);
     }
     return null;
+};
+
+// Helper to generate Video thumbnail
+const generateVideoThumbnail = (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+        const video = document.createElement("video");
+        video.src = URL.createObjectURL(file);
+        video.muted = true;
+        video.currentTime = 1; // get frame at 1 second
+        video.onloadeddata = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext("2d");
+            if (context) {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL("image/jpeg"));
+            } else {
+                resolve(null);
+            }
+        };
+        video.onerror = () => resolve(null);
+    });
 };
 
 // --- CUSTOM VIDEO PLAYER COMPONENT ---
@@ -270,27 +294,33 @@ export default function DeveloperLibrary() {
     const {
         programmes: allProgrammes,
         courseUnits: allCourseUnits,
-        tutorContents: allTutorContents,
+        officialLibrary: allOfficialContent, // <-- Use the new global vault
+        addOfficialContent,
+        updateOfficialContent,
+        deleteOfficialContent,
+        tutorContents: allTutorContents, // Keep for legacy/viewing
         addTutorContent,
-        deleteTutorContent,
         updateTutorContent,
-        tutorSettings,
-        updateTutorSettings,
+        deleteTutorContent,
         addProgramme,
         updateProgramme,
         deleteProgramme,
         addCourseUnit,
         updateCourseUnit,
-        deleteCourseUnit
+        deleteCourseUnit,
+        developerProfile
     } = useSchoolData();
 
     // Constant for Developer/Admin
-    const currentTutorId = 'admin_main';
+    const currentTutorId = 'developer';
 
-    // Filter Data by Ownership (Admin sees their own + Global/Legal items)
-    const programmes = useMemo(() => allProgrammes.filter(p => p.ownerId === currentTutorId || !p.ownerId), [allProgrammes]);
-    const courseUnits = useMemo(() => allCourseUnits.filter(c => c.ownerId === currentTutorId || !c.ownerId), [allCourseUnits]);
-    const tutorContents = useMemo(() => allTutorContents.filter(c => c.tutorId === currentTutorId || !c.tutorId), [allTutorContents]);
+    // Filter Data by Ownership - THE GREAT WALL ENFORCEMENT
+    // We only show programmes and units that are "official" (owned by developer)
+    const programmes = useMemo(() => allProgrammes.filter(p => p.ownerId === 'developer'), [allProgrammes]);
+    const courseUnits = useMemo(() => allCourseUnits.filter(c => c.ownerId === 'developer'), [allCourseUnits]);
+    // The Developer Library specifically manages the OFFICIAL vault
+    const tutorContents = useMemo(() => allOfficialContent, [allOfficialContent]);
+    const drafts = useMemo(() => tutorContents.filter(c => c.status === 'Draft'), [tutorContents]);
 
     // --- STATES ---
     const [viewingContent, setViewingContent] = useState<TutorContent | null>(null);
@@ -309,17 +339,17 @@ export default function DeveloperLibrary() {
         profileImage: string;
         pinnedContentId: string | null;
     }>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('developer_profile_v1');
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("developer_profile_v1");
             return saved ? JSON.parse(saved) : {
-                name: 'VINE Developer',
-                bio: 'Official App Resources & Content',
-                coverImage: '',
-                profileImage: '',
+                name: "VINE Developer",
+                bio: "Official App Resources & Content",
+                coverImage: "",
+                profileImage: "",
                 pinnedContentId: null
             };
         }
-        return { name: 'VINE Developer', bio: 'Official App Resources & Content', coverImage: '', profileImage: '', pinnedContentId: null };
+        return { name: "VINE Developer", bio: "Official App Resources & Content", coverImage: "", profileImage: "", pinnedContentId: null };
     });
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [profileForm, setProfileForm] = useState(tutorProfile);
@@ -327,88 +357,81 @@ export default function DeveloperLibrary() {
     // Persist Profile
     const updateProfile = (newProfile: typeof tutorProfile) => {
         setTutorProfile(newProfile);
-        localStorage.setItem('developer_profile_v1', JSON.stringify(newProfile));
+        localStorage.setItem("developer_profile_v1", JSON.stringify(newProfile));
     };
 
     // --- STATES (Restored) ---
     // Configuration View State
-    const [configProgId, setConfigProgId] = useState<string>(''); // For configuration view
-    const [configLevel, setConfigLevel] = useState<string>(''); // Currently selected level tab
-    const [configExpandedSection, setConfigExpandedSection] = useState<string | null>('course-units');
+    const [configProgId, setConfigProgId] = useState<string>(""); // For configuration view
+    const [configLevel, setConfigLevel] = useState<string>(""); // Currently selected level tab
+    const [configExpandedSection, setConfigExpandedSection] = useState<string | null>("course-units");
 
     // Level Renaming State
     const [renamingLevel, setRenamingLevel] = useState<string | null>(null);
-    const [newLevelName, setNewLevelName] = useState<string>('');
+    const [newLevelName, setNewLevelName] = useState<string>("");
 
     // CU Add/Edit State
     const [isCUModalOpen, setIsCUModalOpen] = useState(false);
     const [editingCUId, setEditingCUId] = useState<string | null>(null);
-    const [cuForm, setCuForm] = useState({ name: '', code: '' });
+    const [cuForm, setCuForm] = useState({ name: "", code: "" });
 
     // Programme Add/Edit State
     const [isProgModalOpen, setIsProgModalOpen] = useState(false);
     const [editingProgId, setEditingProgId] = useState<string | null>(null);
-    const [progForm, setProgForm] = useState<{ name: string, code: string, type: 'Degree' | 'Diploma' | 'Certificate', duration: string }>({ name: '', code: '', type: 'Degree', duration: '3 Years' });
+    const [progForm, setProgForm] = useState<{ name: string, code: string, type: "Degree" | "Diploma" | "Certificate", duration: string }>({ name: "", code: "", type: "Degree", duration: "3 Years" });
 
     const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
-    const drafts = tutorContents.filter(c => c.status === 'Draft');
 
     // UI States for Mobile Parity
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState("");
     const [isFocusMode, setIsFocusMode] = useState(false);
 
     // Upload & Preview State
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [uploadStep, setUploadStep] = useState<'file' | 'details'>('file');
+    const [uploadStep, setUploadStep] = useState<"file" | "details">("file");
     const [editingId, setEditingId] = useState<string | null>(null);
     const [previewContent, setPreviewContent] = useState<TutorContent | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [contentToDelete, setContentToDelete] = useState<TutorContent | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     // Local Mock for Tutor Assignments
     const [taughtCUs, setTaughtCUs] = useState<string[]>([]);
 
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+
     // Complex Upload Form State
-    const [uploadForm, setUploadForm] = useState<{
-        title: string;
-        description: string;
-        url: string;
-        courseUnitId?: string;
-        status?: 'Published' | 'Draft';
-        thumbnailUrl?: string; // Cover Image for Notes/Questions
-        uploadDate: string;
-        file?: File | null;
-        thumbnailFile?: File | null; // New field for Cover Image
-        fileType: 'Note' | 'Video' | 'Question';
-        // Mapping: ProgrammeId -> Array of Level Names
-        selectedProgrammes: Record<string, string[]>;
-        selectedCUIds: string[];
-    }>({
-        title: '',
-        description: '',
-        url: '',
+    const [uploadForm, setUploadForm] = useState<any>({
+        title: "",
+        description: "",
+        url: "",
         file: null,
-        fileType: 'Note',
+        fileType: "Video",
         selectedProgrammes: {},
         selectedCUIds: [],
-        status: 'Published',
-        uploadDate: new Date().toISOString()
+        status: "Published",
+        uploadDate: new Date().toISOString(),
+        thumbnailFile: null,
+        thumbnailUrl: ""
     });
 
     // Helper to reset upload form
     const resetUploadForm = () => {
         setUploadForm({
-            title: '',
-            description: '',
-            url: '',
+            title: "",
+            description: "",
+            url: "",
             file: null,
-            fileType: 'Note',
+            fileType: "Video",
             selectedProgrammes: {},
             selectedCUIds: [],
-            status: 'Published',
-            uploadDate: new Date().toISOString()
+            status: "Published",
+            uploadDate: new Date().toISOString(),
+            thumbnailFile: null,
+            thumbnailUrl: ""
         });
-        setUploadStep('file');
+        setUploadStep("file");
         setEditingId(null);
     };
 
@@ -419,7 +442,7 @@ export default function DeveloperLibrary() {
         if (!configProgramme) return [];
         return configProgramme.levels && configProgramme.levels.length > 0
             ? configProgramme.levels
-            : ['Year 1', 'Year 2', 'Year 3'];
+            : [];
     }, [configProgramme]);
 
     if (viewMode === 'programme-config' && configProgramme && !configLevel && activeLevels.length > 0) {
@@ -434,14 +457,13 @@ export default function DeveloperLibrary() {
     const repoLevels = useMemo(() => {
         if (selectedProg) {
             const p = programmes.find(prog => prog.id === selectedProg);
-            return p?.levels && p.levels.length > 0 ? p.levels : ['Year 1', 'Year 2', 'Year 3'];
+            return p?.levels && p.levels.length > 0 ? p.levels : [];
         }
         const allLevels = new Set<string>();
         programmes.forEach(p => {
             if (p.levels && p.levels.length > 0) p.levels.forEach(l => allLevels.add(l));
-            else['Year 1', 'Year 2', 'Year 3'].forEach(l => allLevels.add(l));
         });
-        if (allLevels.size === 0) return ['Year 1', 'Year 2', 'Year 3'];
+        if (allLevels.size === 0) return [];
         return Array.from(allLevels).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     }, [programmes, selectedProg]);
 
@@ -558,7 +580,7 @@ export default function DeveloperLibrary() {
             const existing = programmes.find(p => p.id === editingProgId);
             if (existing) updateProgramme({ ...existing, ...progForm });
         } else {
-            addProgramme({ id: Date.now().toString(), ...progForm, levels: ['Year 1', 'Year 2', 'Year 3'], feeStructure: [], documents: {}, ownerId: currentTutorId, isTutorContent: false });
+            addProgramme({ id: Date.now().toString(), ...progForm, levels: [], feeStructure: [], documents: {}, ownerId: currentTutorId, isTutorContent: false });
         }
         setIsProgModalOpen(false);
     };
@@ -577,38 +599,80 @@ export default function DeveloperLibrary() {
         setIsCUModalOpen(false);
     };
 
-    const handleUpload = () => {
+    const handleUpload = async () => {
         if ((!uploadForm.file && !uploadForm.url) || !uploadForm.title) return;
 
-        // Flatten Programme & Level Selection
-        const programmeIds = Object.keys(uploadForm.selectedProgrammes);
-        const levels = Object.values(uploadForm.selectedProgrammes).flat();
+        setIsUploading(true);
+        setUploadProgress(10); // Start progress
 
-        const contentData: TutorContent = {
-            id: editingId || `tc_${Date.now()}`,
-            tutorId: currentTutorId,
-            title: uploadForm.title,
-            description: uploadForm.description,
-            type: uploadForm.fileType,
-            // Generate Blob URL if file exists, otherwise use provided URL
-            url: uploadForm.file ? URL.createObjectURL(uploadForm.file) : uploadForm.url,
-            // Use new array fields
-            programmeIds: programmeIds,
-            levels: levels,
-            courseUnitIds: uploadForm.selectedCUIds,
-            uploadDate: new Date().toISOString(),
-            status: uploadForm.status,
-            thumbnailUrl: uploadForm.thumbnailFile ? URL.createObjectURL(uploadForm.thumbnailFile) : uploadForm.thumbnailUrl,
-            likes: editingId ? undefined : 0 // Initialize likes for new content
-        };
+        try {
+            let finalUrl = uploadForm.url;
+            let finalThumbnailUrl = uploadForm.thumbnailUrl;
 
-        if (editingId) {
-            updateTutorContent(contentData);
-        } else {
-            addTutorContent(contentData);
+            // 1. Handle File Upload (The TikTok Engine)
+            if (uploadForm.file) {
+                const bucket = 'official-vault';
+                const path = `${uploadForm.fileType.toLowerCase()}s/${Date.now()}_${uploadForm.file.name.replace(/\s+/g, '_')}`;
+                const uploadResult = await databaseService.uploadFile(bucket, path, uploadForm.file);
+                if (uploadResult) {
+                    finalUrl = await databaseService.getFileUrl(bucket, path);
+                }
+                setUploadProgress(60);
+            }
+
+            // 2. Handle Thumbnail Upload
+            if (uploadForm.thumbnailFile) {
+                const bucket = 'official-vault';
+                const path = `thumbnails/${Date.now()}_${uploadForm.thumbnailFile.name.replace(/\s+/g, '_')}`;
+                const thumbResult = await databaseService.uploadFile(bucket, path, uploadForm.thumbnailFile);
+                if (thumbResult) {
+                    finalThumbnailUrl = await databaseService.getFileUrl(bucket, path);
+                }
+            }
+            setUploadProgress(80);
+
+            // 3. Flatten Programme & Level Selection
+            const programmeIds = Object.keys(uploadForm.selectedProgrammes);
+            const levels = Object.values(uploadForm.selectedProgrammes).flat() as string[];
+
+            const contentData: TutorContent = {
+                id: editingId || crypto.randomUUID(),
+                tutorId: 'developer', // Official content belongs to developer
+                title: uploadForm.title,
+                description: uploadForm.description,
+                type: uploadForm.fileType,
+                url: finalUrl,
+                thumbnailUrl: finalThumbnailUrl,
+                programmeIds: programmeIds,
+                levels: levels,
+                courseUnitIds: uploadForm.selectedCUIds,
+                uploadDate: new Date().toISOString(),
+                status: uploadForm.status,
+                authorRole: 'developer', // THE GREAT WALL TAG
+                origin: 'official', // THE GREAT WALL TAG
+                likes: editingId ? undefined : 0
+            };
+
+            if (editingId) {
+                updateOfficialContent(contentData);
+            } else {
+                addOfficialContent(contentData);
+            }
+
+            setUploadProgress(100);
+            setTimeout(() => {
+                setIsUploadModalOpen(false);
+                setIsUploading(false);
+                setUploadProgress(0);
+                resetUploadForm();
+            }, 500);
+
+        } catch (error) {
+            console.error("Cloud Upload Failed:", error);
+            alert("Upload failed. Please check your connection and try again.");
+            setIsUploading(false);
+            setUploadProgress(0);
         }
-        setIsUploadModalOpen(false);
-        resetUploadForm();
     };
 
     const openUploadModal = () => {
@@ -657,11 +721,32 @@ export default function DeveloperLibrary() {
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (contentToDelete) {
-            deleteTutorContent(contentToDelete.id);
+            // Permanently erase files from Supabase storage bucket
+            if (contentToDelete.url && contentToDelete.url.includes('official-vault')) {
+                const urlParts = contentToDelete.url.split('official-vault/');
+                if (urlParts.length === 2) {
+                    try {
+                        await databaseService.deleteFile('official-vault', urlParts[1]);
+                    } catch (e) { console.error("Failed to delete video file", e); }
+                }
+            }
+            if (contentToDelete.thumbnailUrl && contentToDelete.thumbnailUrl.includes('official-vault')) {
+                const thumbParts = contentToDelete.thumbnailUrl.split('official-vault/');
+                if (thumbParts.length === 2) {
+                    try {
+                        await databaseService.deleteFile('official-vault', thumbParts[1]);
+                    } catch (e) { console.error("Failed to delete cover image", e); }
+                }
+            }
+
+            deleteOfficialContent(contentToDelete.id); // Changed to deleteOfficialContent
             setIsDeleteModalOpen(false);
             setContentToDelete(null);
+
+            setSuccessMessage("Delete Successful! The item was permanently removed from Supabase.");
+            setTimeout(() => setSuccessMessage(null), 4000);
         }
     };
 
@@ -672,7 +757,7 @@ export default function DeveloperLibrary() {
             // Simple toggle mock: random increment or decrement to simulate user interaction
             // In real app, this would be an API call and check user's like status
             const newLikes = (content.likes || 0) + 1;
-            updateTutorContent({ ...content, likes: newLikes });
+            updateOfficialContent({ ...content, likes: newLikes });
         }
     };
 
@@ -680,24 +765,31 @@ export default function DeveloperLibrary() {
         e.stopPropagation();
         const content = tutorContents.find(c => c.id === id);
         if (content) {
+            const isPinning = !content.isFeatured;
+
+            // If we are pinning a new item, find the currently featured item and unpin it first
+            if (isPinning) {
+                const currentlyFeatured = tutorContents.find(c => c.isFeatured && c.id !== id);
+                if (currentlyFeatured) {
+                    updateOfficialContent({ ...currentlyFeatured, isFeatured: false });
+                }
+            }
+
             // Toggle isFeatured
-            updateTutorContent({ ...content, isFeatured: !content.isFeatured });
+            updateOfficialContent({ ...content, isFeatured: isPinning });
 
             // Sync with profile pinned ID for legacy/compatibility if needed, 
-            // but primarily rely on isFeatured flag now.
-            // If we pin this, we can also set it as the profile pinned ID for immediate hero display
-            if (!content.isFeatured) {
-                setTutorProfile(prev => ({ ...prev, pinnedContentId: id }));
-            } else if (tutorProfile.pinnedContentId === id) {
-                setTutorProfile(prev => ({ ...prev, pinnedContentId: null }));
-            }
+            setTutorProfile(prev => ({
+                ...prev,
+                pinnedContentId: isPinning ? id : null
+            }));
         }
     };
 
     const handleViewContent = (content: TutorContent) => {
         // Increment view count
         const newViews = (content.views || 0) + 1;
-        updateTutorContent({ ...content, views: newViews });
+        updateOfficialContent({ ...content, views: newViews });
         setViewingContent(content);
     };
 
@@ -1054,7 +1146,7 @@ export default function DeveloperLibrary() {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded shadow">FEATURED</div>
+                                                    <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded shadow z-10">FEATURED</div>
                                                 </div>
                                                 <div className="p-4 md:p-8 flex flex-col justify-center">
                                                     <div className="flex gap-2 mb-4">
@@ -1070,7 +1162,7 @@ export default function DeveloperLibrary() {
                                                             </a>
                                                         )}
                                                         <button
-                                                            onClick={() => setTutorProfile(prev => ({ ...prev, pinnedContentId: null }))}
+                                                            onClick={(e) => togglePin(e, featuredContent.id)}
                                                             className="px-4 py-2 border border-gray-700 text-gray-400 rounded-lg hover:bg-gray-800 transition-colors"
                                                             title="Unpin Content"
                                                         >
@@ -1110,7 +1202,7 @@ export default function DeveloperLibrary() {
                                                                 {c.type === 'Note' ? <FileText size={32} className="text-gray-700 group-hover:text-blue-500 transition-colors" /> : <HelpCircle size={32} className="text-gray-700 group-hover:text-blue-500 transition-colors" />}
                                                             </div>
                                                         )}
-                                                        <div className="absolute top-2 right-2 flex gap-1 z-10">
+                                                        <div className="absolute top-2 right-2 flex gap-1 z-50">
                                                             <button
                                                                 onClick={(e) => toggleLike(e, c.id)}
                                                                 className="flex items-center gap-1 p-1.5 bg-black/50 backdrop-blur rounded-full text-white hover:bg-red-500/80 transition-colors group/like"
@@ -1119,12 +1211,12 @@ export default function DeveloperLibrary() {
                                                                 <span className="text-[10px] font-bold">{c.likes || 0}</span>
                                                             </button>
                                                         </div>
-                                                        <div className="absolute top-2 left-2 flex gap-1 z-10">
+                                                        <div className="absolute top-2 left-2 flex gap-1 z-50">
                                                             <button onClick={(e) => togglePin(e, c.id)} className={`p-1.5 backdrop-blur rounded transition-all ${c.isFeatured ? 'bg-amber-500 text-black' : 'bg-gray-900/80 text-gray-400 hover:text-amber-400'}`}>
                                                                 <Pin size={14} className={c.isFeatured ? 'fill-current' : ''} />
                                                             </button>
                                                         </div>
-                                                        <div className="absolute bottom-2 right-2 flex gap-1 z-10 pointer-events-none">
+                                                        <div className="absolute bottom-2 right-2 flex gap-1 z-50 pointer-events-none">
                                                             <div className="bg-black/60 backdrop-blur px-2 py-1 rounded-md flex items-center gap-1 text-white/90 text-xs font-medium">
                                                                 <Eye size={12} /> {c.views || 0}
                                                             </div>
@@ -1214,7 +1306,7 @@ export default function DeveloperLibrary() {
                                                             </div>
                                                         )}
 
-                                                        <div className="absolute top-2 right-2 z-10 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="absolute top-2 right-2 z-30">
                                                             <button
                                                                 onClick={(e) => toggleLike(e, c.id)}
                                                                 className="flex items-center gap-1 p-1.5 bg-black/50 backdrop-blur rounded-full text-white hover:bg-red-500/80 transition-colors group/like"
@@ -1223,12 +1315,12 @@ export default function DeveloperLibrary() {
                                                                 <span className="text-xs font-bold">{c.likes || 0}</span>
                                                             </button>
                                                         </div>
-                                                        <div className="absolute top-2 left-2 z-10 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="absolute top-2 left-2 z-50">
                                                             <button onClick={(e) => togglePin(e, c.id)} className={`p-1.5 backdrop-blur rounded transition-all ${c.isFeatured ? 'bg-amber-500 text-black' : 'bg-gray-900/80 text-gray-400 hover:text-amber-400'}`}>
                                                                 <Pin size={14} className={c.isFeatured ? 'fill-current' : ''} />
                                                             </button>
                                                         </div>
-                                                        <div className="absolute bottom-2 right-2 flex gap-1 z-10 pointer-events-none">
+                                                        <div className="absolute bottom-2 right-2 flex gap-1 z-50 pointer-events-none">
                                                             <div className="bg-black/60 backdrop-blur px-2 py-1 rounded-md flex items-center gap-1 text-white/90 text-xs font-medium">
                                                                 <Eye size={12} /> {c.views || 0}
                                                             </div>
@@ -1332,10 +1424,27 @@ export default function DeveloperLibrary() {
                         </div>
 
                         {/* Modal Body */}
-                        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-800">
+                        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-800 relative">
+                            {/* Loading Overlay */}
+                            {isUploading && (
+                                <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-12 text-center h-full">
+                                    <div className="relative w-32 h-32 mb-8">
+                                        <div className="absolute inset-0 rounded-full border-4 border-gray-800" />
+                                        <div
+                                            className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"
+                                            style={{ transition: 'all 0.3s ease' }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-2xl font-black text-white">{uploadProgress}%</span>
+                                        </div>
+                                    </div>
+                                    <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Uploading to Cloud</h3>
+                                    <p className="text-gray-400 font-medium max-w-sm">Please keep your window open while we process and secure your content.</p>
+                                </div>
+                            )}
+
                             {uploadStep === 'file' ? (
                                 <div className="space-y-8 max-w-2xl mx-auto py-8">
-                                    {/* Drag & Drop Area */}
                                     <div className="border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-3xl p-12 text-center group hover:border-blue-500 hover:bg-gray-900 transition-all cursor-pointer relative">
                                         <input
                                             type="file"
@@ -1353,6 +1462,21 @@ export default function DeveloperLibrary() {
                                                         if (url) thumbUrl = url;
                                                     } else if (isImage) {
                                                         thumbUrl = URL.createObjectURL(file);
+                                                    } else if (isVideo) {
+                                                        // Auto generate video thumbnail
+                                                        const url = await generateVideoThumbnail(file);
+                                                        if (url) {
+                                                            thumbUrl = url;
+                                                            // We also need to save the generated image as a file to upload it if the user doesn't replace it
+                                                            try {
+                                                                const res = await fetch(url);
+                                                                const blob = await res.blob();
+                                                                const thumbFile = new File([blob], `thumb_${file.name}.jpg`, { type: 'image/jpeg' });
+                                                                setUploadForm(prev => ({ ...prev, thumbnailFile: thumbFile }));
+                                                            } catch (e) {
+                                                                console.error("Failed to convert video thumbnail to file", e);
+                                                            }
+                                                        }
                                                     }
 
                                                     setUploadForm({
@@ -1664,154 +1788,187 @@ export default function DeveloperLibrary() {
                                 )}
                                 <button
                                     onClick={uploadStep === 'file' ? (() => uploadForm.url && setUploadStep('details')) : handleUpload}
-                                    className="px-8 py-3 bg-white text-black hover:bg-gray-200 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"
-                                    disabled={uploadStep === 'file' && !uploadForm.file && !uploadForm.url}
+                                    className={`px-8 py-3 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2 ${isUploading ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200'}`}
+                                    disabled={(uploadStep === 'file' && !uploadForm.file && !uploadForm.url) || isUploading}
                                 >
-                                    <span>{uploadStep === 'file' ? 'Next' : 'Publish Content'}</span>
-                                    <ArrowRight size={18} />
+                                    {isUploading ? (
+                                        <>
+                                            <Loader2 size={18} className="animate-spin" />
+                                            <span>Processing...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>{uploadStep === 'file' ? 'Next' : 'Publish Content'}</span>
+                                            <ArrowRight size={18} />
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                </div >
+            )
+            }
 
-            {isDraftsModalOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-[#0A0A0A] border border-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white">Your Drafts</h2>
-                            <button onClick={() => setIsDraftsModalOpen(false)} className="p-2 text-gray-400 hover:text-white rounded-full"><X size={20} /></button>
-                        </div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-800">
-                            {drafts.length === 0 ? (
-                                <div className="text-center py-12 text-gray-600">No drafts found.</div>
-                            ) : (
-                                drafts.map(draft => (
-                                    <div key={draft.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex justify-between items-center group hover:bg-gray-900 transition-all">
-                                        <div>
-                                            <h3 className="font-bold text-gray-200 mb-1">{draft.title || 'Untitled Draft'}</h3>
-                                            <p className="text-xs text-gray-500">Last edited: {new Date(draft.uploadDate).toLocaleDateString()}</p>
+            {
+                isDraftsModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-[#0A0A0A] border border-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-white">Your Drafts</h2>
+                                <button onClick={() => setIsDraftsModalOpen(false)} className="p-2 text-gray-400 hover:text-white rounded-full"><X size={20} /></button>
+                            </div>
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-800">
+                                {drafts.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-600">No drafts found.</div>
+                                ) : (
+                                    drafts.map(draft => (
+                                        <div key={draft.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex justify-between items-center group hover:bg-gray-900 transition-all">
+                                            <div>
+                                                <h3 className="font-bold text-gray-200 mb-1">{draft.title || 'Untitled Draft'}</h3>
+                                                <p className="text-xs text-gray-500">Last edited: {new Date(draft.uploadDate).toLocaleDateString()}</p>
+                                            </div>
+                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => {
+                                                        openEditModal(draft);
+                                                        setIsDraftsModalOpen(false);
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-600 hover:text-white transition-all text-sm font-medium"
+                                                >
+                                                    Resume
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteContent(draft)}
+                                                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => {
-                                                    openEditModal(draft);
-                                                    setIsDraftsModalOpen(false);
-                                                }}
-                                                className="px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-600 hover:text-white transition-all text-sm font-medium"
-                                            >
-                                                Resume
-                                            </button>
-                                            <button
-                                                onClick={() => deleteContent(draft)}
-                                                className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isProfileModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
-                    <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-                        <h2 className="text-xl font-bold text-white mb-6">Edit Profile</h2>
-                        <div className="space-y-4">
-                            <input className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white" placeholder="Name" value={profileForm.name} onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} />
-                            <textarea className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white h-24" placeholder="Bio" value={profileForm.bio} onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })} />
-
-                            {/* Image Uploads */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="border border-dashed border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center relative group hover:border-blue-500/50 transition-colors">
-                                    <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mb-2 overflow-hidden">
-                                        {profileForm.profileImage ? <img src={profileForm.profileImage} className="w-full h-full object-cover" /> : <Settings size={20} className="text-gray-500" />}
-                                    </div>
-                                    <span className="text-xs text-gray-400">Profile Pic</span>
-                                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
-                                        if (e.target.files?.[0]) setProfileForm({ ...profileForm, profileImage: URL.createObjectURL(e.target.files[0]) });
-                                    }} />
-                                </div>
-                                <div className="border border-dashed border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center relative group hover:border-blue-500/50 transition-colors">
-                                    <div className="w-20 h-10 bg-gray-800 rounded flex items-center justify-center mb-2 overflow-hidden">
-                                        {profileForm.coverImage ? <img src={profileForm.coverImage} className="w-full h-full object-cover" /> : <ImageIcon size={20} className="text-gray-500" />}
-                                    </div>
-                                    <span className="text-xs text-gray-400">Cover Image</span>
-                                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
-                                        if (e.target.files?.[0]) setProfileForm({ ...profileForm, coverImage: URL.createObjectURL(e.target.files[0]) });
-                                    }} />
-                                </div>
+                                    ))
+                                )}
                             </div>
                         </div>
-                        <div className="flex justify-end gap-3 mt-8">
-                            <button onClick={() => setIsProfileModalOpen(false)} className="px-5 py-2.5 text-gray-400">Cancel</button>
-                            <button onClick={() => { updateProfile(profileForm); setIsProfileModalOpen(false); }} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl">Save</button>
+                    </div>
+                )
+            }
+
+            {
+                isProfileModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+                        <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+                            <h2 className="text-xl font-bold text-white mb-6">Edit Profile</h2>
+                            <div className="space-y-4">
+                                <input className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white" placeholder="Name" value={profileForm.name} onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} />
+                                <textarea className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white h-24" placeholder="Bio" value={profileForm.bio} onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })} />
+
+                                {/* Image Uploads */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="border border-dashed border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center relative group hover:border-blue-500/50 transition-colors">
+                                        <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mb-2 overflow-hidden">
+                                            {profileForm.profileImage ? <img src={profileForm.profileImage} className="w-full h-full object-cover" /> : <Settings size={20} className="text-gray-500" />}
+                                        </div>
+                                        <span className="text-xs text-gray-400">Profile Pic</span>
+                                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
+                                            if (e.target.files?.[0]) setProfileForm({ ...profileForm, profileImage: URL.createObjectURL(e.target.files[0]) });
+                                        }} />
+                                    </div>
+                                    <div className="border border-dashed border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center relative group hover:border-blue-500/50 transition-colors">
+                                        <div className="w-20 h-10 bg-gray-800 rounded flex items-center justify-center mb-2 overflow-hidden">
+                                            {profileForm.coverImage ? <img src={profileForm.coverImage} className="w-full h-full object-cover" /> : <ImageIcon size={20} className="text-gray-500" />}
+                                        </div>
+                                        <span className="text-xs text-gray-400">Cover Image</span>
+                                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
+                                            if (e.target.files?.[0]) setProfileForm({ ...profileForm, coverImage: URL.createObjectURL(e.target.files[0]) });
+                                        }} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 mt-8">
+                                <button onClick={() => setIsProfileModalOpen(false)} className="px-5 py-2.5 text-gray-400">Cancel</button>
+                                <button onClick={() => { updateProfile(profileForm); setIsProfileModalOpen(false); }} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl">Save</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && contentToDelete && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-md animate-fade-in">
-                    <div className="bg-[#0A0A0A] border border-red-500/30 rounded-[2.5rem] w-full max-w-md shadow-[0_0_100px_rgba(239,68,68,0.15)] overflow-hidden scale-in">
-                        <div className="p-10 text-center">
-                            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-red-500/20">
-                                <Trash2 size={32} className="text-red-500" />
-                            </div>
-                            <h2 className="text-2xl font-black text-white mb-4 uppercase tracking-tighter">Confirm Deletion</h2>
-                            <p className="text-gray-400 mb-10 text-sm leading-relaxed">
-                                You are about to permanently remove <span className="text-white font-bold">"{contentToDelete.title}"</span>. This action cannot be undone and will remove it from all student archives.
-                            </p>
-                            <div className="flex flex-col gap-3">
-                                <button
-                                    onClick={confirmDelete}
-                                    className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg shadow-red-900/20 active:scale-95"
-                                >
-                                    Delete Permanently
-                                </button>
-                                <button
-                                    onClick={() => { setIsDeleteModalOpen(false); setContentToDelete(null); }}
-                                    className="w-full py-4 text-gray-500 hover:text-white font-black text-xs uppercase tracking-[0.2em] transition-colors"
-                                >
-                                    Cancel
-                                </button>
+            {
+                isDeleteModalOpen && contentToDelete && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-md animate-fade-in">
+                        <div className="bg-[#0A0A0A] border border-red-500/30 rounded-[2.5rem] w-full max-w-md shadow-[0_0_100px_rgba(239,68,68,0.15)] overflow-hidden scale-in">
+                            <div className="p-10 text-center">
+                                <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-red-500/20">
+                                    <Trash2 size={32} className="text-red-500" />
+                                </div>
+                                <h2 className="text-2xl font-black text-white mb-4 uppercase tracking-tighter">Confirm Deletion</h2>
+                                <p className="text-gray-400 mb-10 text-sm leading-relaxed">
+                                    You are about to permanently remove <span className="text-white font-bold">"{contentToDelete.title}"</span>. This action cannot be undone and will remove it from all student archives.
+                                </p>
+                                <div className="flex flex-col gap-3">
+                                    <button
+                                        onClick={confirmDelete}
+                                        className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg shadow-red-900/20 active:scale-95"
+                                    >
+                                        Delete Permanently
+                                    </button>
+                                    <button
+                                        onClick={() => { setIsDeleteModalOpen(false); setContentToDelete(null); }}
+                                        className="w-full py-4 text-gray-500 hover:text-white font-black text-xs uppercase tracking-[0.2em] transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Content Viewer Overlay */}
-            {viewingContent && (
-                <ContentViewer
-                    content={viewingContent}
-                    onClose={() => setViewingContent(null)}
-                    onMinimize={() => {
-                        setMinimizedContent(viewingContent);
-                        setViewingContent(null);
-                    }}
-                />
-            )}
+            {
+                viewingContent && (
+                    <ContentViewer
+                        content={viewingContent}
+                        onClose={() => setViewingContent(null)}
+                        onMinimize={() => {
+                            setMinimizedContent(viewingContent);
+                            setViewingContent(null);
+                        }}
+                    />
+                )
+            }
 
             {/* Minimized Content Indicator */}
-            {minimizedContent && !viewingContent && (
-                <div onClick={() => { setViewingContent(minimizedContent); setMinimizedContent(null); }} className="fixed bottom-6 right-6 z-[80] bg-gray-900 border border-gray-700 p-4 rounded-xl shadow-2xl cursor-pointer hover:border-blue-500 transition-colors animate-fade-in flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-800 rounded overflow-hidden">
-                        {minimizedContent.type === 'Video' ? <Video size={24} className="m-auto mt-3 text-gray-500" /> : minimizedContent.thumbnailUrl ? <img src={minimizedContent.thumbnailUrl} className="w-full h-full object-cover" /> : <FileText size={24} className="m-auto mt-3 text-gray-500" />}
+            {
+                minimizedContent && !viewingContent && (
+                    <div onClick={() => { setViewingContent(minimizedContent); setMinimizedContent(null); }} className="fixed bottom-6 right-6 z-[80] bg-gray-900 border border-gray-700 p-4 rounded-xl shadow-2xl cursor-pointer hover:border-blue-500 transition-colors animate-fade-in flex items-center gap-4">
+                        <div className="w-12 h-12 bg-gray-800 rounded overflow-hidden">
+                            {minimizedContent.type === 'Video' ? <Video size={24} className="m-auto mt-3 text-gray-500" /> : minimizedContent.thumbnailUrl ? <img src={minimizedContent.thumbnailUrl} className="w-full h-full object-cover" /> : <FileText size={24} className="m-auto mt-3 text-gray-500" />}
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-400 uppercase font-bold">Resuming...</p>
+                            <p className="font-bold text-white max-w-[150px] truncate">{minimizedContent.title}</p>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); setMinimizedContent(null); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-500 hover:text-white"><X size={16} /></button>
                     </div>
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase font-bold">Resuming...</p>
-                        <p className="font-bold text-white max-w-[150px] truncate">{minimizedContent.title}</p>
+                )
+            }
+
+            {/* Success Toast */}
+            {successMessage && (
+                <div className="fixed bottom-10 right-10 z-[150] animate-fade-in-up">
+                    <div className="bg-green-600/90 backdrop-blur-md border border-green-500/50 text-white px-6 py-4 rounded-2xl shadow-[0_10px_40px_rgba(22,163,74,0.3)] flex items-center gap-4">
+                        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                            <Check size={18} className="text-white" />
+                        </div>
+                        <p className="font-semibold text-sm tracking-wide">{successMessage}</p>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setMinimizedContent(null); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-500 hover:text-white"><X size={16} /></button>
                 </div>
             )}
-        </div>
+
+        </div >
     );
 }
