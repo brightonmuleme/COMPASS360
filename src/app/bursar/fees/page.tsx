@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState } from 'react';
 import { useSchoolData, Programme } from '@/lib/store';
 import { useRouter } from 'next/navigation';
@@ -13,9 +13,7 @@ export default function FeesStructurePage() {
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
     // Filter to only show school programmes (internal)
-    const programmes = React.useMemo(() => {
-        return allProgrammes.filter(p => !p.isTutorContent || p.ownerId === schoolProfile.id);
-    }, [allProgrammes, schoolProfile.id]);
+    const programmes = allProgrammes;
 
     // Close menu when clicking outside
     React.useEffect(() => {

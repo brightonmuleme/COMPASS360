@@ -6,6 +6,7 @@ import {
     School as SchoolIcon, Layout, Globe, CheckCircle2, RefreshCw,
     GalleryHorizontal, Sparkles, ChevronRight, Camera, Search, MapPin
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export default function ContentManager() {
     const {
@@ -18,6 +19,37 @@ export default function ContentManager() {
     const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
     const [schoolFormData, setSchoolFormData] = useState<FeaturedSchool | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [dbSchools, setDbSchools] = useState<FeaturedSchool[]>([]);
+
+    React.useEffect(() => {
+        const fetchLiveSchools = async () => {
+            try {
+                const { data, error } = await supabase.from('featured_schools').select('*');
+                if (data && !error) {
+                    const mappedSchools: FeaturedSchool[] = data.map(row => ({
+                        id: row.id,
+                        name: row.name,
+                        category: row.category || 'Academy',
+                        logo: row.logo_url || '',
+                        image: row.cover_url || '',
+                        tagline: row.tagline || '',
+                        description: row.description || '',
+                        location: row.location || '',
+                        contact: row.contact_phone || '',
+                        email: row.contact_email || '',
+                        enrollmentStatus: row.enrollment_status || 'Enrolling for 2026',
+                        feesStructure: row.fees_url || '',
+                        gallery: row.gallery || [],
+                        status: 'Active'
+                    }));
+                    setDbSchools(mappedSchools);
+                }
+            } catch (err) {
+                console.error("Developer Portal Sync Error:", err);
+            }
+        };
+        fetchLiveSchools();
+    }, [featuredSchools]); // Auto-refresh when featuredSchools local state triggers a save update
 
     const compressImage = (base64: string, maxWidth: number = 1920, quality: number = 0.7): Promise<string> => {
         return new Promise((resolve) => {
@@ -81,6 +113,17 @@ export default function ContentManager() {
         setSchoolFormData({ ...schoolFormData, gallery: newGallery });
     };
 
+    const handleFeesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !schoolFormData) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            setSchoolFormData({ ...schoolFormData, feesStructure: base64String });
+        };
+        reader.readAsDataURL(file);
+    };
+
     const handleAddNewSchool = () => {
         const newSchool: FeaturedSchool = {
             id: `sch_${Date.now()}`,
@@ -94,7 +137,8 @@ export default function ContentManager() {
             contact: '',
             email: '',
             enrollmentStatus: 'Enrolling for 2026',
-            gallery: []
+            gallery: [],
+            feesStructure: ''
         };
         setEditingSchoolId(newSchool.id);
         setSchoolFormData(newSchool);
@@ -105,10 +149,70 @@ export default function ContentManager() {
         setIsSaving(true);
         try {
             const isNew = !featuredSchools.find(s => s.id === schoolFormData.id);
-            const updated = isNew ? [...featuredSchools, schoolFormData] : featuredSchools.map(s => s.id === schoolFormData.id ? schoolFormData : s);
-            await updateFeaturedSchools(updated);
+            let targetId = schoolFormData.id.startsWith('sch_') ? undefined : schoolFormData.id;
+
+            // --- DUPLICATE PREVENTER: Match by name if we have a temporary ID ---
+            if (!targetId) {
+                const { data: existingMatch } = await supabase
+                    .from('featured_schools')
+                    .select('id')
+                    .eq('name', schoolFormData.name)
+                    .maybeSingle(); // Use maybeSingle to avoid errors if none exist
+                
+                if (existingMatch && existingMatch.id) {
+                    targetId = existingMatch.id; // Force UPDATE instead of duplicate
+                }
+            }
+            
+            // 1. Save directly into the authoritative Supabase Table
+            const { data, error } = await supabase.from('featured_schools').upsert({
+                ...(targetId ? { id: targetId } : {}),
+                name: schoolFormData.name,
+                category: schoolFormData.category,
+                logo_url: schoolFormData.logo,
+                cover_url: schoolFormData.image,
+                tagline: schoolFormData.tagline,
+                description: schoolFormData.description,
+                location: schoolFormData.location,
+                contact_phone: schoolFormData.contact,
+                contact_email: schoolFormData.email,
+                enrollment_status: schoolFormData.enrollmentStatus,
+                fees_url: schoolFormData.feesStructure,
+                gallery: schoolFormData.gallery,
+            }).select().single();
+
+            if (error) {
+                console.error("Supabase Save Error:", error);
+                throw error;
+            }
+
+            // 2. Map Database Row back to UI format
+            const savedSchool: FeaturedSchool = {
+                id: data.id,
+                name: data.name,
+                category: data.category,
+                logo: data.logo_url,
+                image: data.cover_url,
+                tagline: data.tagline,
+                description: data.description,
+                location: data.location,
+                contact: data.contact_phone,
+                email: data.contact_email,
+                enrollmentStatus: data.enrollment_status,
+                feesStructure: data.fees_url,
+                gallery: data.gallery,
+                status: 'Active'
+            };
+
+            // 3. Keep local UI in sync
+            const updated = isNew ? [...featuredSchools, savedSchool] : featuredSchools.map(s => s.id === schoolFormData.id ? savedSchool : s);
+            await updateFeaturedSchools(updated); // Still sync to settings so old logic doesn't crash
+            
             setEditingSchoolId(null);
             setSchoolFormData(null);
+        } catch(err) {
+            console.error(err);
+            alert("Error saving school to Live Database.");
         } finally {
             setIsSaving(false);
         }
@@ -118,6 +222,11 @@ export default function ContentManager() {
         if (!window.confirm("Confirm deletion?")) return;
         setIsSaving(true);
         try {
+            // Delete from authoritative table if it's a real database ID
+            if (!id.startsWith('sch_')) {
+                await supabase.from('featured_schools').delete().eq('id', id);
+            }
+            // Remove from local UI
             await deleteFeaturedSchool(id);
             setEditingSchoolId(null);
             setSchoolFormData(null);
@@ -323,7 +432,7 @@ export default function ContentManager() {
                 {activeTab === 'Schools' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
                         {/* Render New School Form if adding */}
-                        {editingSchoolId && !featuredSchools.find(s => s.id === editingSchoolId) && (
+                        {editingSchoolId && !dbSchools.find(s => s.id === editingSchoolId) && (
                             <div className="bg-slate-900 rounded-2xl border border-emerald-500/50 overflow-hidden shadow-2xl shadow-emerald-500/10 animate-in fade-in slide-in-from-top-4 duration-300">
                                 <div className="p-4 space-y-4">
                                     <div className="flex items-center gap-2 mb-2">
@@ -416,17 +525,17 @@ export default function ContentManager() {
                             </div>
                         )}
 
-                        {featuredSchools.length === 0 && !editingSchoolId && (
+                        {dbSchools.length === 0 && !editingSchoolId && (
                             <div className="flex flex-col items-center justify-center h-64 text-slate-500 border border-dashed border-slate-800 rounded-2xl">
                                 <SchoolIcon size={48} className="mb-4 opacity-50" />
-                                <p className="text-sm font-medium">No schools configured</p>
+                                <p className="text-sm font-medium">No schools configured in Live Database</p>
                                 <button onClick={handleAddNewSchool} className="mt-4 px-6 py-2 bg-slate-800 text-white rounded-full text-xs font-bold hover:bg-slate-700">
                                     Add First School
                                 </button>
                             </div>
                         )}
 
-                        {featuredSchools.map((school) => (
+                        {dbSchools.map((school) => (
                             <div key={school.id} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden">
                                 {editingSchoolId === school.id ? (
                                     <div className="p-4 space-y-4">
@@ -502,6 +611,22 @@ export default function ContentManager() {
                                                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:border-emerald-500 outline-none min-h-[80px]"
                                                 placeholder="Brief Introduction for Admission Form"
                                             />
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase">Fees Structure (PDF/Image)</label>
+                                                <div className="flex items-center gap-3">
+                                                    <label className="flex-1 flex items-center justify-center gap-2 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl px-4 py-3 text-xs font-bold text-slate-400 hover:text-emerald-400 cursor-pointer transition-all">
+                                                        <Upload size={14} />
+                                                        <span>{schoolFormData?.feesStructure ? 'Update Document' : 'Upload Document'}</span>
+                                                        <input type="file" accept="image/*,.pdf" onChange={handleFeesUpload} className="hidden" />
+                                                    </label>
+                                                    {schoolFormData?.feesStructure && (
+                                                        <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-[10px] font-black text-emerald-500 uppercase italic">
+                                                            Attached
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="pt-2 flex flex-col gap-2">

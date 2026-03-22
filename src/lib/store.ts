@@ -846,6 +846,8 @@ export interface FeaturedSchool {
     gallery?: string[]; // Added: array of showcase image URLs
     status: 'Pending' | 'Active' | 'Rejected';
     enrollmentStatus?: string;
+    feesStructure?: string; // Base64 or URL for the fees document
+    recommendations?: string; // Added: institutional course recommendations
 }
 
 export interface SchoolApplication {
@@ -946,16 +948,16 @@ export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
 };
 export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
     {
-        id: 'ea5d359f-8107-40a3-808c-0c4f8f3a847c',
+        id: 'sch_1771556024058',
         name: 'SAMI HEALTH SCIENCE INSTITUTE',
-        category: 'Health Science',
+        category: 'Nursing & Midwifery',
         image: 'https://images.unsplash.com/photo-1576091160550-217359941f3b?auto=format&fit=crop&q=80&w=800',
         logo: '/schools/sami_logo.png',
-        tagline: 'Excellence in Health Education',
-        description: 'A leading health science institute dedicated to training the next generation of medical professionals.',
-        contact: '+256 700 000000',
+        tagline: 'Health Is Priority',
+        description: 'A leading educational institution dedicated to academic excellence.',
+        contact: '0751581660',
         email: 'samihealthscience@gmail.com',
-        location: 'Kampala',
+        location: 'Uganda',
         gallery: [],
         status: 'Active'
     }
@@ -3682,9 +3684,11 @@ function useSchoolDataInternal() {
         if (hydrated) safeSetItem('school_active_role', activeRole || '');
     }, [activeRole, hydrated]);
 
+
     useEffect(() => {
         safeSetItem('school_profile_v1', schoolProfile);
     }, [schoolProfile, hydrated]);
+
 
     useEffect(() => {
         safeSetItem('school_student_profile_v1', studentProfile);
@@ -3782,7 +3786,13 @@ function useSchoolDataInternal() {
     const [featuredSchools, setFeaturedSchools] = useState<FeaturedSchool[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('app_featured_schools_v4');
-            return saved ? JSON.parse(saved) : INITIAL_FEATURED_SCHOOLS;
+            const parsed = saved ? JSON.parse(saved) : [];
+            // 🛡️ MEMORY RESILIENCE: Merge local hardcoded items with cached cloud items
+            // This prevents blank screens if the cache is stale or old.
+            const map = new Map();
+            INITIAL_FEATURED_SCHOOLS.forEach(s => map.set(s.id, s));
+            parsed.forEach((s: FeaturedSchool) => map.set(s.id, s));
+            return Array.from(map.values());
         }
         return INITIAL_FEATURED_SCHOOLS;
     });
@@ -3999,28 +4009,43 @@ function useSchoolDataInternal() {
         };
     }, [hydrated, activeRole, schoolProfile.id]);
 
-    // --- CLOUD SYNC FOR DEVELOPER CONTENT ---
+    // --- CLOUD SYNC FOR DEVELOPER CONTENT & MARKETING ---
     useEffect(() => {
         const fetchCloudConfig = async () => {
             if (!hydrated) return;
             try {
                 const config = await developerService.getLandingPageConfig();
                 if (config) {
-                    if (config.landing_content && config.landing_content.length > 0) {
-                        setLandingPageContent(config.landing_content);
-                    }
-                    if (config.wallpapers && config.wallpapers.length > 0) {
-                        setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
-                    }
-                    if (config.featured_schools && config.featured_schools.length > 0) {
-                        setFeaturedSchools(config.featured_schools);
-                    }
+                    if (config.landing_content) setLandingPageContent(config.landing_content);
+                    if (config.wallpapers) setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
+                    if (config.featured_schools) setFeaturedSchools(config.featured_schools);
                 }
             } catch (err) {
                 console.error("Failed to fetch cloud config:", err);
             }
         };
+
+        // 🔗 THE MARKETING BRIDGE: Real-Time Landing Page Updates
+        // When a developer adds/edits a school in the portal, this channel 
+        // broadcasts the new logo/name/location to the landing page instantly.
+        const marketingSub = supabase
+            .channel('public-marketing-sync')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'platform_settings' 
+            }, (payload) => {
+                const newData = payload.new as any;
+                if (newData && newData.featured_schools) {
+                    console.log("🚀 Marketing Update Received: Refreshing discovery portal...");
+                    setFeaturedSchools(newData.featured_schools);
+                    if (newData.landing_content) setLandingPageContent(newData.landing_content);
+                }
+            })
+            .subscribe();
+
         fetchCloudConfig();
+        return () => { marketingSub.unsubscribe(); };
     }, [hydrated]);
 
     // --- REAL-TIME WALLET & REQUEST SYNC ---
@@ -4118,6 +4143,37 @@ function useSchoolDataInternal() {
         return [];
     });
 
+    const syncApplications = async () => {
+        try {
+            console.log("☁️ Syncing Admissions Hub from Cloud...");
+            const cloudApps = await databaseService.getAdmissionApplications();
+            
+            // Map cloud columns to frontend interface
+            const normalized = (cloudApps || []).map((app: any) => ({
+                id: app.id,
+                schoolId: app.school_id,
+                schoolName: app.school_name,
+                applicantName: app.applicant_name,
+                applicantEmail: app.email,
+                applicantPhone: app.phone,
+                status: app.status,
+                programmes: app.programmes,
+                entryLevel: app.entry_level,
+                modeOfStudy: app.mode_of_study,
+                profilePhoto: app.profile_photo,
+                academicResults: app.academic_results,
+                submittedAt: app.submitted_at,
+                ...app.full_data // Merge with detailed data
+            }));
+
+            // Union merge local with cloud to ensure we don't lose unpushed local entries
+            setSchoolApplications(prev => unionMerge(prev, normalized as any));
+            console.log("🚀 Admissions Hub Sync Complete.");
+        } catch (err) {
+            console.error("Failed to sync applications from cloud:", err);
+        }
+    };
+
     useEffect(() => {
         safeSetItem('app_school_applications_v1', schoolApplications);
     }, [schoolApplications, hydrated]);
@@ -4149,15 +4205,15 @@ function useSchoolDataInternal() {
         return newApp;
     };
 
-    // CLOUD-FIRST APPLICATION SYNC
+    // ADMISSION-SPECIFIC SYNC (Using the new admission_applications table)
     const submitSchoolApplication = async (appData: any) => {
         try {
-            // 1. Local Backup (First Response)
+            // 1. Local Backup (Immediate UI response)
             const localApp = addSchoolApplication(appData);
 
-            // 2. Cloud Sync (Infinite Storage)
+            // 2. Cloud Sync (Infinite Storage into the dedicated table)
             const { error } = await supabase
-                .from('school_applications')
+                .from('admission_applications')
                 .insert([{
                     id: localApp.id,
                     school_id: appData.schoolId,
@@ -4165,16 +4221,21 @@ function useSchoolDataInternal() {
                     applicant_name: appData.applicantName,
                     email: appData.applicantEmail,
                     phone: appData.applicantPhone,
+                    programmes: appData.programmes,
+                    entry_level: appData.entryLevel,
+                    mode_of_study: appData.modeOfStudy,
+                    profile_photo: appData.profilePhoto, // High-res link/base64
+                    academic_results: appData.academicResults, // High-res link/base64
                     status: 'pending',
-                    full_data: appData, // Store detailed blob in cloud
-                    created_at: new Date().toISOString()
+                    full_data: appData,
+                    submitted_at: new Date().toISOString()
                 }]);
 
             if (error) throw error;
-            console.log("🚀 Application Synced to Cloud Successfully.");
+            console.log("🚀 Student Admission Synced to Cloud.");
             return true;
         } catch (err) {
-            console.error("Cloud Sync Failed, application remains local:", err);
+            console.error("Admission Cloud Sync Failed:", err);
             return false;
         }
     };
@@ -5569,9 +5630,13 @@ function useSchoolDataInternal() {
     }, [students, schoolProfile.id, activeRole, isBursarPortal, isRegistrarPortal]);
 
     const filteredProgrammes = useMemo(() => {
-        // Programmes should be global across all portals
+        // Programmes should be global across all portals for now
         return programmes;
     }, [programmes]);
+
+    const filteredCourseUnits = useMemo(() => {
+        return courseUnits;
+    }, [courseUnits]);
 
     const filteredBillings = useMemo(() => {
         if (!isBursarPortal && !isRegistrarPortal) return billings;
@@ -6405,6 +6470,7 @@ function useSchoolDataInternal() {
         schoolApplications,
         addSchoolApplication,
         submitSchoolApplication,
+        syncApplications,
         updateSchoolApplicationStatus,
         addStaffAccount,
         verifySubscriptionRequest,

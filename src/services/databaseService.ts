@@ -316,5 +316,23 @@ export const databaseService = {
             console.error('☁️ TRANSACTION ERROR:', error);
             throw error;
         }
+    },
+
+    getAdmissionApplications: async () => {
+        const { data, error } = await supabase
+            .from('admission_applications')
+            .select('*')
+            .order('submitted_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    submitAdmissionApplication: async (appData: any) => {
+        const { data, error } = await supabase
+            .from('admission_applications')
+            .insert([appData])
+            .select();
+        if (error) throw error;
+        return data[0];
     }
 };

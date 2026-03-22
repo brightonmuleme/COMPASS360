@@ -1,18 +1,49 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from '../../app/landing.module.css';
 import { useSchoolData, FeaturedSchool, INITIAL_FEATURED_SCHOOLS } from '@/lib/store';
-
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Share2, Check } from 'lucide-react';
 
 const SchoolShowcase = () => {
-    const { featuredSchools } = useSchoolData();
-    const [mounted, setMounted] = React.useState(false);
-    const [copiedId, setCopiedId] = React.useState<string | null>(null);
+    // We keep legacy store as absolute fallback but prioritize direct DB query
+    const { featuredSchools } = useSchoolData(); 
+    const [mounted, setMounted] = useState(false);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [dbSchools, setDbSchools] = useState<FeaturedSchool[]>([]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         setMounted(true);
+
+        // Fetch Live Authoritative Data directly from our new table!
+        const fetchLiveSchools = async () => {
+            try {
+                const { data, error } = await supabase.from('featured_schools').select('*');
+                if (data && !error && data.length > 0) {
+                    const mappedSchools: FeaturedSchool[] = data.map(row => ({
+                        id: row.id,
+                        name: row.name,
+                        category: row.category || 'Academy',
+                        logo: row.logo_url || '',
+                        image: row.cover_url || '',
+                        tagline: row.tagline || '',
+                        description: row.description || '',
+                        location: row.location || '',
+                        contact: row.contact_phone || '',
+                        email: row.contact_email || '',
+                        enrollmentStatus: row.enrollment_status || 'Enrolling for 2026',
+                        feesStructure: row.fees_url || '',
+                        gallery: row.gallery || [],
+                        status: 'Active'
+                    }));
+                    setDbSchools(mappedSchools);
+                }
+            } catch (err) {
+                console.error("Landing Page Sync Error:", err);
+            }
+        };
+
+        fetchLiveSchools();
     }, []);
 
     const handleShare = async (e: React.MouseEvent, schoolId: string, schoolName: string) => {
@@ -43,12 +74,11 @@ const SchoolShowcase = () => {
         }
     };
 
-    // Use content from store, fallback to default if empty or none are active
-    let schools = (featuredSchools && featuredSchools.length > 0) ? featuredSchools : INITIAL_FEATURED_SCHOOLS;
-
-    // Final check: if the list exists but has no active items, force use of initials for demo purposes
-    const activeSchools = schools.filter(s => s.status === 'Active');
-    const finalSchools = activeSchools.length > 0 ? activeSchools : INITIAL_FEATURED_SCHOOLS.filter(s => s.status === 'Active');
+    // 1. Try Live DB first. 2. Try the old Store. 3. Try hardcoded fallback.
+    const activeDbSchools = dbSchools.filter(s => s.status === 'Active');
+    const activeStoreSchools = featuredSchools ? featuredSchools.filter(s => s.status === 'Active') : [];
+    
+    let finalSchools = activeDbSchools.length > 0 ? activeDbSchools : (activeStoreSchools.length > 0 ? activeStoreSchools : INITIAL_FEATURED_SCHOOLS.filter(s => s.status === 'Active'));
 
     if (!mounted) return null;
 

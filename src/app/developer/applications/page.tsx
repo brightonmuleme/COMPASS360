@@ -18,12 +18,19 @@ import {
     CheckCircle2,
     CheckCircle,
     Info,
-    History
+    History,
+    Trash2
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export default function ApplicationsManager() {
-    const { schoolApplications, updateSchoolApplicationStatus } = useSchoolData();
+    const { schoolApplications, updateSchoolApplicationStatus, syncApplications } = useSchoolData();
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'viewed' | 'contacted'>('all');
+    
+    React.useEffect(() => {
+        if (syncApplications) syncApplications();
+    }, []);
+
     const [schoolFilter, setSchoolFilter] = useState<string>('all');
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
@@ -46,6 +53,29 @@ export default function ApplicationsManager() {
         }
         return matchesStatus && matchesSchool && matchesDate;
     });
+
+    const handleDelete = async (appId: string) => {
+        if (!window.confirm("⚠️ IRREVERSIBLE ACTION: Are you sure you want to permanently delete this application record across all systems?")) return;
+        
+        try {
+            // 1. Delete from Cloud
+            const { error } = await supabase.from('admission_applications').delete().eq('id', appId);
+            if (error) throw error;
+
+            // 2. Local-First Defense: Mark as Tombstone so the store doesn't resurrect it
+            const tombstones = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
+            localStorage.setItem('school_tombstones_v1', JSON.stringify([...new Set([...tombstones, appId])]));
+
+            // 3. Clear selected and Sync
+            setSelectedAppId(null);
+            if (syncApplications) syncApplications();
+            
+            console.log(`🫥 Registry: Application ${appId} has been phased out.`);
+        } catch (err) {
+            console.error("Deletion Failed:", err);
+            alert("Protocol Error: Could not delete record from cloud.");
+        }
+    };
 
     const selectedApp = schoolApplications.find(a => a.id === selectedAppId);
     const schoolNames = Array.from(new Set(schoolApplications.map(app => app.schoolName)));
@@ -229,12 +259,21 @@ export default function ApplicationsManager() {
                         <div className="bg-white rounded-[3rem] border border-slate-100 shadow-2xl shadow-slate-900/20 overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
                             {/* Profile Header */}
                             <div className="relative p-8 bg-[#0d0d0d] text-white">
-                                <button
-                                    onClick={() => setSelectedAppId(null)}
-                                    className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all z-20"
-                                >
-                                    <X size={20} />
-                                </button>
+                                <div className="absolute top-6 right-6 flex items-center gap-2 z-20">
+                                    <button
+                                        onClick={() => handleDelete(selectedApp!.id)}
+                                        className="w-10 h-10 rounded-full bg-red-600/20 hover:bg-red-600 hover:text-white text-red-500 flex items-center justify-center transition-all shadow-lg"
+                                        title="Phase Out Record"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedAppId(null)}
+                                        className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
 
                                 <div className="relative z-10 flex flex-col items-center gap-6 py-4">
                                     <div className="relative w-32 h-32 rounded-[2.5rem] bg-white/10 p-[4px] ring-4 ring-white/5 shadow-2xl shadow-black/50 overflow-hidden">

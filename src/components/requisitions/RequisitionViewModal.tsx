@@ -1,6 +1,6 @@
 import React from 'react';
 import { Requisition, useSchoolData } from '@/lib/store';
-import { Printer, XCircle, Download } from 'lucide-react';
+import { Printer, XCircle, Download, FileText, Clock, CheckCircle } from 'lucide-react';
 
 interface RequisitionViewModalProps {
     requisition: Requisition | null;
@@ -11,8 +11,9 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
     const { portalBranding } = useSchoolData();
     if (!requisition) return null;
 
+    const totalCommitment = requisition.items?.reduce((s, i) => s + Number(i.amount), 0) || 0;
+
     const handleExportCSV = () => {
-        // --- CLEAN CSV GENERATION ---
         const headers = ["#", "Category", "Item Description", "Qty", "Unit Price", "Amount"];
         const rows = (requisition.items || []).map((item, index) => [
             index + 1,
@@ -30,20 +31,17 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
             [`DATE: ${requisition.date}`],
             [`LEDGER ACCOUNT: ${requisition.account}`],
             [`STATUS: ${requisition.status}`],
-            [""] // Spacer
+            [""]
         ];
-
-        const total = requisition.items?.reduce((s, i) => s + Number(i.amount), 0) || 0;
 
         const csvContent = [
             ...meta,
             headers,
             ...rows,
             [""],
-            ["", "", "", "", "TOTAL SUM (UGX)", total]
+            ["", "", "", "", "TOTAL SUM (UGX)", totalCommitment]
         ].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 
-        // --- DOWNLOAD TRIGGER ---
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -56,129 +54,87 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 overflow-auto print:absolute print:inset-0 print:bg-white print:z-auto animate-in fade-in duration-300">
-            <div className="bg-white border border-slate-200 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] print:max-h-none print:border-none print:shadow-none print:bg-white print:text-black print:overflow-visible overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-3xl p-4 overflow-auto animate-in fade-in duration-300 print:bg-white print:p-0 print:absolute print:inset-0">
+            <div className="bg-white border border-slate-200 w-full max-w-5xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none overflow-hidden relative">
+                
                 {/* Modal Header */}
-                <div className="p-6 border-b border-slate-100 flex justify-between items-start print:hidden bg-slate-50/50">
-                    <div>
-                        <h2 className="text-2xl font-black text-slate-900 mb-1 tracking-tight">{requisition.readableId || 'REQ-???'} — <span className="text-slate-600 font-bold uppercase text-xl">{requisition.title}</span></h2>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${requisition.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {requisition.status}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-100 px-2 py-1 rounded-full">Financial Document</span>
+                <div className="p-6 sm:p-10 border-b border-slate-100 flex justify-between items-start print:hidden bg-white sticky top-0 z-50">
+                    <div className="flex items-start gap-6">
+                        <div className="p-3 bg-purple-600 rounded-2xl shadow-lg shadow-purple-200">
+                            <FileText className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100 uppercase tracking-widest leading-none">{requisition.readableId || 'REQ-???' }</span>
+                                <span className={`text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-widest leading-none ${requisition.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                    {requisition.status}
+                                </span>
+                            </div>
+                            <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-none uppercase tracking-tighter truncate max-w-md">{requisition.title}</h2>
                         </div>
                     </div>
 
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => window.print()}
-                            className="p-2.5 bg-slate-900 hover:bg-black text-white rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-2 group"
-                            title="Direct Print to PDF"
-                        >
-                            <Printer className="w-4 h-4" />
-                            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Print / PDF</span>
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => window.print()} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-900 hover:text-white transition-all">
+                            <Printer className="w-5 h-5" />
                         </button>
-                        <button
-                            onClick={handleExportCSV}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg shadow-purple-200 flex items-center gap-2 transition-all active:scale-95 group"
-                            title="Export Clean CSV"
-                        >
-                            <Download className="w-4 h-4" />
-                            <span className="text-xs font-bold uppercase tracking-widest">Export CSV</span>
+                        <button onClick={handleExportCSV} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-purple-600 hover:text-white transition-all">
+                            <Download className="w-5 h-5" />
                         </button>
-                        <button onClick={onClose} className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-colors">
+                        <button onClick={onClose} className="p-3 bg-slate-100 text-slate-400 hover:text-red-500 rounded-full transition-all active:scale-95">
                             <XCircle className="w-6 h-6" />
                         </button>
                     </div>
                 </div>
 
-                {/* Modal Content (Printable) */}
-                <div className="p-6 sm:p-10 overflow-y-auto bg-white text-slate-800 print:overflow-visible print:p-0">
-                    <style>{`
-                        @media print {
-                            body * { visibility: hidden !important; }
-                            body { margin: 0; padding: 0; }
-                            .print-area, .print-area * { visibility: visible !important; }
-                            .print-area { 
-                                position: absolute !important; 
-                                left: 0 !important; 
-                                top: 0 !important; 
-                                width: 170mm !important; 
-                                height: auto !important;
-                                display: block !important;
-                                background: white !important;
-                                padding: 0 !important;
-                                font-size: 11pt !important;
-                                overflow: visible !important;
-                            }
-                            @page { size: auto; margin: 15mm; }
-                            tr { page-break-inside: avoid !important; }
-                            thead { display: table-header-group !important; }
-                            tfoot { display: table-footer-group !important; }
-                            table { font-size: 9pt !important; table-layout: auto !important; width: 100% !important; border-collapse: collapse !important; }
-                            th, td { padding: 6px 4px !important; }
-                            .amount-col { text-align: right !important; white-space: nowrap !important; }
-                        }
-                    `}</style>
-                    <div className="print-area">
-                        {/* Print Header */}
-                        <div className="hidden print:block mb-8 text-center border-b-2 border-slate-900 pb-6">
-                            {portalBranding.logo && (
-                                <div className="flex justify-center mb-4">
-                                    <img src={portalBranding.logo} alt="Logo" className="h-16 w-auto object-contain" />
-                                </div>
-                            )}
-                            <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">{portalBranding.schoolName}</h1>
-                            {portalBranding.tagline && (
-                                <p className="text-sm font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">{portalBranding.tagline}</p>
-                            )}
-                            <p className="text-lg font-bold text-slate-700 underline decoration-slate-300 decoration-2 underline-offset-4">OFFICIAL REQUISITION FORM</p>
-                            <p className="text-xs text-slate-400 font-mono mt-3">DOCUMENT ID • {requisition.readableId}</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-10 border-b border-slate-100 pb-10">
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <label className="block text-[10px] uppercase text-slate-400 font-black tracking-widest mb-1">Date</label>
-                                <p className="text-slate-900 font-bold text-lg">{requisition.date}</p>
+                {/* Modal Content */}
+                <div className="p-4 sm:p-12 overflow-y-auto bg-white text-slate-900 print:p-0 print:overflow-visible no-scrollbar">
+                    <div className="print-area space-y-10">
+                        {/* Summary Block */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                            <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Authored Date</span>
+                                <span className="text-xl font-black text-slate-900 tracking-tight">{requisition.date}</span>
                             </div>
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <label className="block text-[10px] uppercase text-slate-400 font-black tracking-widest mb-1">Source Account</label>
-                                <p className="text-slate-900 font-bold text-lg">{requisition.account || "MAIN LEDGER"}</p>
+                            <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Source Origin</span>
+                                <span className="text-xl font-black text-slate-900 tracking-tight uppercase">{requisition.account || "MAIN LEDGER"}</span>
                             </div>
-                            <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
-                                <label className="block text-[10px] uppercase text-emerald-600 font-black tracking-widest mb-1">Total Allocated Sum</label>
-                                <p className="text-emerald-700 font-black text-2xl">
-                                    {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(
-                                        requisition.items?.reduce((s, i) => s + Number(i.amount), 0) || 0
-                                    )}
-                                </p>
+                            <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1">Total Impact Sum</span>
+                                <span className="text-3xl font-black text-emerald-700 tracking-tighter tabular-nums leading-none">
+                                    {new Intl.NumberFormat('en-UG').format(totalCommitment)}
+                                </span>
                             </div>
                         </div>
 
-                        {/* Items Table (Read Only) */}
-                        <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-10">
-                            <table className="w-full text-left text-sm border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
-                                        <th className="p-4 w-12 text-center">#</th>
-                                        <th className="p-4">Category</th>
-                                        <th className="p-4">Item Description</th>
-                                        <th className="p-4 text-right">Qty</th>
-                                        <th className="p-4 text-right">Unit Price</th>
-                                        <th className="p-4 text-right">Amount (UGX)</th>
+                        {/* Items Table - Optimized for Mobile */}
+                        <div className="border border-slate-100 sm:rounded-[2.5rem] overflow-hidden shadow-sm">
+                            <table className="w-full text-left border-collapse table-fixed">
+                                <colgroup>
+                                    <col className="w-[10%] sm:w-16" />
+                                    <col className="w-[40%] sm:w-auto" />
+                                    <col className="w-[10%] sm:w-20" />
+                                    <col className="w-[15%] sm:w-32" />
+                                    <col className="w-[25%] sm:w-44" />
+                                </colgroup>
+                                <thead className="bg-slate-900 text-white text-[8px] sm:text-[10px] uppercase font-black tracking-[3px]">
+                                    <tr>
+                                        <th className="p-2 sm:p-6 sm:px-10">#</th>
+                                        <th className="p-2 sm:p-6 text-left">Protocol Identity</th>
+                                        <th className="p-2 sm:p-6 text-right">Qty</th>
+                                        <th className="p-2 sm:p-6 text-right">Rate</th>
+                                        <th className="p-2 sm:p-6 sm:px-10 text-right">Impact</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
+                                <tbody className="divide-y divide-slate-50">
                                     {(requisition.items || []).map((item, index) => {
-                                        // Subtotal Logic - Match Editor Logic
-                                        const getMain = (i: typeof item) => i.isPriority ? "PRIORITY / SPECIAL" : (i.category ? i.category.split('/')[0].trim() : "Uncategorized");
-
+                                        const getMain = (i: any) => i.isPriority ? "PRIORITY / SPECIAL" : (i.category ? i.category.split('/')[0].trim() : "Uncategorized");
                                         const currentGroup = getMain(item);
                                         const prevGroup = index > 0 ? getMain((requisition.items || [])[index - 1]) : null;
                                         const isNewGroup = index > 0 && prevGroup !== currentGroup;
+                                        const isLastItem = index === (requisition.items || []).length - 1;
 
-                                        // Helper for group sum within viewingReq (Read Only)
                                         const getGroupSum = (endIndex: number, groupName: string) => {
                                             let sum = 0;
                                             const items = requisition.items || [];
@@ -192,37 +148,28 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
                                         return (
                                             <React.Fragment key={index}>
                                                 {isNewGroup && (
-                                                    <tr className="bg-slate-50/80 font-bold">
-                                                        <td colSpan={5} className="p-3 text-right text-[10px] uppercase text-slate-500 tracking-wider">
-                                                            {prevGroup} Subtotal
-                                                        </td>
-                                                        <td className="p-3 text-right text-slate-900 font-extrabold border-l border-slate-100">
-                                                            {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(getGroupSum(index - 1, prevGroup || ""))}
+                                                    <tr className="bg-slate-50/50">
+                                                        <td colSpan={5} className="py-2 sm:py-3 px-4 sm:px-10 text-right text-[7px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest italic border-y border-slate-50">
+                                                            {prevGroup} SUB-TOTAL: <span className="text-slate-900 font-mono ml-3">{new Intl.NumberFormat('en-UG').format(getGroupSum(index - 1, prevGroup || ""))}</span>
                                                         </td>
                                                     </tr>
                                                 )}
-                                                <tr className={`hover:bg-slate-50 transition-colors ${item.isPriority ? 'bg-red-50' : ''}`}>
-                                                    <td className="p-4 text-slate-400 text-center font-mono text-xs">{index + 1}</td>
-                                                    <td className="p-4">
-                                                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${item.isPriority ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                            {item.category || "General"}
-                                                        </span>
+                                                <tr className={`transition-colors hover:bg-slate-50/30 ${item.isPriority ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                    <td className="py-2 pl-2 sm:pl-10 text-[8px] sm:text-xs text-slate-300 font-black tabular-nums">{index + 1}</td>
+                                                    <td className="py-2 px-1 sm:px-4">
+                                                        <div className="flex flex-col min-w-0">
+                                                            <div className={`text-[5px] sm:text-[8px] uppercase font-black tracking-widest mb-0.5 truncate ${item.isPriority ? 'text-red-500' : 'text-slate-400'}`}>{item.category}</div>
+                                                            <div className={`font-black tracking-tight text-[8px] sm:text-base leading-tight truncate uppercase ${item.isPriority ? 'text-red-700' : 'text-slate-900'}`}>{item.name}</div>
+                                                        </div>
                                                     </td>
-                                                    <td className="p-4 text-slate-900 font-bold uppercase text-xs">{item.name}</td>
-                                                    <td className="p-4 text-right text-slate-600 font-bold">{item.quantity}</td>
-                                                    <td className="p-4 text-right text-slate-600 font-mono">{Number(item.unitPrice).toLocaleString()}</td>
-                                                    <td className={`p-4 text-right font-black border-l border-slate-50 ${requisition.status === 'Draft' && item.isManual ? 'text-yellow-600' : 'text-slate-900'}`}>
-                                                        {Number(item.amount).toLocaleString()}
-                                                    </td>
+                                                    <td className="py-2 px-1 text-right text-[8px] sm:text-base font-black tabular-nums text-slate-900">{item.quantity}</td>
+                                                    <td className="py-2 px-1 text-right text-[7px] sm:text-sm font-bold tabular-nums italic text-slate-400">{Number(item.unitPrice).toLocaleString()}</td>
+                                                    <td className={`py-2 pr-2 sm:pr-10 text-right font-black text-[9px] sm:text-2xl tracking-tighter tabular-nums ${item.isPriority ? 'text-red-700' : 'text-slate-900'}`}>{Number(item.amount).toLocaleString()}</td>
                                                 </tr>
-                                                {/* Final Total for Last Group */}
-                                                {index === (requisition.items || []).length - 1 && (
-                                                    <tr className="bg-slate-50/80 font-bold">
-                                                        <td colSpan={5} className="p-3 text-right text-[10px] uppercase text-slate-500 tracking-wider">
-                                                            {currentGroup} Subtotal
-                                                        </td>
-                                                        <td className="p-3 text-right text-slate-900 font-extrabold border-l border-slate-100">
-                                                            {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(getGroupSum(index, currentGroup))}
+                                                {isLastItem && (
+                                                    <tr className="bg-slate-50/50">
+                                                        <td colSpan={5} className="py-2 sm:py-3 px-4 sm:px-10 text-right text-[7px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest italic border-y border-slate-50">
+                                                            {currentGroup} SUB-TOTAL: <span className="text-slate-900 font-mono ml-3">{new Intl.NumberFormat('en-UG').format(getGroupSum(index, currentGroup))}</span>
                                                         </td>
                                                     </tr>
                                                 )}
@@ -230,75 +177,25 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
                                         );
                                     })}
                                 </tbody>
-                                <tfoot className="bg-emerald-700 text-white font-black">
-                                    <tr>
-                                        <td colSpan={5} className="p-5 text-right uppercase tracking-[0.2em] text-xs">Final Requisition Total</td>
-                                        <td className="p-5 text-right text-xl">
-                                            {new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX' }).format(
-                                                requisition.items?.reduce((s, i) => s + Number(i.amount), 0) || 0
-                                            )}
-                                        </td>
-                                    </tr>
-                                </tfoot>
                             </table>
                         </div>
 
-                        {/* Notes Section */}
+                        {/* Notes Justification */}
                         {requisition.notes && (
-                            <div className="mb-10 bg-slate-50 p-6 rounded-2xl border border-slate-100 border-l-4 border-l-slate-400">
-                                <h3 className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-2">Justifications & Remarks</h3>
-                                <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{requisition.notes}</p>
+                            <div className="p-8 sm:p-12 bg-slate-50 border border-slate-100 rounded-[2.5rem]">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Official Document Justification</h3>
+                                <p className="text-slate-700 text-sm sm:text-base font-medium leading-relaxed whitespace-pre-wrap">{requisition.notes}</p>
                             </div>
                         )}
-
-                        {/* Audit Snapshot Table (If Approved) */}
-                        {requisition.queueSnapshot && requisition.queueSnapshot.length > 0 && (
-                            <div className="mt-10 pt-10 border-t-2 border-slate-100 print:break-before-page">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <h3 className="text-lg font-black text-slate-400 uppercase tracking-tight">Audit Trail: <span className="text-slate-300">Removed Items</span></h3>
-                                </div>
-                                <p className="text-xs text-slate-400 mb-6 italic">
-                                    The following items were documented but purposefully removed during the drafting cycle prior to final submission/approval.
-                                </p>
-                                <div className="rounded-xl border border-slate-100 overflow-hidden">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="bg-slate-50 text-slate-400 font-black uppercase tracking-widest">
-                                            <tr>
-                                                <th className="p-3">Item Name</th>
-                                                <th className="p-3">Category</th>
-                                                <th className="p-3 text-right">Orig. Sum</th>
-                                                <th className="p-3 text-right">Removal Date</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50 text-slate-500">
-                                            {requisition.queueSnapshot.map((qItem: any, idx: number) => (
-                                                <tr key={idx} className={`${qItem.itemData.isPriority ? 'bg-red-50/50' : ''}`}>
-                                                    <td className="p-3">
-                                                        <div className={`font-bold ${qItem.itemData.isPriority ? 'text-red-500' : 'text-slate-600'}`}>
-                                                            {qItem.itemData.name}
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3">{qItem.itemData.category}</td>
-                                                    <td className="p-3 text-right font-mono">{Number(qItem.itemData.amount).toLocaleString()}</td>
-                                                    <td className="p-3 text-right font-mono text-[10px]">{new Date(qItem.dateRemoved).toLocaleDateString()}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Signatures (Print Only) */}
-                        <div className="hidden print:flex justify-between mt-20 pt-10 border-t-2 border-slate-900">
-                            <div className="text-center">
-                                <div className="w-56 border-b-2 border-slate-900 mb-2"></div>
-                                <p className="text-xs uppercase font-black tracking-widest">Prepared / Bursar Signature</p>
-                            </div>
-                            <div className="text-center">
-                                <div className="w-56 border-b-2 border-slate-900 mb-2"></div>
-                                <p className="text-xs uppercase font-black tracking-widest">Authorized / Director Approval</p>
-                            </div>
+                        
+                        {/* Audit Trail Snapshot Logic If Approved already exists but handled simply for preview */}
+                        <div className="hidden print:flex justify-between mt-20 pt-10 border-t-4 border-slate-900">
+                             <div className="text-center w-64 border-t-2 border-slate-900 pt-4">
+                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preparer Entity</p>
+                             </div>
+                             <div className="text-center w-64 border-t-2 border-slate-900 pt-4">
+                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Approver Node</p>
+                             </div>
                         </div>
                     </div>
                 </div>
@@ -306,4 +203,3 @@ export const RequisitionViewModal: React.FC<RequisitionViewModalProps> = ({ requ
         </div>
     );
 };
-

@@ -49,12 +49,62 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const updatedSettings = {
-            ...currentSettings,
-            cloud_state: cloudState
+        // --- THE CONFLICT SOLVER: MERGING VS OVERWRITING ---
+        const incomingState = cloudState;
+        const existingState = (currentSettings as any).cloud_state || {};
+        
+        // Final merged object starts as a copy of the incoming data
+        const mergedState = { ...incomingState };
+
+        /**
+         * 🛡️ COMPASS MERGE: Merges two arrays based on unique IDs and Timestamps
+         */
+        const mergeArrays = (incoming: any[], existing: any[]) => {
+            if (!Array.isArray(existing)) return incoming;
+            if (!Array.isArray(incoming)) return existing;
+
+            const map = new Map();
+            // 1. Start with the Existing Cloud baseline
+            existing.forEach(item => { if (item.id) map.set(item.id.toString(), item); });
+
+            // 2. Overlay Incoming data (Newest Wins)
+            incoming.forEach(item => {
+                const id = item.id?.toString();
+                if (!id) return;
+
+                if (!map.has(id)) {
+                    map.set(id, item);
+                } else {
+                    const current = map.get(id);
+                    const incomingTime = item.lastUpdated ? new Date(item.lastUpdated).getTime() : 0;
+                    const currentTime = current.lastUpdated ? new Date(current.lastUpdated).getTime() : 0;
+
+                    if (incomingTime >= currentTime) {
+                        map.set(id, item);
+                    }
+                }
+            });
+            return Array.from(map.values());
         };
 
-        console.log('☁️ API CLOUD SYNC: Attempting to save with service role');
+        // Apply merge to all critical collections to prevent "January Loss" scenario
+        const collections = ['students', 'payments', 'generalTransactions', 'inventory', 'attendanceRecord', 'manualPaymentMethods', 'paymentIntegrations'];
+        
+        collections.forEach(key => {
+            if (incomingState[key] && existingState[key]) {
+                mergedState[key] = mergeArrays(incomingState[key], existingState[key]);
+            } else if (existingState[key] && !incomingState[key]) {
+                // If the laptop doesn't have January data, but the cloud DOES, keep the cloud data!
+                mergedState[key] = existingState[key];
+            }
+        });
+
+        const updatedSettings = {
+            ...currentSettings,
+            cloud_state: mergedState
+        };
+
+        console.log(`☁️ API CLOUD SYNC: Final merge complete for school ${schoolId}.`);
 
         // Update with service role (bypasses RLS)
         const { error: updateError } = await supabase

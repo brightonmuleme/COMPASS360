@@ -32,7 +32,7 @@ export default function PaymentModesPage() {
     // NEW: Sync Range Modal
     const [syncRangeModal, setSyncRangeModal] = useState<{ open: boolean, integration: PaymentIntegration | null }>({ open: false, integration: null });
     const [syncDates, setSyncDates] = useState({
-        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 7 days ago
+        from: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Updated: Default 29 days ago
         to: new Date().toISOString().split('T')[0]
     });
 
