@@ -19,14 +19,14 @@ export default function Home() {
   const { landingPageContent, developerSettings } = useSchoolData();
   const router = useRouter();
   const [activeModal, setActiveModal] = useState<{ type: 'learnMore', role: string } | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(false); // Use content from store, fallback to default if empty (though store initializes it)
+  const ROLES = (landingPageContent && landingPageContent.length > 0) 
+    ? landingPageContent.filter(role => role.id !== 'accountant')
+    : [];
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Use content from store, fallback to default if empty (though store initializes it)
-  const ROLES = (landingPageContent && landingPageContent.length > 0) ? landingPageContent : [];
 
   if (!mounted) return null;
 

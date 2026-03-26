@@ -24,11 +24,22 @@ import {
 import { supabase } from '@/lib/supabase';
 
 export default function ApplicationsManager() {
-    const { schoolApplications, updateSchoolApplicationStatus, syncApplications } = useSchoolData();
+    const { schoolApplications, updateSchoolApplicationStatus, syncApplications, deleteSchoolApplication } = useSchoolData();
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'viewed' | 'contacted'>('all');
     
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const performManualSync = async () => {
+        setIsSyncing(true);
+        console.log("📡 Hub: Initiating Direct Cloud Sync...");
+        if (syncApplications) {
+            await syncApplications();
+        }
+        setIsSyncing(false);
+    };
+
     React.useEffect(() => {
-        if (syncApplications) syncApplications();
+        performManualSync();
     }, []);
 
     const [schoolFilter, setSchoolFilter] = useState<string>('all');
@@ -56,24 +67,28 @@ export default function ApplicationsManager() {
 
     const handleDelete = async (appId: string) => {
         if (!window.confirm("⚠️ IRREVERSIBLE ACTION: Are you sure you want to permanently delete this application record across all systems?")) return;
-        
-        try {
-            // 1. Delete from Cloud
-            const { error } = await supabase.from('admission_applications').delete().eq('id', appId);
-            if (error) throw error;
+           try {
+            // 1. Delete from Cloud (using the direct admission_applications table)
+            console.log(`📡 Cloud: Initiating wipe for ID: ${appId}...`);
+            const { error } = await supabase
+                .from('admission_applications')
+                .delete()
+                .eq('id', appId);
 
-            // 2. Local-First Defense: Mark as Tombstone so the store doesn't resurrect it
-            const tombstones = JSON.parse(localStorage.getItem('school_tombstones_v1') || '[]');
-            localStorage.setItem('school_tombstones_v1', JSON.stringify([...new Set([...tombstones, appId])]));
+            if (error) {
+                console.error("Cloud Deletion Error:", error);
+                throw new Error(`Cloud rejection: ${error.message}`);
+            }
 
-            // 3. Clear selected and Sync
+            // 2. Instant Local/Store Clean-Up
             setSelectedAppId(null);
-            if (syncApplications) syncApplications();
-            
-            console.log(`🫥 Registry: Application ${appId} has been phased out.`);
-        } catch (err) {
-            console.error("Deletion Failed:", err);
-            alert("Protocol Error: Could not delete record from cloud.");
+            if (deleteSchoolApplication) deleteSchoolApplication(appId);
+             
+            console.log(`✅ Registry Success: Record ${appId} has been wiped.`);
+            alert("SUCCESS: Record has been permanently deleted from cloud.");
+        } catch (err: any) {
+            console.error("Deletion Protocol Failed:", err);
+            alert(`DELETION FAILED: ${err.message || "Unknown Cloud Error"}`);
         }
     };
 
@@ -169,6 +184,13 @@ export default function ApplicationsManager() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button 
+                        onClick={performManualSync}
+                        disabled={isSyncing}
+                        className={`flex-1 min-w-[120px] h-full rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-200 ${isSyncing ? 'bg-slate-100 text-slate-400' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                    >
+                        {isSyncing ? 'SYNCING...' : 'SYNC CLOUD'}
+                    </button>
                     <button className="flex-1 h-full bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-200">
                         Apply Scrub
                     </button>
@@ -180,6 +202,18 @@ export default function ApplicationsManager() {
                     </button>
                 </div>
             </div>
+
+            {isSyncing && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-3xl flex items-center gap-3 animate-pulse">
+                    <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center">
+                        <Clock size={16} className="text-white animate-spin" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black uppercase text-red-600 italic">Syncing Admissions...</p>
+                        <p className="text-[9px] font-bold text-red-400 uppercase">Fetching latest cloud records from Supabase</p>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 {/* Applications List */}
@@ -289,7 +323,7 @@ export default function ApplicationsManager() {
                                     <div className="text-center">
                                         <h2 className="text-3xl font-black italic uppercase tracking-tight mb-1">{selectedApp?.applicantName}</h2>
                                         <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em] italic mb-6">
-                                            Identity: <span className="text-red-500">REF_{selectedApp?.id?.slice(-8).toUpperCase()}</span>
+                                            Identity: <span className="text-red-500">REF_{selectedApp?.id?.toString().slice(-8).toUpperCase() || '...'}</span>
                                         </p>
 
                                         <div className="grid grid-cols-2 gap-3 w-full">

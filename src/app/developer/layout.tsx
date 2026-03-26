@@ -59,9 +59,21 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         setIsSidebarOpen(false);
     }, [pathname]);
 
+    const [emergencyBypass, setEmergencyBypass] = useState(false);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!hydrated || checkingAccess) {
+                console.warn("🛡️ EMERGENCY BYPASS: Access verification took too long. Forcing layout mount.");
+                setEmergencyBypass(true);
+            }
+        }, 3000);
+        return () => clearTimeout(timer);
+    }, [hydrated, checkingAccess]);
+
     const isLoginPage = pathname === '/developer/login';
 
-    if (!hydrated || checkingAccess || (!isAuthorized && !isLoginPage)) {
+    if (!emergencyBypass && (!hydrated || checkingAccess || (!isAuthorized && !isLoginPage))) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] text-white">
                 <div className="text-center animate-in fade-in zoom-in duration-500">

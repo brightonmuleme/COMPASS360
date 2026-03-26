@@ -13,7 +13,11 @@ const config = {
     }
 };
 
-Amplify.configure(config);
+try {
+    Amplify.configure(config);
+} catch (e) {
+    console.error("🛡️ Amplify Setup Failed:", e);
+}
 
 export default function ConfigureAmplifyClientSide() {
     return null;

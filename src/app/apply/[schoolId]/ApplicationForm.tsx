@@ -151,7 +151,13 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                     <div className="space-y-4">
                         <button 
                             onClick={() => {
+                                // 🏦 REAL FEES SYNC: Use the school's cloud-uploaded Fees Structure
                                 const feesUrl = school?.feesStructure || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+                                
+                                if (!school?.feesStructure) {
+                                    alert("Official Fees Structure is currently being updated. Downloading standard schedule.");
+                                }
+
                                 const link = document.createElement('a');
                                 link.href = feesUrl;
                                 // Handle data URLs correctly

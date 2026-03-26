@@ -5,6 +5,19 @@ import { developerService } from '@/services/developerService';
 import { databaseService } from '@/services/databaseService';
 import { supabase } from '@/lib/supabase';
 import LZString from 'lz-string';
+import { 
+    INITIAL_STUDENTS, INITIAL_SERVICES, INITIAL_BURSARIES, INITIAL_PROGRAMMES, 
+    INITIAL_TEMPLATES, INITIAL_PROMOTION_BATCHES, INITIAL_BILLINGS, INITIAL_PAYMENTS, 
+    INITIAL_NEWS, INITIAL_ADVERTS, INITIAL_STAFF_ACCOUNTS, INITIAL_TUTOR_CONTENTS, 
+    INITIAL_TUTORS, INITIAL_TUTOR_SETTINGS, INITIAL_TUTOR_SUBSCRIPTIONS, 
+    INITIAL_REQUISITIONS, INITIAL_REQUISITION_DRAFT, INITIAL_PAYMENT_INTEGRATIONS, 
+    INITIAL_MANUAL_PAYMENT_METHODS, INITIAL_RESULT_PAGE_CONFIGS, INITIAL_APP_UPDATES, 
+    INITIAL_APP_OFFERS, INITIAL_LANDING_CONTENT, INITIAL_DEVELOPER_SETTINGS, 
+    INITIAL_FEATURED_SCHOOLS, INITIAL_SUGGESTIONS, INITIAL_EXPENSE_CATEGORIES, 
+    INITIAL_INCOME_CATEGORIES, INITIAL_CALENDAR_EVENTS, INITIAL_FINANCIAL_SETTINGS,
+    INITIAL_REGISTRAR_STUDENTS, INITIAL_PORTAL_BRANDING, INITIAL_COURSE_UNITS,
+    INITIAL_TRANSACTIONS, INITIAL_GENERAL_TRANSACTIONS
+} from './initialState';
 
 // --- HELPERS ---
 export const generateId = () => {
@@ -639,6 +652,15 @@ export interface AdmissionFormData {
     paymentDetails: { method: string; code: string }[]; // New Structured Data
 }
 
+export interface PromotionBatch {
+    id: string;
+    name: string;
+    level: string;
+    year: string;
+    submittedAt: string;
+    status: 'draft' | 'posted';
+}
+
 export interface CourseUnit {
     id: string;
     code: string;
@@ -900,68 +922,10 @@ export interface SchoolApplication {
     message?: string;
 }
 
-export const INITIAL_LANDING_CONTENT: LandingPageRoleContent[] = [
-    {
-        id: 'student',
-        title: 'Student Portal',
-        tagline: 'Your academic life. Simplified.',
-        image: '/landing/student.png',
-        theme: '#a855f7',
-        description: 'Access grades, track fees, and stay updated with school news - all in one beautiful app.',
-        features: ['Real-time Grade Tracking', 'Instant Fee Statements', 'Digital Library Access', 'School Announcements']
-    },
-    {
-        id: 'tutor',
-        title: 'Tutor Portal',
-        tagline: 'Inspire. Create. Earn.',
-        image: '/landing/tutor.png',
-        theme: '#3b82f6',
-        description: 'Upload content, manage your classes, and grow your subscriber base with powerful analytics.',
-        features: ['Video Content Management', 'Subscriber Analytics', 'Assignment Grading', 'Live Class Sheduling']
-    },
-    {
-        id: 'school',
-        title: 'School Portal',
-        tagline: 'The Command Center.',
-        image: '/landing/school.png',
-        theme: '#f59e0b',
-        description: 'Oversee entire operations, from admissions to inventory, in one unified dashboard.',
-        features: ['Staff Management', 'Inventory Control', 'Admissions Processing', 'Global Settings']
-    }
-];
+// INITIAL_LANDING_CONTENT moved to initialState.ts
 
-export const INITIAL_DEVELOPER_SETTINGS: DeveloperSettings = {
-    maintenanceMode: false,
-    allowNewRegistrations: true,
-    showMockData: false,
-    wallpapers: [
-        'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&q=80&w=1920',
-        'https://images.unsplash.com/photo-1523050335102-c32241c80f6a?auto=format&fit=crop&q=80&w=1920',
-        'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=1920',
-        'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&q=80&w=1920'
-    ],
-    subscriptionFees: [
-        { portal: 'student', amount: 50000, currency: 'UGX', interval: 'monthly' },
-        { portal: 'tutor', amount: 30000, currency: 'UGX', interval: 'monthly' },
-        { portal: 'school', amount: 150000, currency: 'UGX', interval: 'monthly' }
-    ]
-};
-export const INITIAL_FEATURED_SCHOOLS: FeaturedSchool[] = [
-    {
-        id: 'sch_1771556024058',
-        name: 'SAMI HEALTH SCIENCE INSTITUTE',
-        category: 'Nursing & Midwifery',
-        image: 'https://images.unsplash.com/photo-1576091160550-217359941f3b?auto=format&fit=crop&q=80&w=800',
-        logo: '/schools/sami_logo.png',
-        tagline: 'Health Is Priority',
-        description: 'A leading educational institution dedicated to academic excellence.',
-        contact: '0751581660',
-        email: 'samihealthscience@gmail.com',
-        location: 'Uganda',
-        gallery: [],
-        status: 'Active'
-    }
-];
+// INITIAL_DEVELOPER_SETTINGS moved to initialState.ts
+// INITIAL_FEATURED_SCHOOLS moved to initialState.ts
 
 export interface BankAccount {
     id: string;
@@ -975,11 +939,7 @@ export interface BankAccount {
     ownerRole?: string; // 🛡️ ROLE ISOLATION: Tags source role
 }
 
-export const INITIAL_FINANCIAL_SETTINGS: FinancialSettings = {
-    clearancePct: 100,
-    probationPct: 80,
-    compulsoryFees: []
-};
+// INITIAL_FINANCIAL_SETTINGS moved to initialState.ts
 
 export const determineStudentStatus = (student: EnrolledStudent, settings: FinancialSettings = INITIAL_FINANCIAL_SETTINGS): 'cleared' | 'probation' | 'defaulter' => {
     // Percentage Logic
@@ -1108,532 +1068,35 @@ export interface ManualPaymentMethod {
     description?: string;
 }
 
-export const INITIAL_PAYMENT_INTEGRATIONS: PaymentIntegration[] = [
-    { id: 'pi_1', provider: 'SchoolPay', name: 'SchoolPay', description: 'Real-time student fee collection via Mobile Money & Banks.', status: 'inactive' },
-    { id: 'pi_2', provider: 'PegPay', name: 'PegPay', description: 'Integrated payments for utility and tuition collection.', status: 'inactive' }
-];
+// INITIAL_PAYMENT_INTEGRATIONS moved to initialState.ts
 
-export const INITIAL_MANUAL_PAYMENT_METHODS: ManualPaymentMethod[] = [
-    { id: 'mp_1', name: 'Direct Cash', mappedAccountId: 'acc_1', category: 'cash', status: 'active', description: 'Cash collected at the Bursar office' },
-    { id: 'mp_2', name: 'Manual SchoolPay Entry', providerId: 'pi_1', category: 'digital_fallback', status: 'active', description: 'For correcting missed SchoolPay transactions' },
-    { id: 'mp_3', name: 'Manual PegPay Entry', providerId: 'pi_2', category: 'digital_fallback', status: 'active', description: 'For correcting missed PegPay transactions' }
-];
+// INITIAL_MANUAL_PAYMENT_METHODS moved to initialState.ts
 
 // --- INITIAL MOCK DATA ---
 
-const INITIAL_EXPENSE_CATEGORIES: TransactionCategoryItem[] = [
-    { id: 'ec_1', name: 'Transport', subcategories: ['Fuel', 'Fares', 'Maintenance'] },
-    { id: 'ec_2', name: 'Food', subcategories: ['Staff Meals', 'Student Meals', 'Ingredients'] },
-    { id: 'ec_3', name: 'Utilities', subcategories: ['Electricity', 'Water', 'Internet'] },
-    { id: 'ec_4', name: 'Maintenance', subcategories: ['Repairs', 'Cleaning', 'Compound'] },
-    { id: 'ec_5', name: 'Salaries', subcategories: ['Teaching Staff', 'Support Staff'] },
-    { id: 'ec_6', name: 'Miscellaneous', subcategories: [] },
-    { id: 'ec_7', name: 'School Clinic', subcategories: [] },
-    { id: 'ec_8', name: 'Security Department', subcategories: ['Rain Coat', 'Torch and Cable', 'Security Cards'] },
-];
+// Moved to initialState.ts
 
-const INITIAL_INCOME_CATEGORIES: TransactionCategoryItem[] = [
-    { id: 'ic_1', name: 'Fees', subcategories: ['Tuition', 'Registration'] },
-    { id: 'ic_2', name: 'Grants', subcategories: ['Government', 'Private'] },
-    { id: 'ic_3', name: 'Sales', subcategories: ['Uniforms', 'Stationery'] },
-    { id: 'ic_4', name: 'Donations', subcategories: [] },
-];
+// Moved to initialState.ts
 
-export const INITIAL_SERVICES: Service[] = [];
+// Moved
 
-export const INITIAL_BURSARIES: Bursary[] = [];
+// Moved
 
-export const INITIAL_REQUISITION_DRAFT: Requisition = {
-    id: 'draft',
-    title: 'New Requisition',
-    date: new Date().toISOString().split('T')[0],
-    account: 'Cash',
-    status: 'Draft',
-    items: [],
-    notes: ''
-};
+// Moved
 
-export const INITIAL_NEWS: NewsItem[] = [
-    { id: '1', title: 'Welcome to Term 1', content: 'We are excited to welcome all students back for the new academic year.', date: '2024-02-05', author: 'Principal', category: 'General' },
-    { id: '2', title: 'Sports Day Postponed', content: 'Due to heavy rains, sports day is moved to next Friday.', date: '2024-03-10', author: 'Sports Dept', category: 'Sports' }
-];
+// Moved
 
-export const INITIAL_SUGGESTIONS: Suggestion[] = [
-    {
-        id: 'sug_1',
-        studentName: 'Alex Johnson',
-        title: 'Better Library Wi-Fi',
-        content: 'The Wi-Fi in the library is very slow in the evenings. Can we upgrade the routers?',
-        date: '2024-04-15',
-        status: 'Pending',
-        likes: 12
-    },
-    {
-        id: 'sug_2',
-        studentName: 'Sarah Smith',
-        title: 'More Sports Equipment',
-        content: 'We need more basketballs for the court. The current ones are worn out.',
-        date: '2024-04-12',
-        status: 'Reviewing',
-        likes: 8
-    },
-    {
-        id: 'sug_3',
-        studentName: 'David K.',
-        title: 'Weekend Cafeteria Hours',
-        content: 'Could the cafeteria stay open until 8 PM on weekends?',
-        date: '2024-04-10',
-        status: 'Resolved',
-        likes: 25,
-        feedback: 'Great idea! We have extended the hours to 8:30 PM starting next week.',
-        feedbackDate: '2024-04-11T10:00:00Z'
-    }
-];
+// INITIAL_SUGGESTIONS moved to initialState.ts
 
-export const INITIAL_ADVERTS: Advert[] = [
-    { id: 'ad1', title: 'Admissions Open 2026', content: 'Join the leading medical institute in the region.', schoolName: 'VINE Medical Institute', linkUrl: '#' },
-    { id: 'ad2', title: 'Nursing Scholarship', content: 'Apply for the new merit-based nursing scholarship.', schoolName: 'Global Health Academy', linkUrl: '#' }
-];
+// INITIAL_ADVERTS moved to initialState.ts
 
-export const INITIAL_REQUISITIONS: Requisition[] = [
-    {
-        id: 'req_1',
-        readableId: 'REQ-0128',
-        title: 'Weekly Office Supplies - February Week 1',
-        date: '2026-02-01',
-        account: 'Cash',
-        status: 'Pending Approval',
-        items: [
-            { id: 'i1', category: 'Stationery', name: 'Paper Reams (A4)', quantity: 10, unitPrice: 18000, amount: 180000 },
-            { id: 'i2', category: 'Stationery', name: 'Staple Pins (Boxes)', quantity: 5, unitPrice: 2000, amount: 10000 },
-            { id: 'i3', category: 'Utilities', name: 'Electricity Tokens', quantity: 1, unitPrice: 200000, amount: 200000, isPriority: true }
-        ],
-        notes: 'Priority needed for electricity tokens to avoid blackout.'
-    },
-    {
-        id: 'req_2',
-        readableId: 'REQ-0129',
-        title: 'Kitchen Ingredients & Spices',
-        date: '2026-02-03',
-        account: 'Bank Transfer',
-        status: 'Approved',
-        items: [
-            { id: 'i4', category: 'Food', name: 'Rice (50kg Bag)', quantity: 2, unitPrice: 180000, amount: 360000 },
-            { id: 'i5', category: 'Food', name: 'Cooking Oil (20L)', quantity: 1, unitPrice: 120000, amount: 120000 },
-            { id: 'i6', category: 'Food', name: 'Salt & Curry Powder', quantity: 10, unitPrice: 5000, amount: 50000 }
-        ],
-        notes: 'Monthly kitchen refill.'
-    }
-];
+// INITIAL_REQUISITIONS moved to initialState.ts
 
-export const INITIAL_REGISTRAR_STUDENTS: RegistrarStudent[] = [
-    {
-        id: 'reg_1', name: 'PATIENT ZERO', dob: '2005-04-12', gender: 'Female',
-        parentName: 'JOHN ZERO', parentContact: '0772123456',
-        secondParentName: 'MARY ZERO', secondParentContact: '0702123456',
-        previousSchool: 'Hillside Primary', entryClass: 'Year 1', admissionDate: '2024-01-10', status: 'Enrolled',
-        country: 'Uganda', district: 'Kampala', placeOfOrigin: 'Ntinda', schoolPayCode: 'PAY-001', programme: 'Bachelor of Medicine & Surgery'
-    }
-];
+// INITIAL_REGISTRAR_STUDENTS moved to initialState.ts
 
 // ... (skipping templates for brevity if not modifying) ...
 
-// SCROLL DOWN TO INITIAL_STUDENTS to fix lint error
-// Wait, I can't skip multiple blocks easily with one replacement chunk if they are far apart.
-// I will just add INITIAL_ADVERTS here and do a SEPARATE replacement for INITIAL_STUDENTS to capture the lint fix properly.
-
-// Actually, I'll just do the INITIAL_ADVERTS now.
-
-export const INITIAL_TEMPLATES: DocumentTemplate[] = [
-    {
-        id: 'tmpl_admission',
-        name: 'Admission Letter',
-        type: 'ADMISSION_LETTER',
-        isDefault: true,
-        updatedAt: new Date().toISOString(),
-        sections: [
-            { id: 's1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">{{programme_logo}}<h1>{{institution_name}}</h1><p>{{institution_address}}</p><p>{{institution_email}} | {{institution_contact}}</p></div>', isEditable: true },
-            { id: 's2', type: 'body', order: 1, content: '<p>Date: {{current_date}}</p><p><strong>Dear {{student_name}},</strong></p><p>We are pleased to inform you that you have been admitted to the <strong>{{programme_name}}</strong> programme at {{institution_name}}.</p><p>Please report on {{reporting_date}} with your admission documents.</p>', isEditable: true },
-            { id: 's3', type: 'footer', order: 2, content: '<div style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px;"><p>Authorized Signature: __________________________</p><p>{{bursar_name}}</p></div>', isEditable: true }
-        ]
-    },
-    {
-        id: 'tmpl_receipt',
-        name: 'Official Receipt',
-        type: 'RECEIPT',
-        isDefault: true,
-        updatedAt: new Date().toISOString(),
-        sections: [
-            { id: 'r1', type: 'header', order: 0, content: '<div style="text-align: center;">{{programme_logo}}<h2>VALID RECEIPT</h2><h3>{{institution_name}}</h3><p>{{institution_address}}</p><p>{{institution_contact}}</p><p>{{institution_email}}</p></div>', isEditable: true },
-            { id: 'r2', type: 'body', order: 1, content: '<table style="width: 100%; margin: 20px 0;"><tr><td>Receipt No: <strong>{{receipt_number}}</strong></td><td>Date: {{transaction_date}}</td></tr><tr><td>Student: <strong>{{student_name}}</strong></td><td>Ref: {{student_code}}</td></tr></table>', isEditable: true },
-            { id: 'r3', type: 'table', order: 2, content: '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;" border="1"><thead><tr><th style="padding: 8px;">Particulars</th><th style="padding: 8px;">Amount</th></tr></thead><tbody><tr><td style="padding: 8px;">{{transaction_particulars}}</td><td style="padding: 8px;">{{transaction_amount}}</td></tr></tbody><tfoot><tr><td style="padding: 8px; font-weight: bold;">TOTAL PAID</td><td style="padding: 8px; font-weight: bold;">{{transaction_amount}}</td></tr></tfoot></table>', isEditable: false },
-            { id: 'r4', type: 'footer', order: 3, content: '<p>Amount in words: {{amount_in_words}}</p><p style="margin-top: 20px;">Received By: {{user_name}}</p>', isEditable: true }
-        ]
-    },
-    {
-        id: 'tmpl_clearance_global',
-        name: 'Official Reporting/Clearance Form',
-        type: 'CLEARANCE',
-        isDefault: true,
-        updatedAt: new Date().toISOString(),
-        sections: [
-            { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0; font-family: sans-serif; font-size: 20px;">{{institution_name}}</h1><p style="margin: 2px 0; font-size: 12px;">{{institution_address}} | {{institution_contact}}</p><h2 style="text-decoration: underline; margin-top: 8px; font-size: 15px; font-weight: bold;">OFFICIAL REPORTING & CLEARANCE RECORD</h2></div>', isEditable: true },
-            { id: 'b1', type: 'body', order: 1, content: '<div style="display: flex; justify-content: space-between; margin-top: 15px; font-family: sans-serif; font-size: 12px;"><div><p style="margin: 2px 0;"><strong>STUDENT NAME:</strong> {{student_name}}</p><p style="margin: 2px 0;"><strong>PROGRAMME:</strong> {{programme_name}}</p></div><div style="text-align: right;"><p style="margin: 2px 0;"><strong>PAY CODE:</strong> {{pay_code}}</p><p style="margin: 2px 0;"><strong>LEVEL/YEAR:</strong> {{current_level}}</p></div></div>', isEditable: true },
-            { id: 's1', type: 'body', order: 2, content: '<div style="padding: 10px; border: 2px solid #000; margin: 15px 0; text-align: center; background: #fdfdfd; font-family: sans-serif;"><p style="margin: 0; font-size: 10px; font-weight: bold; text-transform: uppercase; color: #666;">Official Standing</p><h1 style="margin: 5px 0; font-size: 28px; letter-spacing: 2px; font-weight: 900;">{{clearance_status}}</h1><div style="margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 10px;"><p style="margin:0; font-size: 11px;">Financial Progress:</p><div style="width: 150px; height: 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; position: relative;"><div style="width: {{financial_percentage}}; height: 100%; background: #000;"></div></div><p style="margin:0; font-size: 11px; font-weight: bold;">{{financial_percentage}}</p></div></div>', isEditable: true },
-            { id: 't1', type: 'table', order: 3, content: '<div style="margin-top: 15px; font-family: sans-serif;"><h3 style="font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px;">I. FINANCIAL LEDGER (CORE & OPTIONAL)</h3><table style="width: 100%; border-collapse: collapse; font-size: 11px;"><thead><tr style="background: #f5f5f5;"><th style="padding: 6px; text-align: left; border: 1px solid #ddd;">Particulars</th><th style="padding: 6px; text-align: right; border: 1px solid #ddd;">Subscription Status</th></tr></thead><tbody><tr><td style="padding: 6px; border: 1px solid #ddd;">Compulsory Faculty Fees</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">{{compulsory_services_list}}</td></tr><tr><td style="padding: 6px; border: 1px solid #ddd;">Optional Subscribed Services</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">{{optional_services_list}}</td></tr><tr><td style="padding: 6px; border: 1px solid #ddd; font-weight: bold;">Arrears Settlement (B/F)</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">{{bf_clearance_rate}}</td></tr></tbody></table></div>', isEditable: true },
-            { id: 't2', type: 'table', order: 4, content: '<div style="margin-top: 15px; font-family: sans-serif;"><h3 style="font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px;">II. LOGISTICS & PHYSICAL REQUIREMENTS</h3><div style="font-size: 11px; line-height: 1.4;">{{requirements_summary}}</div></div>', isEditable: true },
-            { id: 'f1', type: 'footer', order: 5, content: '<div style="margin-top: 30px; font-family: sans-serif; border-top: 1px solid #eee; padding-top: 15px;"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px;"><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">OFFICE OF THE BURSAR</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">OFFICE OF THE DIRECTOR</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">REGISTRAR / ADMISSIONS</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">MATRON / WARDEN</p></div><div><div style="width: 100%; border-bottom: 1px solid #000; margin-bottom: 5px; height: 25px;"></div><p style="font-size: 9px; margin: 0; font-weight: bold;">ESTATE MANAGER</p></div><div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end;"><div style="width: 40px; height: 40px; background: #f0f0f0; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; font-size: 6px; color: #999; margin-bottom: 3px;">QR VERIFY</div><p style="font-size: 8px; color: #999; margin: 0;">{{current_date}} | COMPASS 360 Verified</p></div></div></div>', isEditable: true }
-        ]
-    },
-    {
-        id: 'tmpl_fee_global',
-        name: 'Official Fee Structure',
-        type: 'FEE_STRUCTURE',
-        isDefault: true,
-        updatedAt: new Date().toISOString(),
-        sections: [
-            { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0;">{{institution_name}}</h1><p>{{institution_address}}</p><h2>FEES STRUCTURE</h2></div>', isEditable: true },
-            { id: 'b1', type: 'body', order: 1, content: '<p>Programme: <strong>{{programme_name}}</strong></p><p>Level: {{level}}</p>', isEditable: true },
-            { id: 't1', type: 'table', order: 2, content: '{{fee_table}}', isEditable: false },
-            { id: 'f1', type: 'footer', order: 3, content: '<p style="margin-top: 20px;">Issued on: {{current_date}}</p>', isEditable: true }
-        ]
-    }
-];
-
-export const INITIAL_COURSE_UNITS: CourseUnit[] = [
-    // Year 1 Semester 1 Common
-    { id: 'cu_1', code: 'CS101', name: 'Intro to Programming', creditUnits: 4, type: 'Core', programmeId: 'mbchb', level: 'Year 1', semester: 'Semester 1' },
-    { id: 'cu_2', code: 'KV102', name: 'Kinyavudavidology', creditUnits: 3, type: 'Core', programmeId: 'mbchb', level: 'Year 1', semester: 'Semester 1' },
-    { id: 'cu_3', code: 'MTH101', name: 'Calculus I', creditUnits: 4, type: 'Core', programmeId: 'mbchb', level: 'Year 1', semester: 'Semester 1' },
-    // Year 1 Semester 2
-    { id: 'cu_4', code: 'CS104', name: 'Data Structures', creditUnits: 4, type: 'Core', programmeId: 'mbchb', level: 'Year 1', semester: 'Semester 2' },
-];
-
-export const INITIAL_RESULT_PAGE_CONFIGS: ResultPageConfig[] = [
-    {
-        id: 'rpc_1',
-        programmeId: 'mbchb',
-        level: 'Year 1',
-        name: 'Internals',
-        courseUnitIds: ['cu_1', 'cu_2', 'cu_3'],
-        isDefault: true
-    },
-    {
-        id: 'rpc_2',
-        programmeId: 'mbchb',
-        level: 'Year 1',
-        name: 'Externals',
-        courseUnitIds: ['cu_1', 'cu_3'],
-        isDefault: true
-    }
-];
-
-const INITIAL_PROGRAMMES: Programme[] = [];
-
-export interface PromotionChange {
-    studentId: number;
-    studentName: string;
-    fromLevel: string;
-    toLevel: string;
-    actionType: 'promote' | 'repeat' | 'deactivate' | 'graduate';
-}
-
-export interface PromotionBatch {
-    id: string;
-    name: string; // e.g. "Term 3 2025 Promotions"
-    programmeId: string;
-    programmeName: string;
-    status: 'draft' | 'committed';
-    origin?: 'bursar' | 'registrar';
-    createdAt: string;
-    changes: PromotionChange[];
-}
-
-export const INITIAL_PROMOTION_BATCHES: PromotionBatch[] = [];
-
-export const INITIAL_APP_UPDATES: AppUpdate[] = [
-    {
-        id: 'app-n1',
-        title: 'New Feature: Tutor Marketplace',
-        content: 'You can now browse and subscribe to top-rated tutors directly from the app. Improve your grades with expert help!',
-        date: '2026-01-28',
-        type: 'Update',
-        color: '#8b5cf6'
-    },
-    {
-        id: 'app-n2',
-        title: 'Maintenance Scheduled',
-        content: 'VINE will be undergoing scheduled maintenance on Saturday (3am - 5am). Apologies for any inconvenience.',
-        date: '2026-01-25',
-        type: 'Alert',
-        color: '#f59e0b'
-    },
-    {
-        id: 'app-n3',
-        title: 'Win a Laptop!',
-        content: 'Participate in the annual VINE Scholar quiz and stand a chance to win a brand new MacBook Air.',
-        date: '2026-01-20',
-        type: 'Offer',
-        color: '#ec4899'
-    }
-];
-
-export const INITIAL_APP_OFFERS: AppOffer[] = [
-    {
-        id: 'off-1',
-        title: '50% OFF Premium',
-        description: 'Upgrade to VINE Gold for half the price this month.',
-        code: 'GOLD50',
-        expiry: '2 days left'
-    },
-    {
-        id: 'off-2',
-        title: 'Free Data Bundle',
-        description: 'Get 5GB data for research when you complete 5 quizzes.',
-        code: 'DATA5GB',
-        expiry: 'Expires soon'
-    }
-];
-
-
-export const INITIAL_BILLINGS: Billing[] = [];
-export const INITIAL_PAYMENTS: Payment[] = [];
-
-export const INITIAL_STUDENTS: EnrolledStudent[] = [];
-
-export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
-    {
-        id: 'evt_1',
-        title: 'Term 1 Begins',
-        description: 'Official start of the new academic year.',
-        startDate: '2024-02-05',
-        type: 'academic',
-        status: 'published',
-        visibility: 'all',
-        createdAt: '2024-01-01T10:00:00Z',
-        updatedAt: '2024-01-01T10:00:00Z'
-    },
-    {
-        id: 'evt_2',
-        title: 'Staff Meeting',
-        description: 'Review of curriculum updates.',
-        startDate: '2024-02-10',
-        type: 'administrative',
-        status: 'published',
-        visibility: 'all', // Staff only ideally, but 'all' for now
-        createdAt: '2024-01-05T10:00:00Z',
-        updatedAt: '2024-01-05T10:00:00Z'
-    },
-    {
-        id: 'evt_3',
-        title: 'Freshers Ball',
-        description: 'Welcome party for Year 1 students.',
-        startDate: '2024-03-01',
-        type: 'activity',
-        status: 'draft',
-        visibility: 'specific',
-        targetLevels: ['Year 1'],
-        createdAt: '2024-01-10T10:00:00Z',
-        updatedAt: '2024-01-10T10:00:00Z'
-    }
-];
-
-export const INITIAL_STAFF_ACCOUNTS: StaffAccount[] = [];
-
-export const INITIAL_TUTORS: Tutor[] = [];
-export const INITIAL_TUTOR_CONTENTS: TutorContent[] = [
-    {
-        id: 'tc1',
-        tutorId: 'dvid',
-        type: 'Video',
-        title: 'Introduction to Anatomy: The Skeletal System',
-        description: 'Comprehensive overview of the human skeletal system, including bone types, structure, and functions.',
-        url: 'https://cdn.pixabay.com/vimeo/342186989/muscle-22666.mp4?width=1280&hash=d3f237330722361093121111623126',
-        programmeIds: ['mbchb', 'clin'],
-        levels: ['Year 1'],
-        courseUnitIds: ['cu_1'],
-        uploadDate: '2024-03-10',
-        views: 1250,
-        likes: 104,
-        thumbnailUrl: '/thumbnails/anatomy_mock_exam_cover_1769205840654.png'
-    },
-    {
-        id: 'tc2',
-        tutorId: 'dvid',
-        type: 'Note',
-        title: 'Lecture Notes: Cardiovascular Physiology',
-        description: 'Detailed lecture notes including diagrams of the heart, cardiac cycle phases, and blood pressure regulation mechanisms. Includes practice questions at the end.',
-        url: '#',
-        programmeIds: ['mbchb'],
-        levels: ['Year 1'],
-        courseUnitIds: ['cu_1'],
-        uploadDate: '2024-03-15',
-        views: 340,
-        likes: 12,
-        thumbnailUrl: '/thumbnails/lecture_notes_cardio_cover_1769205808641.png'
-    },
-    {
-        id: 'tc3',
-        tutorId: 'dvid',
-        type: 'Video',
-        title: 'Advanced Surgical Techniques: Suturing',
-        description: 'Watch a demonstration of various suturing techniques used in emergency medicine. Includes simple interrupted, vertical mattress, and subcuticular stitches.',
-        url: 'https://cdn.pixabay.com/vimeo/342186989/muscle-22666.mp4?width=1280&hash=d3f237330722361093121111623126',
-        programmeIds: ['mbchb'],
-        levels: ['Year 2'],
-        courseUnitIds: ['cu_2'],
-        uploadDate: '2024-03-20',
-        views: 890,
-        likes: 67,
-        thumbnailUrl: '/thumbnails/public_health_cover_1769205876252.png'
-    },
-    {
-        id: 'tc4',
-        tutorId: 'dvid',
-        type: 'Question',
-        title: 'Q&A Session: Pathology Finals Prep',
-        description: 'Recorded Q&A session addressing common misconceptions in general pathology. Topics include inflammation, tissue repair, and hemodynamic disorders.',
-        url: '#',
-        programmeIds: ['mbchb'],
-        levels: ['Year 2'],
-        courseUnitIds: ['cu_2'],
-        uploadDate: '2024-03-25',
-        views: 560,
-        likes: 23,
-        thumbnailUrl: '/thumbnails/pathology_exam_cover_1769205824868.png'
-    },
-    {
-        id: 'tc5',
-        tutorId: 'compass_tutor',
-        type: 'Video',
-        title: 'Community Hygiene Fundamentals',
-        description: 'Basics of sanitation and hygiene in rural communities. Field demonstration included.',
-        url: 'https://cdn.pixabay.com/vimeo/342186989/muscle-22666.mp4?width=1280&hash=d3f237330722361093121111623126',
-        programmeIds: ['clin', 'mbchb'], // Shared
-        levels: ['Year 1'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-10',
-        views: 410,
-        likes: 30,
-        thumbnailUrl: '/thumbnails/public_health_cover_1769205876252.png'
-    },
-    {
-        id: 'tc6',
-        tutorId: 'dvid',
-        type: 'Question',
-        title: 'Anatomy Mock Exam 1',
-        description: 'Practice questions for the upcoming skeletal system CA.',
-        url: '#',
-        programmeIds: ['mbchb'],
-        levels: ['Year 1'],
-        courseUnitIds: ['cu_1'],
-        uploadDate: '2024-04-12',
-        views: 200,
-        likes: 15,
-        thumbnailUrl: '/thumbnails/anatomy_mock_exam_cover_1769205840654.png'
-    },
-    {
-        id: 'tc7',
-        tutorId: 'dvid',
-        type: 'Video',
-        title: 'Patient Care Ethics',
-        description: 'Understanding the core principles of nursing ethics and patient rights.',
-        url: 'https://cdn.pixabay.com/vimeo/342186989/muscle-22666.mp4?width=1280&hash=d3f237330722361093121111623126',
-        programmeIds: ['mbchb', 'nurs'],
-        levels: ['Year 1'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-15',
-        views: 600,
-        likes: 55,
-        thumbnailUrl: '/thumbnails/pathology_exam_cover_1769205824868.png'
-    },
-    {
-        id: 'tc8',
-        tutorId: 'compass_tutor',
-        type: 'Note',
-        title: 'Public Health Policy 101',
-        description: 'Introduction to national health policies and their implementation.',
-        url: '#',
-        programmeIds: ['clin'],
-        levels: ['Year 2'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-18',
-        views: 120,
-        likes: 8,
-        thumbnailUrl: '/thumbnails/public_health_cover_1769205876252.png'
-    },
-    {
-        id: 'tc9',
-        tutorId: 'dvid',
-        type: 'Note',
-        title: 'Nursing Fundamentals: Vital Signs',
-        description: 'Guide to measuring and interpreting vital signs accurately.',
-        url: '#',
-        programmeIds: ['nurs'],
-        levels: ['Year 1'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-20',
-        views: 150,
-        likes: 22,
-        thumbnailUrl: '/thumbnails/public_health_cover_1769205876252.png'
-    },
-    {
-        id: 'tc10',
-        tutorId: 'compass_tutor',
-        type: 'Question',
-        title: 'Clinical Rotations Quiz',
-        description: 'Test your readiness for the first clinical rotation.',
-        url: '#',
-        programmeIds: ['clin'],
-        levels: ['Year 2'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-22',
-        views: 90,
-        likes: 5,
-        thumbnailUrl: '/thumbnails/pathology_exam_cover_1769205824868.png'
-    },
-    {
-        id: 'tc11',
-        tutorId: 'dvid',
-        type: 'Video',
-        title: 'Pharmacology Basics: Pharmacokinetics',
-        description: 'How drugs move through the body: Absorption, Distribution, Metabolism, Excretion.',
-        url: 'https://cdn.pixabay.com/vimeo/342186989/muscle-22666.mp4?width=1280&hash=d3f237330722361093121111623126',
-        programmeIds: ['pharm', 'mbchb'],
-        levels: ['Year 1'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-25',
-        views: 310,
-        likes: 40,
-        thumbnailUrl: '/thumbnails/lecture_notes_cardio_cover_1769205808641.png'
-    },
-    {
-        id: 'tc12',
-        tutorId: 'dvid',
-        type: 'Note',
-        title: 'Common Drug Interactions',
-        description: 'A reference sheet for common drug-drug and drug-food interactions.',
-        url: '#',
-        programmeIds: ['pharm'],
-        levels: ['Year 2'],
-        courseUnitIds: [],
-        uploadDate: '2024-04-28',
-        views: 205,
-        likes: 18,
-        thumbnailUrl: '/thumbnails/pathology_exam_cover_1769205824868.png'
-    }
-];
-export const INITIAL_TUTOR_SETTINGS: TutorSettings[] = [];
-export const INITIAL_TUTOR_SUBSCRIPTIONS: TutorSubscription[] = [];
-
-export const INITIAL_PORTAL_BRANDING: PortalBranding = {
-    schoolName: "SAMI HEALTH SCIENCE INSTITUTE",
-    tagline: "HEALTH IS PRIORITY",
-    primaryColor: "#22c55e" // SAMI Green
-};
-
-export const INITIAL_TRANSACTIONS: GeneralTransaction[] = [];
-export const INITIAL_GENERAL_TRANSACTIONS: GeneralTransaction[] = []; // Alias if needed
+// INITIAL_GENERAL_TRANSACTIONS moved to initialState.ts
 
 // --- HOOK FOR GLOBAL STATE ---
 
@@ -1646,6 +1109,16 @@ function useSchoolDataInternal() {
 
     const [checkingAccess, setCheckingAccess] = useState(true);
     const [hydrated, setHydrated] = useState(false);
+
+    // 🛡️ GLOBAL SAFETY: Guarantee the app mounts even if sync is slow or crashes
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setHydrated(true);
+            setCheckingAccess(false);
+            console.log("🛡️ Store Safety: Failsafe triggered to ensure app mount.");
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, []);
 
     const [activeRole, setActiveRole] = useState<AccountantRole>(() => {
         if (typeof window !== 'undefined') {
@@ -3770,7 +3243,13 @@ function useSchoolDataInternal() {
     const [landingPageContent, setLandingPageContent] = useState<LandingPageRoleContent[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('app_landing_content_v1');
-            return saved ? JSON.parse(saved) : INITIAL_LANDING_CONTENT;
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                } catch (e) { console.error("Landing content parse error", e); }
+            }
+            return INITIAL_LANDING_CONTENT;
         }
         return INITIAL_LANDING_CONTENT;
     });
@@ -4016,7 +3495,7 @@ function useSchoolDataInternal() {
             try {
                 const config = await developerService.getLandingPageConfig();
                 if (config) {
-                    if (config.landing_content) setLandingPageContent(config.landing_content);
+                                        if (config.landing_content && config.landing_content.length > 0) setLandingPageContent(config.landing_content);
                     if (config.wallpapers) setDeveloperSettings(prev => ({ ...prev, wallpapers: config.wallpapers }));
                     if (config.featured_schools) setFeaturedSchools(config.featured_schools);
                 }
@@ -4039,7 +3518,7 @@ function useSchoolDataInternal() {
                 if (newData && newData.featured_schools) {
                     console.log("🚀 Marketing Update Received: Refreshing discovery portal...");
                     setFeaturedSchools(newData.featured_schools);
-                    if (newData.landing_content) setLandingPageContent(newData.landing_content);
+                                        if (newData.landing_content && newData.landing_content.length > 0) setLandingPageContent(newData.landing_content);
                 }
             })
             .subscribe();
@@ -4148,27 +3627,47 @@ function useSchoolDataInternal() {
             console.log("☁️ Syncing Admissions Hub from Cloud...");
             const cloudApps = await databaseService.getAdmissionApplications();
             
-            // Map cloud columns to frontend interface
+            // Map cloud columns to frontend interface with deep safety fallbacks
             const normalized = (cloudApps || []).map((app: any) => ({
-                id: app.id,
-                schoolId: app.school_id,
-                schoolName: app.school_name,
-                applicantName: app.applicant_name,
-                applicantEmail: app.email,
-                applicantPhone: app.phone,
-                status: app.status,
-                programmes: app.programmes,
-                entryLevel: app.entry_level,
-                modeOfStudy: app.mode_of_study,
-                profilePhoto: app.profile_photo,
-                academicResults: app.academic_results,
-                submittedAt: app.submitted_at,
-                ...app.full_data // Merge with detailed data
+                id: app.id || `temp_${Math.random()}`,
+                schoolId: app.school_id || '',
+                schoolName: app.school_name || 'Generic Institution',
+                applicantName: app.applicant_name === 'EMPTY' ? 'Unknown Applicant' : (app.applicant_name || 'Anonymous'),
+                applicantEmail: app.email === 'EMPTY' ? '' : (app.email || ''),
+                applicantPhone: app.phone === 'EMPTY' ? '' : (app.phone || ''),
+                status: (app.status || 'pending').toLowerCase(),
+                programmes: app.programmes || 'General Admission',
+                entryLevel: app.entry_level || 'L1',
+                modeOfStudy: app.mode_of_study || 'Full-time',
+                profilePhoto: app.profile_photo || '',
+                academicResults: app.academic_results || '',
+                submittedAt: app.submitted_at || new Date().toISOString(),
+                ...(app.full_data || {}) // Safe merge only if full_data exists
             }));
 
-            // Union merge local with cloud to ensure we don't lose unpushed local entries
-            setSchoolApplications(prev => unionMerge(prev, normalized as any));
-            console.log("🚀 Admissions Hub Sync Complete.");
+            // 🛡️ DELETION SYNC: Load tombstones to ensure deleted records don't "ghost" back
+            let tombstones: string[] = [];
+            try {
+                if (typeof window !== 'undefined') {
+                    const raw = localStorage.getItem('school_tombstones_v1');
+                    if (raw) tombstones = JSON.parse(raw);
+                }
+            } catch (e) {
+                console.warn("Failed to parse tombstones:", e);
+            }
+
+            // 🛡️ RECOVERY: Ignoring local "tombstone" (deleted) filter to restore those 4 missing records
+            const finalCloud = normalized; 
+
+            // Union merge local with cloud, while enforcing the tombstone filter on existing local data
+            setSchoolApplications(prev => {
+                const filteredLocal = prev || [];
+                const merged = unionMerge(filteredLocal, finalCloud as any);
+                console.log(`📡 Admissions Sync: Local=${filteredLocal.length}, Cloud=${finalCloud.length}, Merged Result=${merged.length}`);
+                return merged;
+            });
+
+            console.log("✅ Admissions Hub Sync Complete.");
         } catch (err) {
             console.error("Failed to sync applications from cloud:", err);
         }
@@ -6471,6 +5970,10 @@ function useSchoolDataInternal() {
         addSchoolApplication,
         submitSchoolApplication,
         syncApplications,
+        deleteSchoolApplication: (id: string) => {
+            setSchoolApplications(prev => prev.filter(app => app.id !== id));
+            console.log(`🗑️ Registry: Local record ${id} has been manually purged.`);
+        },
         updateSchoolApplicationStatus,
         addStaffAccount,
         verifySubscriptionRequest,

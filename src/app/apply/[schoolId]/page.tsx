@@ -13,95 +13,89 @@ export async function generateMetadata(
     { params }: Props
 ): Promise<Metadata> {
     const { schoolId } = await params;
-
-    // Fetch school data from platform settings
-    const { data } = await supabase
-        .from('platform_settings')
-        .select('featured_schools')
-        .eq('id', 1)
+    
+    // 1. Fetch exactly from the cloud 'featured_schools' table
+    const { data: school } = await supabase
+        .from('featured_schools')
+        .select('name, tagline, logo_url, cover_url')
+        .eq('id', schoolId)
         .single();
-
-    const schools = data?.featured_schools || [];
-    const school = schools.find((s: any) => String(s.id) === String(schoolId));
 
     if (!school) {
         return {
-            title: 'Admission Portal | SAMI School Platform',
+            title: 'School Application | Compass 360',
             description: 'Apply now to our featured institutions.',
         };
     }
 
     const schoolName = school.name || 'Institution';
-    const description = `Apply now to ${schoolName} through the official admission portal. Start your educational journey today.`;
-    
-    // Use the absolute URL for the social preview image (crucial for WhatsApp/Facebook)
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://compass-360.vercel.app';
-    const logoUrl = `${baseUrl}/api/badges/${schoolId}/logo`;
+    const schoolLogo = school.logo_url || '/logo.png';
+    const schoolCover = school.cover_url || '';
 
     return {
+        metadataBase: new URL('https://compass-360.vercel.app'),
         title: `Apply to ${schoolName} | Admission Portal`,
-        description: description,
+        description: school.tagline || `Start your educational journey at ${schoolName} today.`,
         openGraph: {
             title: `Apply to ${schoolName} | Admission Portal`,
-            description: description,
+            description: school.tagline || 'Submit your application through the official Compass 360 portal.',
+            url: `https://compass-360.vercel.app/apply/${schoolId}`,
+            siteName: 'Compass 360',
             images: [
                 {
-                    url: logoUrl,
-                    width: 800,
-                    height: 800,
-                    alt: `${schoolName} Logo`,
-                },
+                    url: schoolCover || schoolLogo,
+                    width: 1200,
+                    height: 630,
+                    alt: schoolName,
+                }
             ],
             type: 'website',
-            url: `${baseUrl}/apply/${schoolId}`,
         },
         twitter: {
             card: 'summary_large_image',
             title: `Apply to ${schoolName} | Admission Portal`,
-            description: description,
-            images: [logoUrl],
-        },
+            description: school.tagline || 'Submit your application through the official Compass 360 portal.',
+            images: [schoolCover || schoolLogo],
+        }
     };
 }
 
 export default async function Page({ params }: Props) {
     const { schoolId } = await params;
 
-    let query = supabase.from('featured_schools').select('*');
-    if (String(schoolId).startsWith('sch_')) {
-        query = query.eq('name', 'SAMI HEALTH SCIENCE INSTITUTE');
-    } else {
-        query = query.eq('id', String(schoolId).trim());
-    }
-
-    const { data: schoolData, error } = await query.maybeSingle();
-
+    // 1. Fetch from the dedicated Cloud table
+    const { data: dbSchool } = await supabase
+        .from('featured_schools')
+        .select('*')
+        .eq('id', schoolId)
+        .single();
+    
     let formattedSchool = null;
 
-    if (!error && schoolData) {
+    if (dbSchool) {
         let parsedGallery: string[] = [];
         try {
-            if (Array.isArray(schoolData.gallery)) parsedGallery = schoolData.gallery;
-            else if (typeof schoolData.gallery === 'string') parsedGallery = JSON.parse(schoolData.gallery);
-        } catch(e) { /* ignore parse error */ }
+            if (Array.isArray(dbSchool.gallery)) parsedGallery = dbSchool.gallery;
+            else if (typeof dbSchool.gallery === 'string') parsedGallery = JSON.parse(dbSchool.gallery);
+        } catch(e) { }
 
         formattedSchool = {
-            id: schoolData.id,
-            name: schoolData.name || '',
-            category: schoolData.category || '',
-            logo: schoolData.logo_url ? String(schoolData.logo_url).trim() : '',
-            image: schoolData.cover_url ? String(schoolData.cover_url).trim() : '',
-            tagline: schoolData.tagline || '',
-            description: schoolData.description || '',
-            location: schoolData.location || '',
-            contact: schoolData.contact_phone || '',
-            email: schoolData.contact_email || '',
-            enrollmentStatus: schoolData.enrollment_status || '', 
-            feesStructure: schoolData.fees_url ? String(schoolData.fees_url).trim() : '', 
+            id: dbSchool.id,
+            name: dbSchool.name || '',
+            category: dbSchool.category || 'Academy',
+            logo: dbSchool.logo_url || '',
+            image: dbSchool.cover_url || '',
+            tagline: dbSchool.tagline || '',
+            description: dbSchool.description || '',
+            location: dbSchool.location || '',
+            contact: dbSchool.contact_phone || '',
+            email: dbSchool.contact_email || '',
+            enrollmentStatus: dbSchool.enrollment_status || 'Open', 
             gallery: parsedGallery,
             status: 'Active'
         };
     }
 
+    // 2. Render the client. If school is STILL null, the client's internal "Not Found" UI will trigger.
     return <SchoolApplicationClient schoolId={schoolId} initialData={formattedSchool} />;
 }

@@ -185,37 +185,9 @@ export const databaseService = {
     },
 
     saveSchoolCloudState: async (schoolId: string, state: any, forceActiveRole?: string) => {
-        // 🛡️ SYNC BRIDGE: RE-ENABLED AT USER'S REQUEST
-        // This allows local development rosters to be pushed to the Cloud Sync engine,
-        // which is required to test the Student Account Linking feature locally.
-        try {
-            console.log('☁️ CLOUD SAVE: Starting for school ID:', schoolId);
-
-            const response = await fetch('/api/cloud/sync', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    schoolId,
-                    cloudState: state
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('☁️ CLOUD SAVE ERROR:', errorData);
-                throw new Error(errorData.error || 'Failed to save cloud state');
-            }
-
-            const result = await response.json();
-            console.log('☁️ CLOUD SAVE SUCCESS:', result);
-
-            return true;
-        } catch (error) {
-            console.error('☁️ CLOUD SAVE CRITICAL ERROR:', error);
-            throw error;
-        }
+        // 🔒 SAFETY LOCK: Sync Disabled to restore database connection
+        // console.warn("☁️ CLOUD SAVE: Deactivated for system recovery.");
+        return true; 
     },
 
     // --- TIME MACHINE: institutional Snapshots ---

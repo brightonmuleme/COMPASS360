@@ -45,11 +45,12 @@ export default function UserManagerPage() {
     }, []);
 
     const filteredUsers = users.filter(user => {
-        const matchesSearch =
-            (user.full_name || user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesRole = roleFilter === 'All' ||
-            (user.role?.toLowerCase() === roleFilter.toLowerCase());
+        if (!user) return false;
+        const nameStr = (user.full_name || user.name || '').toString().toLowerCase();
+        const emailStr = (user.email || '').toString().toLowerCase();
+        const matchesSearch = nameStr.includes(searchTerm.toLowerCase()) || emailStr.includes(searchTerm.toLowerCase());
+        
+        const matchesRole = roleFilter === 'All' || (user.role?.toLowerCase() === roleFilter.toLowerCase());
         return matchesSearch && matchesRole;
     });
 
@@ -142,7 +143,7 @@ export default function UserManagerPage() {
                                     </div>
                                     <div>
                                         <h3 className="text-base font-black text-slate-900 tracking-tight group-hover:text-red-600 transition-colors uppercase leading-none mb-1.5">{user.full_name || user.name || 'Anonymous User'}</h3>
-                                        <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter">ID: {user.id.slice(0, 12)}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter">ID: {user.id?.toString().slice(0, 12) || 'REF_...'}</p>
                                     </div>
                                 </div>
 
@@ -173,7 +174,7 @@ export default function UserManagerPage() {
                                 {/* Date */}
                                 <div className="col-span-2 text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 lg:mb-0">
                                     <span className="lg:hidden text-[10px] text-slate-300 mr-2">Registered:</span>
-                                    {new Date(user.created_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    {user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : 'Pending'}
                                 </div>
 
                                 {/* Actions */}
