@@ -91,6 +91,7 @@ export default async function Page({ params }: Props) {
             contact: dbSchool.contact_phone || '',
             email: dbSchool.contact_email || '',
             enrollmentStatus: dbSchool.enrollment_status || 'Open', 
+            fees_url: dbSchool.fees_url || '',
             gallery: parsedGallery,
             status: 'Active'
         };
