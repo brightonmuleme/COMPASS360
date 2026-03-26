@@ -151,20 +151,31 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                     <div className="space-y-4">
                         <button 
                             onClick={() => {
-                                // 🏦 REAL FEES SYNC: Use the school's cloud-uploaded Fees Structure
-                                const feesUrl = school?.feesStructure || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+                                // 🏦 REAL FEES SYNC: Connect to the 'fees_url' field from Supabase
+                                const feesUrl = school?.fees_url || school?.feesStructure;
                                 
-                                if (!school?.feesStructure) {
+                                if (!feesUrl || feesUrl === 'EMPTY') {
                                     alert("Official Fees Structure is currently being updated. Downloading standard schedule.");
+                                    window.open('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', '_blank');
+                                    return;
                                 }
 
-                                const link = document.createElement('a');
-                                link.href = feesUrl;
-                                // Handle data URLs correctly
-                                const extension = feesUrl.startsWith('data:application/pdf') ? 'pdf' : (feesUrl.endsWith('.pdf') ? 'pdf' : 'jpg');
-                                link.download = `Fees_Structure_${school?.name.replace(/\s+/g, '_') || 'School'}.${extension}`;
-                                link.target = "_blank"; // Open in new tab for safety
-                                link.click();
+                                try {
+                                    const link = document.createElement('a');
+                                    link.href = feesUrl;
+                                    
+                                    // Detect file type for naming
+                                    const isPdf = feesUrl.startsWith('data:application/pdf') || feesUrl.toLowerCase().includes('.pdf');
+                                    const extension = isPdf ? 'pdf' : 'jpg';
+                                    
+                                    link.download = `Fees_Structure_${school?.name?.replace(/\s+/g, '_') || 'School'}.${extension}`;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                } catch (e) {
+                                    console.error("Download failed:", e);
+                                    window.open(feesUrl, '_blank');
+                                }
                             }}
                             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-emerald-500/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 animate-pulse italic"
                         >

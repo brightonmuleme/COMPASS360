@@ -185,9 +185,27 @@ export const databaseService = {
     },
 
     saveSchoolCloudState: async (schoolId: string, state: any, forceActiveRole?: string) => {
-        // 🔒 SAFETY LOCK: Sync Disabled to restore database connection
-        // console.warn("☁️ CLOUD SAVE: Deactivated for system recovery.");
-        return true; 
+        if (!schoolId || !state) return false;
+
+        try {
+            const response = await fetch('/api/cloud/inventory', { // Reusing existing inventory channel or creating sync channel
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schoolId, cloudState: state })
+            });
+
+            // ALSO: Sync to the main cloud state channel
+            await fetch('/api/cloud/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schoolId, cloudState: state })
+            });
+
+            return true;
+        } catch (error) {
+            console.error('☁️ Error saving cloud state:', error);
+            return false;
+        }
     },
 
     // --- TIME MACHINE: institutional Snapshots ---
