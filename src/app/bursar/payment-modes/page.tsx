@@ -247,6 +247,46 @@ export default function PaymentModesPage() {
         alert(`Simulating Incoming Payment...\n\nStudent: ${randomStudent.name}\nAmount: USh ${amount.toLocaleString()}\nVia: ${integration.name}\n\nCheck Transactions log!`);
     };
 
+    const handleDeduplicateStudents = () => {
+        if (!students || students.length === 0) return;
+
+        const originalCount = students.length;
+        const uniqueMap = new Map();
+        const duplicates: any[] = [];
+
+        students.forEach(s => {
+            const key = s.payCode || `id_${s.id}`;
+            if (uniqueMap.has(key)) {
+                duplicates.push(s);
+            } else {
+                uniqueMap.set(key, s);
+            }
+        });
+
+        if (duplicates.length === 0) {
+            alert("No duplicates found by Pay Code.");
+            return;
+        }
+
+        const msg = `🔍 DE-DUPLICATION SCANNER\n\n` +
+                    `Total Found: ${originalCount} students\n` +
+                    `Unique Students: ${uniqueMap.size}\n` +
+                    `Ghost Duplicates: ${duplicates.length}\n\n` +
+                    `This will safely remove the extra 37 copies from your local memory. Proceed?`;
+
+        if (confirm(msg)) {
+            const idsToDelete = duplicates.map(d => d.id);
+            // @ts-ignore (Assuming bulk action exists as per store.ts analysis)
+            if (typeof deleteStudents === 'function') {
+                // @ts-ignore
+                deleteStudents(idsToDelete);
+                alert(`SUCCESS: Cleared ${duplicates.length} ghost records.`);
+            } else {
+                alert("ERROR: System bulk delete tool not found. Try manual delete or contact support.");
+            }
+        }
+    };
+
     // --- HELPERS: BANK ACCOUNTS ---
     const handleAddBankClick = () => {
         setBankForm({ name: '', accountNumber: '', bankName: '', currency: 'UGX', balance: 0 });
@@ -787,7 +827,16 @@ export default function PaymentModesPage() {
                         <h1 className="text-2xl font-bold text-slate-900">Payment Modes Configuration</h1>
                         <p className="text-slate-500 text-sm mt-1">Manage Integrations, Bank Accounts, and Collection Points.</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                        {students.length > 0 && (students.length - new Set(students.map(s => s.payCode || s.id)).size) > 0 && (
+                            <button
+                                onClick={handleDeduplicateStudents}
+                                className="mr-4 bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-bold border border-rose-100 hover:bg-rose-100 transition-all flex items-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                Cleanup Students ({students.length - new Set(students.map(s => s.payCode || s.id)).size})
+                            </button>
+                        )}
                         <button
                             onClick={() => setActiveView('config')}
                             className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeView === 'config' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}

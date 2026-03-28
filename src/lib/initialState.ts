@@ -46,7 +46,22 @@ export const INITIAL_TUTOR_SETTINGS: TutorSettings[] = [];
 export const INITIAL_TUTOR_SUBSCRIPTIONS: TutorSubscription[] = [];
 export const INITIAL_REQUISITIONS: Requisition[] = [];
 export const INITIAL_REQUISITION_DRAFT: any = {};
-export const INITIAL_PAYMENT_INTEGRATIONS: PaymentIntegration[] = [];
+export const INITIAL_PAYMENT_INTEGRATIONS: PaymentIntegration[] = [
+    {
+        id: 'sp_1',
+        provider: 'SchoolPay',
+        name: 'SchoolPay',
+        description: 'Real-time student fee collection with automated reconcile.',
+        status: 'inactive'
+    },
+    {
+        id: 'pp_1',
+        provider: 'PegPay',
+        name: 'PegPay',
+        description: 'Automated payments for utility and tuition collection.',
+        status: 'inactive'
+    }
+];
 export const INITIAL_MANUAL_PAYMENT_METHODS: ManualPaymentMethod[] = [];
 export const INITIAL_RESULT_PAGE_CONFIGS: ResultPageConfig[] = [];
 export const INITIAL_COURSE_UNITS: any[] = [];

@@ -1850,7 +1850,11 @@ function useSchoolDataInternal() {
     const [paymentIntegrations, setPaymentIntegrations] = useState<PaymentIntegration[]>(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('school_payment_integrations_v1');
-            return saved ? JSON.parse(saved) : INITIAL_PAYMENT_INTEGRATIONS;
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return (Array.isArray(parsed) && parsed.length > 0) ? parsed : INITIAL_PAYMENT_INTEGRATIONS;
+            }
+            return INITIAL_PAYMENT_INTEGRATIONS;
         }
         return INITIAL_PAYMENT_INTEGRATIONS;
     });
@@ -5606,8 +5610,26 @@ function useSchoolDataInternal() {
                     if (cloudState.services) setServices(prev => filterAndMerge(prev, cloudState.services));
                     if (cloudState.staffAccounts) setStaffAccounts(prev => filterAndMerge(prev, cloudState.staffAccounts));
                     if (cloudState.tutors) setTutors(prev => filterAndMerge(prev, cloudState.tutors));
-                    if (cloudState.paymentIntegrations) setPaymentIntegrations(cloudState.paymentIntegrations);
-                    if (cloudState.manualPaymentMethods) setManualPaymentMethods(cloudState.manualPaymentMethods);
+                    if (cloudState.paymentIntegrations && cloudState.paymentIntegrations.length > 0) {
+                        setPaymentIntegrations(prev => {
+                            return prev.map(local => {
+                                const incoming = cloudState.paymentIntegrations.find((i: any) => i.id === local.id || i.provider === local.provider);
+                                if (!incoming) return local;
+                                
+                                // SMART MERGE: Only overwrite keys if the incoming data actually has them
+                                return {
+                                    ...incoming,
+                                    merchantId: incoming.merchantId || local.merchantId,
+                                    apiKey: incoming.apiKey || local.apiKey,
+                                    clientSecret: incoming.clientSecret || local.clientSecret,
+                                    status: (incoming.apiKey || local.apiKey) ? 'active' : incoming.status
+                                };
+                            });
+                        });
+                    }
+                    if (cloudState.manualPaymentMethods && cloudState.manualPaymentMethods.length > 0) {
+                        setManualPaymentMethods(cloudState.manualPaymentMethods);
+                    }
                     if (cloudState.financialSettings) setFinancialSettings(cloudState.financialSettings);
                     if (cloudState.unclaimedPayments) setUnclaimedPayments(prev => filterAndMerge(prev, cloudState.unclaimedPayments));
                     if (cloudState.documentTemplates) setDocumentTemplates(cloudState.documentTemplates);

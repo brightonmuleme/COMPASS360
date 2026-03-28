@@ -16,8 +16,12 @@ export async function POST(req: NextRequest) {
         }
 
         // 1. Generate the Secure Hash (MD5) on the server
-        // Formula: MD5(schoolCode + fromDate + password)
-        const hashStr = schoolCode + fromDate + password;
+        // Formula (Daily): MD5(schoolCode + fromDate + password)
+        // Formula (Range): MD5(schoolCode + fromDate + toDate + password)
+        const hashStr = (mode === 'range' && toDate) 
+            ? schoolCode + fromDate + toDate + password
+            : schoolCode + fromDate + password;
+            
         const hash = crypto.createHash('md5').update(hashStr).digest('hex').toUpperCase();
 
         let url = '';

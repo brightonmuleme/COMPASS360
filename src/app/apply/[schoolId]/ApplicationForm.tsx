@@ -215,9 +215,20 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
 
     const validateStep = (step: number) => {
         if (step === 1) {
-            if (!formData.firstName || !formData.lastName || !formData.dob || !formData.gender || !formData.nationality) {
-                alert("Please fill in all required Bio-Metric fields (*)");
-                return false;
+            const fields = [
+                { id: 'firstName', name: 'First Name', value: formData.firstName },
+                { id: 'lastName', name: 'Surname', value: formData.lastName },
+                { id: 'dob', name: 'Date of Birth', value: formData.dob },
+                { id: 'gender', name: 'Gender Identity', value: formData.gender },
+                { id: 'nationality', name: 'Nationality', value: formData.nationality }
+            ];
+            for (const field of fields) {
+                if (!field.value) {
+                    alert(`${field.name} is required (*)`);
+                    const el = document.getElementById(field.id);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return false;
+                }
             }
         }
         if (step === 2) {
@@ -280,10 +291,21 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                 <div className="bg-white/70 backdrop-blur-xl p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] border border-white shadow-lg md:shadow-xl shadow-slate-200/30 mb-8 md:mb-10 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl -mr-32 -mt-32 transition-transform duration-700 group-hover:scale-110" />
                     <h3 className="text-[9px] md:text-[11px] font-black text-blue-600 uppercase tracking-[0.2em] mb-2 md:mb-4 relative z-10">Directorate Notice</h3>
-                    <p className="text-slate-600 leading-relaxed font-semibold text-[10px] md:text-xs uppercase tracking-widest relative z-10 opacity-70">
-                        Please ensure all fields marked with <span className="text-red-500 text-lg">*</span> are completed accurately. <br />
-                        The Admissions Hub uses this data to verify your identity and academic eligibility.
-                    </p>
+                    <div className="flex flex-col gap-4 relative z-10">
+                        <p className="text-slate-600 leading-relaxed font-semibold text-[10px] md:text-xs uppercase tracking-widest opacity-70">
+                            Please ensure all fields marked with <span className="text-red-500 text-lg">*</span> are completed accurately. <br />
+                            The Admissions Hub uses this data to verify your identity and academic eligibility.
+                        </p>
+
+                        <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-600/10 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                                <FileText size={16} />
+                            </div>
+                            <p className="text-[9px] md:text-[10px] font-black text-blue-600/80 uppercase tracking-widest leading-relaxed">
+                                Note: The Official <span className="text-blue-700">Fees Structure</span> is available to download immediately <span className="text-blue-700 underline underline-offset-4">after</span> you have submitted this application.
+                            </p>
+                        </div>
+                    </div>
                 </div>
                 {/* Hero / Gallery Showcase - Responsive Bento Box */}
                 {(school.image || (school.gallery && school.gallery.length > 0)) && (
@@ -381,23 +403,23 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                                     <div className="space-y-1">
                                         <label className={labelClass}>First Legal Name <span className="text-red-500">*</span></label>
-                                        <input className={inputClass} placeholder="Enter your first name" value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})} />
+                                        <input id="firstName" className={inputClass} placeholder="Enter your first name" value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})} />
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Middle Name</label>
-                                        <input className={inputClass} placeholder="Optional" value={formData.middleName} onChange={(e) => setFormData({...formData, middleName: e.target.value})} />
+                                        <input id="middleName" className={inputClass} placeholder="Optional" value={formData.middleName} onChange={(e) => setFormData({...formData, middleName: e.target.value})} />
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Surname / Last Name <span className="text-red-500">*</span></label>
-                                        <input className={inputClass} placeholder="Enter your family name" value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})} />
+                                        <input id="lastName" className={inputClass} placeholder="Enter your family name" value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})} />
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Date of Birth <span className="text-red-500">*</span></label>
-                                        <input type="date" className={inputClass} value={formData.dob} onChange={(e) => setFormData({...formData, dob: e.target.value})} />
+                                        <input id="dob" type="date" className={inputClass} value={formData.dob} onChange={(e) => setFormData({...formData, dob: e.target.value})} />
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Gender Identity <span className="text-red-500">*</span></label>
-                                        <select className={inputClass} value={formData.gender} onChange={(e) => setFormData({...formData, gender: e.target.value})}>
+                                        <select id="gender" className={inputClass} value={formData.gender} onChange={(e) => setFormData({...formData, gender: e.target.value})}>
                                             <option value="">Select Identity</option>
                                             <option value="Male">Male</option>
                                             <option value="Female">Female</option>
@@ -405,7 +427,7 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Nationality <span className="text-red-500">*</span></label>
-                                        <input className={inputClass} placeholder="Country of Origin" value={formData.nationality} onChange={(e) => setFormData({...formData, nationality: e.target.value})} />
+                                        <input id="nationality" className={inputClass} placeholder="Country of Origin" value={formData.nationality} onChange={(e) => setFormData({...formData, nationality: e.target.value})} />
                                     </div>
                                 </div>
                             </div>
@@ -526,6 +548,7 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                             <option value="">Select Level</option>
                                             <option value="Certificate">Certificate</option>
                                             <option value="Diploma">Diploma</option>
+                                            <option value="Bachelors">Bachelors</option>
                                             <option value="Short Course">Short Course</option>
                                         </select>
                                     </div>
@@ -591,12 +614,12 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                             </div>
 
                             <div className="pt-10 border-t border-slate-50">
-                                <label className="flex items-start gap-4 cursor-pointer group">
-                                    <div className={`mt-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.agreed ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-200 group-hover:border-blue-500'}`}>
-                                        {formData.agreed && <Check size={14} className="text-white" />}
+                                <label className="flex items-start gap-4 cursor-pointer group p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-blue-500 transition-all">
+                                    <div className={`mt-1 shrink-0 w-8 h-8 rounded-xl border-4 flex items-center justify-center transition-all ${formData.agreed ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-200' : 'bg-slate-50 border-slate-200 group-hover:border-blue-300'}`}>
+                                        {formData.agreed && <Check size={20} className="text-white" strokeWidth={4} />}
                                     </div>
                                     <input type="checkbox" className="hidden" checked={formData.agreed} onChange={(e) => setFormData({...formData, agreed: e.target.checked})} />
-                                    <span className="text-xs font-bold text-slate-500 leading-relaxed uppercase select-none">
+                                    <span className="text-xs font-black text-slate-500 leading-relaxed uppercase select-none group-hover:text-slate-900 transition-colors">
                                         I solemnly declare that the information provided is accurate and true to the best of my knowledge. I understand that falsification will lead to immediate disqualification.
                                     </span>
                                 </label>
