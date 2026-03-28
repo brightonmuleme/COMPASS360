@@ -15,17 +15,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
         }
 
-        // 1. Generate the Secure Hash (MD5) on the server
-        // Formula (Daily): MD5(schoolCode + fromDate + password)
-        // Formula (Range): MD5(schoolCode + fromDate + toDate + password)
-        const hashStr = (mode === 'range' && toDate) 
-            ? schoolCode + fromDate + toDate + password
-            : schoolCode + fromDate + password;
+        // 🛡️ SCHOOLPAY DOCS FIX: The hash only uses 'fromDate' (identifyingDate) even for range requests.
+        // Formula: MD5(schoolCode + identifyingDate + password)
+        const hashStr = schoolCode + fromDate + password;
             
         const hash = crypto.createHash('md5').update(hashStr).digest('hex').toUpperCase();
 
         let url = '';
         if (mode === 'range' && toDate) {
+            // URL has from/to, but hash (above) only uses fromDate per documentation
             url = `${BASE_URL}/AndroidRS/SchoolRangeTransactions/${schoolCode}/${fromDate}/${toDate}/${hash}`;
         } else {
             url = `${BASE_URL}/AndroidRS/SyncSchoolTransactions/${schoolCode}/${fromDate}/${hash}`;

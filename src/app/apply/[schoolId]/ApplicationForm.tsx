@@ -150,7 +150,7 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                     
                     <div className="space-y-4">
                         <button 
-                            onClick={() => {
+                            onClick={async () => {
                                 // 🏦 REAL FEES SYNC: Connect to the 'fees_url' field from Supabase
                                 const feesUrl = school?.fees_url || school?.feesStructure;
                                 
@@ -161,17 +161,22 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                 }
 
                                 try {
-                                    const link = document.createElement('a');
-                                    link.href = feesUrl;
-                                    
-                                    // Detect file type for naming
-                                    const isPdf = feesUrl.startsWith('data:application/pdf') || feesUrl.toLowerCase().includes('.pdf');
-                                    const extension = isPdf ? 'pdf' : 'jpg';
-                                    
-                                    link.download = `Fees_Structure_${school?.name?.replace(/\s+/g, '_') || 'School'}.${extension}`;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
+                                    // 🚀 MOBILE ROBUSTNESS: Use Blob for better browser compatibility
+                                    if (feesUrl.startsWith('data:')) {
+                                        const response = await fetch(feesUrl);
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = `Fees_Structure_${school?.name?.replace(/\s+/g, '_') || 'School'}.pdf`;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                        // Cleanup
+                                        setTimeout(() => window.URL.revokeObjectURL(url), 100);
+                                    } else {
+                                        window.open(feesUrl, '_blank');
+                                    }
                                 } catch (e) {
                                     console.error("Download failed:", e);
                                     window.open(feesUrl, '_blank');
@@ -381,6 +386,7 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                 <div className="shrink-0 group">
                                     <label className={labelClass}>Passport Photo</label>
                                     <div 
+                                        id="profilePhoto"
                                         onClick={() => profileInputRef.current?.click()}
                                         className="w-40 h-48 md:w-48 md:h-56 rounded-[2rem] md:rounded-[2.5rem] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 md:gap-4 cursor-pointer hover:bg-white hover:border-blue-500/50 hover:shadow-2xl transition-all duration-500 overflow-hidden relative"
                                     >
@@ -417,13 +423,24 @@ export default function SchoolApplicationClient({ schoolId, initialData }: Props
                                         <label className={labelClass}>Date of Birth <span className="text-red-500">*</span></label>
                                         <input id="dob" type="date" className={inputClass} value={formData.dob} onChange={(e) => setFormData({...formData, dob: e.target.value})} />
                                     </div>
-                                    <div className="space-y-1">
+                                    <div className="space-y-3">
                                         <label className={labelClass}>Gender Identity <span className="text-red-500">*</span></label>
-                                        <select id="gender" className={inputClass} value={formData.gender} onChange={(e) => setFormData({...formData, gender: e.target.value})}>
-                                            <option value="">Select Identity</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                        </select>
+                                        <div id="gender" className="grid grid-cols-2 gap-4">
+                                            {['Male', 'Female'].map((gender) => (
+                                                <button
+                                                    key={gender}
+                                                    type="button"
+                                                    onClick={() => setFormData({...formData, gender})}
+                                                    className={`h-16 rounded-2xl border-2 flex items-center justify-center font-black text-xs uppercase tracking-[0.2em] transition-all ${
+                                                        formData.gender === gender 
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-200 scale-[1.02]' 
+                                                            : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-blue-200'
+                                                    }`}
+                                                >
+                                                    {gender}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
                                         <label className={labelClass}>Nationality <span className="text-red-500">*</span></label>
