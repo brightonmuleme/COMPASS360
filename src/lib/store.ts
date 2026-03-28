@@ -132,11 +132,12 @@ export interface DocumentSection {
 export interface DocumentTemplate {
     id: string;
     name: string;
-    type: DocumentType;
+    type: 'RECEIPT' | 'ADMISSION_LETTER' | 'OTHER';
     sections: DocumentSection[];
-    programmeId?: string;
-    isDefault?: boolean; // Added for global templates
     updatedAt: string;
+    programmeId?: string; // Optional: Link to a specific programme
+    logo?: string; // New: Persistent Base64 logo data
+    isDefault?: boolean; // Added for global templates
 }
 
 export interface FeeStructureItem {
@@ -3103,7 +3104,7 @@ function useSchoolDataInternal() {
 
                     // If value is a huge object/string (like Base64 content), don't save it if we're still failing
                     const contentSize = JSON.stringify(value).length;
-                    if (contentSize > 1000000) { // 1MB threshold
+                    if (contentSize > 5000000) { // RAISED TO 5MB: To accommodate High-Res School & Programme Logos
                         console.warn(`⚠️ skipping save of huge item(${(contentSize / 1024 / 1024).toFixed(2)} MB): ${key}`);
                         return;
                     }

@@ -74,18 +74,13 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
     const prevActiveSection = useRef<string | null>(null);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const storageKey = `logo_${template.id}`;
-            const specificLogo = localStorage.getItem(storageKey);
+        // Use the logo from the template itself (Now persistent and cloud-synced)
+        if (template.logo) {
+            setLogo(template.logo);
+        } else if (typeof window !== 'undefined') {
+            // Legacy/Global fallback (only if template has no specific logo)
             const globalLogo = localStorage.getItem('school_logo');
-
-            console.log(`[DocumentTemplateEditor] Loading logo for ${template.id}. Specific found: ${!!specificLogo}, Global found: ${!!globalLogo}`);
-
-            if (specificLogo) {
-                setLogo(specificLogo);
-            } else if (globalLogo) {
-                setLogo(globalLogo);
-            }
+            if (globalLogo) setLogo(globalLogo);
         }
 
         // AUTO-FIX: Inject {{programme_logo}} into header if missing
@@ -99,7 +94,7 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
             }
             return s;
         }));
-    }, [template.id]);
+    }, [template.id, template.logo]);
 
     // Update editor content ONLY when active section changes to a NEW section
     useEffect(() => {
@@ -130,7 +125,7 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
     };
 
     const handleSave = () => {
-        onSave({ ...template, name: templateName, sections, updatedAt: new Date().toISOString() });
+        onSave({ ...template, name: templateName, sections, logo, updatedAt: new Date().toISOString() });
     };
 
     const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,24 +134,13 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64 = reader.result as string;
-                const storageKey = `logo_${template.id}`;
-
-                try {
-                    // 1. Update State
-                    setLogo(base64);
-
-                    // 2. Save to LocalStorage
-                    localStorage.setItem(storageKey, base64);
-
-                    // 3. Verify Persistence
-                    const saved = localStorage.getItem(storageKey);
-                    if (saved !== base64) {
-                        throw new Error("Verification failed: Saved logo does not match.");
-                    }
-                    console.log(`[DocumentTemplateEditor] Logo saved successfully for template ${template.id} (${base64.length} chars)`);
-                } catch (err: any) {
-                    console.error("[DocumentTemplateEditor] Failed to save logo:", err);
-                    alert("Failed to save logo! Storage might be full.\n\nError: " + (err.message || err));
+                
+                // Update Local UI State Immediately
+                setLogo(base64);
+                
+                // LOGO SIZE CHECK
+                if (base64.length > 3000000) { // ~3MB
+                     alert("Logo is very large! Please use a smaller file or a compressed image (under 3MB) for better sync performance.");
                 }
             };
             reader.readAsDataURL(file);
