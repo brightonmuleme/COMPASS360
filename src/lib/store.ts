@@ -3805,20 +3805,10 @@ function useSchoolDataInternal() {
         const enriched = { ...p, origin, ownerId };
         setProgrammes(prev => [...prev, enriched]);
         try {
-            await databaseService.saveOfficialProgramme({
-                id: enriched.id,
-                code: enriched.code,
-                name: enriched.name,
-                type: enriched.type,
-                duration: enriched.duration,
-                description: enriched.description,
-                ownerId,
-                levels: enriched.levels,
-                feeStructure: enriched.feeStructure,
-                origin: 'official'
-            });
+            // CRITICAL: Push updated program list to Cloud Snapshot blob
+            await takeInstitutionalSnapshot(`Add Program: ${enriched.name}`, true);
         } catch (error) {
-            console.error("Failed to sync programme to cloud:", error);
+            console.error("Failed to sync new programme to cloud snapshot:", error);
         }
     };
     const updateProgramme = async (p: Programme) => {
@@ -3826,20 +3816,10 @@ function useSchoolDataInternal() {
         const ownerId = isDev ? 'developer' : (schoolProfile?.id || p.ownerId);
         setProgrammes(prev => prev.map(prog => prog.id === p.id ? { ...p, ownerId } : prog));
         try {
-            await databaseService.saveOfficialProgramme({
-                id: p.id,
-                code: p.code,
-                name: p.name,
-                type: p.type,
-                duration: p.duration,
-                description: p.description,
-                ownerId: ownerId,
-                levels: p.levels,
-                feeStructure: p.feeStructure,
-                origin: p.origin || (isDev ? 'official' : 'custom')
-            });
+            // CRITICAL: Push updated templates/programs to Cloud Snapshot blob
+            await takeInstitutionalSnapshot(`Edit Program/Templates: ${p.name}`, true);
         } catch (error) {
-            console.error("Failed to sync programme update to cloud:", error);
+            console.error("Failed to sync programme update to cloud snapshot:", error);
         }
     };
     const deleteProgramme = async (id: string) => {
@@ -3849,9 +3829,10 @@ function useSchoolDataInternal() {
             programmeIds: (tutor.programmeIds || []).filter(pid => pid !== id)
         })));
         try {
-            await databaseService.deleteOfficialProgramme(id);
+            // CRITICAL: Push updated program list to Cloud Snapshot blob
+            await takeInstitutionalSnapshot(`Delete Program: ${id}`, true);
         } catch (error) {
-            console.error("Failed to sync programme deletion to cloud:", error);
+            console.error("Failed to sync programme deletion to cloud snapshot:", error);
         }
     };
 
