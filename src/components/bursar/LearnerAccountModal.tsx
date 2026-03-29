@@ -6,6 +6,7 @@ import { Transaction, FEE_STRUCTURE, BURSARY_SCHEMES } from '@/app/bursar/shared
 import { TransactionFormModal } from './TransactionFormModal';
 import { StatusRing } from '@/components/StatusRing';
 import { schoolPayService } from '@/services/schoolPayService';
+import { databaseService } from '@/services/databaseService'; // Added for cloud logo sync
 import { calculateStudentFinancials } from '@/lib/financialCore';
 
 
@@ -133,8 +134,19 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
     const [isSyncing, setIsSyncing] = useState(false);
     const [reviewTx, setReviewTx] = useState<any>(null); // Transaction being reviewed for approval
     const [expandedTxId, setExpandedTxId] = useState<string | null>(null); // Mobile: Expanded ledger state
+    const [programmeLogos, setProgrammeLogos] = useState<Record<string, string>>({}); // Cloud logos
 
     // --- INITIALIZATION ---
+    useEffect(() => {
+        const fetchLogos = async () => {
+            if (schoolProfile?.id) {
+                const logos = await databaseService.getProgrammeLogos(schoolProfile.id);
+                setProgrammeLogos(logos);
+            }
+        };
+        fetchLogos();
+    }, [schoolProfile?.id]);
+
     useEffect(() => {
         const s = students.find(st => st.id === studentId);
         if (s) {
@@ -832,10 +844,14 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
-        // Logo Logic
-        const specificLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${template.id}`) : null;
+        // Logo Logic (Cloud Sync Priority)
+        const progId = prog?.id || (template as any).programmeId;
+        const cloudLogo = progId ? programmeLogos[progId] : null;
+        const specLogo = template.logo;
+        const localProgLogo = progId ? (typeof window !== 'undefined' ? localStorage.getItem(`logo_${progId}`) : null) : null;
         const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
-        const activeLogo = specificLogo || globalLogo;
+        
+        const activeLogo = cloudLogo || specLogo || localProgLogo || globalLogo;
         const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 80px; width: auto; display: block; margin: 0 auto 10px auto;" />` : '';
 
         // Calculations for Placeholder Values
@@ -897,8 +913,11 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
         // Replacements for Clearance template
         const replacements: Record<string, string> = {
+            '{{programme_logo}}': logoHtml,
+            '{{institution_logo}}': logoHtml,
+            '{{currency}}': (financialSettings as any)?.currency || 'USh',
             '{{institution_name}}': schoolProfile?.name || 'Vine International Institute',
-            '{{institution_address}}': schoolProfile?.poBox || 'P.O. Box 000, Kampala',
+            '{{institution_address}}': schoolProfile?.poBox || schoolProfile?.address || '',
             '{{institution_contact}}': schoolProfile?.phone || schoolProfile?.email || '',
             '{{institution_email}}': schoolProfile?.email || '',
             '{{programme_logo}}': logoHtml,
@@ -1029,28 +1048,34 @@ export const LearnerAccountCore = ({ studentId, onClose, auditingContext, mode =
 
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
-        // Logo Logic
-        const specificLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${template.id}`) : null;
+        // 1. Logo Logic (Priority: Cloud > Template Override > Local Fallback > Global)
+        const progId = (template as any).programmeId || prog?.id;
+        const cloudLogo = progId ? programmeLogos[progId] : null;
+        const specLogo = template.logo;
+        const localProgLogo = progId ? (typeof window !== 'undefined' ? localStorage.getItem(`logo_${progId}`) : null) : null;
         const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
-        const activeLogo = specificLogo || globalLogo;
-        const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 100px; width: auto; display: block; margin: 0 auto;" />` : '';
+        
+        const activeLogo = cloudLogo || specLogo || localProgLogo || globalLogo;
+        const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 80px; width: auto; display: block; margin: 0 auto 10px auto;" />` : '';
 
-        // Replacements
+        // 2. Replacements
         const replacements: Record<string, string> = {
             '{{receipt_number}}': payment.receiptNumber || payment.id,
-            '{{transaction_id}}': payment.reference || payment.receiptNumber || payment.id, // Correct External Transaction ID
+            '{{transaction_id}}': payment.reference || payment.receiptNumber || payment.id,
             '{{date}}': new Date(payment.date).toLocaleDateString(),
-            '{{transaction_date}}': new Date(payment.date).toLocaleDateString(), // Legacy support
+            '{{transaction_date}}': new Date(payment.date).toLocaleDateString(),
             '{{student_name}}': selectedStudent.name,
             '{{student_code}}': selectedStudent.id.toString(),
-            '{{pay_code}}': selectedStudent.payCode || 'N/A', // Corrected Pay Code
+            '{{pay_code}}': selectedStudent.payCode || 'N/A',
             '{{programme_name}}': prog?.name || selectedStudent.programme || '',
+            '{{currency}}': (financialSettings as any)?.currency || 'USh',
+            '{{programme_logo}}': logoHtml,
+            '{{institution_logo}}': logoHtml,
             '{{amount}}': formatMoney(payment.amount),
-            '{{transaction_amount}}': formatMoney(payment.amount), // Legacy support
+            '{{transaction_amount}}': formatMoney(payment.amount),
             '{{amount_words}}': numberToWords(payment.amount),
-            '{{amount_in_words}}': numberToWords(payment.amount), // Legacy support
+            '{{amount_in_words}}': numberToWords(payment.amount),
             '{{balance}}': formatMoney(outstandingBalance),
-            // Default to Particulars if available, else Description, else Generic
             '{{payment_description}}': payment.allocations ? Object.keys(payment.allocations).join(', ') : (payment.description || 'Tuition Payment'),
             '{{payment_particulars}}': payment.allocations ?
                 `<table style="width: 100%; border-collapse: collapse; margin: 5px 0; font-size: inherit;">

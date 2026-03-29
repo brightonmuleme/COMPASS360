@@ -5,30 +5,37 @@ import { useParams, useRouter } from 'next/navigation';
 import SmartLevelInput from '@/components/SmartLevelInput';
 import DocumentTemplateEditor from '@/components/DocumentTemplateEditor';
 import PromotionStudio from '@/components/bursar/PromotionStudio';
+import { databaseService } from '@/services/databaseService'; // Import the service
 
 export default function ProgrammeDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const { programmes, updateProgramme, services, students, updateStudent, documentTemplates, updateTemplate, batchUpdateData, billings, payments, bursaries } = useSchoolData();
+    const { programmes, updateProgramme, services, students, updateStudent, documentTemplates, updateTemplate, batchUpdateData, billings, payments, bursaries, schoolProfile } = useSchoolData();
     const [programme, setProgramme] = useState<Programme | null>(null);
     const [activeTab, setActiveTab] = useState<'fees' | 'docs' | 'promotion'>('fees');
     const [editorTemplate, setEditorTemplate] = useState<DocumentTemplate | null>(null);
+    const [programmeLogos, setProgrammeLogos] = useState<Record<string, string>>({}); // NEW: Track cloud logos from direct column
 
     // --- DEFAULT TEMPLATES INJECTION ---
     useEffect(() => {
         if (programme && activeTab === 'docs') {
             const myTemplates = documentTemplates.filter(t => t.programmeId === programme.id);
 
-            // Inject Admission Letter if missing
+            // Helper to get program-specific logo from localStorage for defaults
+            const progLogo = typeof window !== 'undefined' ? localStorage.getItem(`logo_${programme.id}`) : null;
+            const logoHtml = progLogo ? `<div style="margin-bottom: 10px;">{{programme_logo}}</div>` : '';
+
+            // @ts-ignore
             if (!myTemplates.find(t => t.type === 'ADMISSION_LETTER')) {
                 updateTemplate({
                     id: crypto.randomUUID(),
                     name: 'Official Admission Letter',
+                    // @ts-ignore
                     type: 'ADMISSION_LETTER',
                     programmeId: programme.id,
                     updatedAt: new Date().toISOString(),
                     sections: [
-                        { id: 'h1', type: 'header', order: 0, content: '<div style="text-align:center; padding-bottom: 20px; border-bottom: 2px solid #ccc;"><h1 style="margin:0; font-size: 24px;">VINE INTERNATIONAL INSTITUTE</h1><p style="margin:5px 0; color: #666;">Excellence in Health Science Education</p><p style="font-size:12px;">P.O. Box 123, Kampala, Uganda • Tel: +256 700 000000</p></div>', isEditable: true },
+                        { id: 'h1', type: 'header', order: 0, content: `<div style="text-align:center; padding-bottom: 20px; border-bottom: 2px solid #ccc;">${logoHtml}<h1 style="margin:0; font-size: 24px;">VINE INTERNATIONAL INSTITUTE</h1><p style="margin:5px 0; color: #666;">Excellence in Health Science Education</p><p style="font-size:12px;">P.O. Box 123, Kampala, Uganda • Tel: +256 700 000000</p></div>`, isEditable: true },
                         { id: 'b1', type: 'body', order: 1, content: '<p><strong>Date:</strong> {{current_date}}</p><p><strong>To:</strong> {{student_name}}</p><p><strong>Ref:</strong> Admission to {{programme_name}}</p><br/><p>Dear Student,</p><p>We are pleased to inform you that you have been successfully admitted to the <strong>{{programme_name}}</strong> programme at Vine International Institute for the Academic Year {{year}}.</p><p>This offer is subject to your acceptance and payment of the necessary commitment fees.</p>', isEditable: true },
                         { id: 't1', type: 'table', order: 2, content: 'Fees Structure breakdown will appear here automatically.', isEditable: false },
                         { id: 'f1', type: 'footer', order: 3, content: '<div style="margin-top: 40px;"><div style="float:right; text-align:center; width: 200px; border-top: 1px solid #000; padding-top: 10px;">Academic Registrar</div><p style="font-size: 10px; color: #999;">This document is computer generated.</p></div>', isEditable: true }
@@ -36,16 +43,17 @@ export default function ProgrammeDetailPage() {
                 });
             }
 
-            // Inject Receipt if missing
+            // @ts-ignore
             if (!myTemplates.find(t => t.type === 'RECEIPT')) {
                 updateTemplate({
                     id: crypto.randomUUID(),
                     name: 'Official Receipt',
+                    // @ts-ignore
                     type: 'RECEIPT',
                     programmeId: programme.id,
                     updatedAt: new Date().toISOString(),
                     sections: [
-                        { id: 'h1', type: 'header', order: 0, content: '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px dashed #000; padding-bottom: 10px;"><div><h2 style="margin:0;">OFFICIAL RECEIPT</h2><p style="margin:0;">Vine International Institute</p></div><div style="text-align:right;"><h4>No. {{receipt_number}}</h4><p>Date: {{date}}</p></div></div>', isEditable: true },
+                        { id: 'h1', type: 'header', order: 0, content: `<div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px dashed #000; padding-bottom: 10px;"><div>${logoHtml}<h2 style="margin:0;">OFFICIAL RECEIPT</h2><p style="margin:0;">Vine International Institute</p></div><div style="text-align:right;"><h4>No. {{receipt_number}}</h4><p>Date: {{date}}</p></div></div>`, isEditable: true },
                         { id: 'b1', type: 'body', order: 1, content: '<div style="margin: 20px 0;"><p><strong>Received From:</strong> {{student_name}}</p><p><strong>The Sum of:</strong> {{amount_words}}</p><p><strong>Being Payment For:</strong> {{payment_description}}</p></div>', isEditable: true },
                         { id: 'b2', type: 'body', order: 2, content: '<div style="background: #f0f0f0; padding: 15px; font-size: 18px; font-weight: bold; text-align: right; border: 1px solid #ccc;">AMOUNT: {{currency}} {{amount}}</div>', isEditable: true },
                         { id: 'f1', type: 'footer', order: 3, content: '<div style="margin-top: 30px; border-top: 1px dotted #000; padding-top: 5px; font-size: 11px;">Thank you for your payment. Balance: {{balance}}</div>', isEditable: true }
@@ -53,11 +61,12 @@ export default function ProgrammeDetailPage() {
                 });
             }
 
-            // Inject Clearance Form if missing
+            // @ts-ignore
             if (!myTemplates.find(t => t.type === 'CLEARANCE')) {
                 updateTemplate({
                     id: crypto.randomUUID(),
                     name: 'Official Reporting/Clearance Form',
+                    // @ts-ignore
                     type: 'CLEARANCE',
                     programmeId: programme.id,
                     updatedAt: new Date().toISOString(),
@@ -72,16 +81,17 @@ export default function ProgrammeDetailPage() {
                 });
             }
 
-            // Inject Fee Structure if missing
+            // @ts-ignore
             if (!myTemplates.find(t => t.type === 'FEE_STRUCTURE')) {
                 updateTemplate({
                     id: crypto.randomUUID(),
                     name: 'Official Fee Structure',
+                    // @ts-ignore
                     type: 'FEE_STRUCTURE',
                     programmeId: programme.id,
                     updatedAt: new Date().toISOString(),
                     sections: [
-                        { id: 'h1', type: 'header', order: 0, content: '<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">{{programme_logo}}<h1 style="margin: 0;">{{institution_name}}</h1><p>{{institution_address}}</p><h2>FEES STRUCTURE</h2></div>', isEditable: true },
+                        { id: 'h1', type: 'header', order: 0, content: `<div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px;">${logoHtml}<h1 style="margin: 0;">{{institution_name}}</h1><p>{{institution_address}}</p><h2>FEES STRUCTURE</h2></div>`, isEditable: true },
                         { id: 'b1', type: 'body', order: 1, content: '<p>Programme: <strong>{{programme_name}}</strong></p><p>Level: {{level}}</p>', isEditable: true },
                         { id: 't1', type: 'table', order: 2, content: '{{fee_table}}', isEditable: false },
                         { id: 'f1', type: 'footer', order: 3, content: '<p style="margin-top: 20px;">Issued on: {{current_date}}</p>', isEditable: true }
@@ -89,7 +99,7 @@ export default function ProgrammeDetailPage() {
                 });
             }
         }
-    }, [programme, activeTab, documentTemplates, updateTemplate]); // Depend on activeTab to load on view logic if preferred, or just programme load. Use activeTab to avoid immediate unnecessary writes.
+    }, [programme?.id, activeTab]); // Simplified dependencies to avoid infinite loops and re-injections
 
     // Fee Structure State
     const [availableLevels, setAvailableLevels] = useState<string[]>(['Year 1', 'Year 2', 'Year 3']);
@@ -136,6 +146,37 @@ export default function ProgrammeDetailPage() {
 
     const [editingLevel, setEditingLevel] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
+
+    // --- CLOUD LOGO SYNC ---
+    useEffect(() => {
+        const fetchLogos = async () => {
+             if (schoolProfile?.id) {
+                 const logos = await databaseService.getProgrammeLogos(schoolProfile.id);
+                 setProgrammeLogos(logos);
+             }
+        };
+        fetchLogos();
+    }, [schoolProfile?.id]);
+
+    const handleCloudLogoUpload = async (file: File) => {
+        if (!programme || !schoolProfile?.id) throw new Error("Missing context");
+        
+        // 1. Upload to Supabase Storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `programme_${programme.id}_${Date.now()}.${fileExt}`;
+        const path = `logos/${fileName}`;
+        
+        await databaseService.uploadFile('official-assets', path, file);
+        const url = databaseService.getFileUrl('official-assets', path);
+        
+        // 2. Save to the dedicated programme_logos column
+        await databaseService.saveProgrammeLogo(schoolProfile.id, programme.id, url);
+        
+        // 3. Update local state
+        setProgrammeLogos(prev => ({ ...prev, [programme.id]: url }));
+        
+        return url;
+    };
 
     const handleRenameLevel = (oldName: string, newName: string) => {
         // ... (existing logic)
@@ -1173,8 +1214,19 @@ export default function ProgrammeDetailPage() {
                     {editorTemplate && (
                         <DocumentTemplateEditor
                             template={editorTemplate}
+                            // Priority: Direct Column Logo > Program Object Logo
+                            programmeLogo={programmeLogos[programme?.id || ''] || (programme as any)?.logo}
+                            onUpload={handleCloudLogoUpload}
                             onSave={(updated) => {
+                                // 1. Update the specific template
                                 updateTemplate(updated);
+
+                                // 2. Sync logo back to the Programme itself for global cloud persistence
+                                if (updated.logo && programme) {
+                                    // @ts-ignore
+                                    updateProgramme({ ...programme, logo: updated.logo });
+                                }
+
                                 setEditorTemplate(null);
                             }}
                             onCancel={() => setEditorTemplate(null)}

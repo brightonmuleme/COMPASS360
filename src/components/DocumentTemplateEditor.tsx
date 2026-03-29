@@ -4,8 +4,10 @@ import { DocumentTemplate, DocumentSection } from '@/lib/store';
 
 interface EditorProps {
     template: DocumentTemplate;
+    programmeLogo?: string;
     onSave: (template: DocumentTemplate) => void;
     onCancel: () => void;
+    onUpload?: (file: File) => Promise<string>; // NEW: Handle cloud upload
 }
 
 // Aligned with placeholders used in PaymentModesPage and AdmissionsPage
@@ -62,25 +64,35 @@ const RichTextToolbar = ({ onCommand }: { onCommand: (cmd: string, val?: string)
     );
 };
 
-export default function DocumentTemplateEditor({ template, onSave, onCancel }: EditorProps) {
+export default function DocumentTemplateEditor({ template, programmeLogo, onSave, onCancel, onUpload }: EditorProps) {
     const [sections, setSections] = useState<DocumentSection[]>(template.sections);
     const [templateName, setTemplateName] = useState(template.name);
     const [activeSection, setActiveSection] = useState<string | null>(null);
     const [previewMode, setPreviewMode] = useState(false);
     const [logo, setLogo] = useState<string>('');
+    const [isUploading, setIsUploading] = useState(false); // NEW: Track upload state
 
     // For syncing contentEditable
     const editorRef = useRef<HTMLDivElement>(null);
     const prevActiveSection = useRef<string | null>(null);
 
     useEffect(() => {
-        // Use the logo from the template itself (Now persistent and cloud-synced)
+        // PRIORITY 1: Template-specific logo override
         if (template.logo) {
             setLogo(template.logo);
-        } else if (typeof window !== 'undefined') {
-            // Legacy/Global fallback (only if template has no specific logo)
-            const globalLogo = localStorage.getItem('school_logo');
-            if (globalLogo) setLogo(globalLogo);
+        } else if (programmeLogo) {
+            // PRIORITY 2: CLOUD-SYNCED Programme logo (Passed from parent)
+            setLogo(programmeLogo);
+        } else if (template.programmeId && typeof window !== 'undefined') {
+            // PRIORITY 3: LOCAL FALLBACK (Legacy/New upload session)
+            const progLogo = localStorage.getItem(`logo_${template.programmeId}`);
+            if (progLogo) {
+                setLogo(progLogo);
+            } else {
+                // PRIORITY 4: GLOBAL FALLBACK
+                const globalLogo = localStorage.getItem('school_logo');
+                if (globalLogo) setLogo(globalLogo);
+            }
         }
 
         // AUTO-FIX: Inject {{programme_logo}} into header if missing
@@ -94,7 +106,7 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
             }
             return s;
         }));
-    }, [template.id, template.logo]);
+    }, [template.id, template.logo, template.programmeId]);
 
     // Update editor content ONLY when active section changes to a NEW section
     useEffect(() => {
@@ -108,9 +120,6 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
             prevActiveSection.current = activeSection;
         }
     }, [activeSection, sections]);
-    // Note: Depends on sections, but we only want to set HTML when SWITCHING sections, not when editing.
-    // The onInput handler updates state. This effect should only run if activeSection ID changes.
-    // We'll refine this logic.
 
     const handleContentChange = (id: string, newContent: string) => {
         setSections(prev => prev.map(s => s.id === id ? { ...s, content: newContent } : s));
@@ -125,18 +134,53 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
     };
 
     const handleSave = () => {
+        // Also ensure the logo is 'stuck' to the programme in localStorage for persistence across templates
+        if (logo && template.programmeId) {
+            localStorage.setItem(`logo_${template.programmeId}`, logo);
+        }
         onSave({ ...template, name: templateName, sections, logo, updatedAt: new Date().toISOString() });
     };
 
-    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            // CLOUD UPLOAD PATH (Preferred)
+            if (onUpload) {
+                setIsUploading(true);
+                try {
+                    const url = await onUpload(file);
+                    setLogo(url);
+                    if (template.programmeId) {
+                        localStorage.setItem(`logo_${template.programmeId}`, url);
+                    }
+                } catch (err) {
+                    console.error("Cloud Upload Failed:", err);
+                    alert("Cloud upload failed. Using local preview instead.");
+                    // FALLBACK TO BASE64
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const base64 = reader.result as string;
+                        setLogo(base64);
+                    };
+                    reader.readAsDataURL(file);
+                } finally {
+                    setIsUploading(false);
+                }
+                return;
+            }
+
+            // LEGACY BASE64 PATH
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64 = reader.result as string;
                 
                 // Update Local UI State Immediately
                 setLogo(base64);
+                
+                // Persist to localStorage immediately so it doesn't 'vanish' if component re-renders
+                if (template.programmeId) {
+                    localStorage.setItem(`logo_${template.programmeId}`, base64);
+                }
                 
                 // LOGO SIZE CHECK
                 if (base64.length > 3000000) { // ~3MB
@@ -279,9 +323,9 @@ export default function DocumentTemplateEditor({ template, onSave, onCancel }: E
                             )}
                             <label className="flex-1 cursor-pointer touch-target">
                                 <span className="block w-full py-2 px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-center text-xs text-gray-300 transition-colors">
-                                    {logo ? 'Change' : 'Upload'}
+                                    {isUploading ? '📤 Uploading...' : (logo ? 'Change' : 'Upload')}
                                 </span>
-                                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isUploading} />
                             </label>
                         </div>
                     </div>

@@ -324,5 +324,56 @@ export const databaseService = {
             .select();
         if (error) throw error;
         return data[0];
+    },
+
+    // --- PROGRAMME LOGOS (Direct Table Sync) ---
+
+    getProgrammeLogos: async (schoolId: string) => {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('programme_logos')
+            .eq('id', schoolId)
+            .single();
+
+        if (error) {
+            console.error('☁️ Error fetching programme logos:', error);
+            return {};
+        }
+        return data?.programme_logos || {};
+    },
+
+    saveProgrammeLogo: async (schoolId: string, programmeId: string, logoUrl: string) => {
+        const { data, error: fetchError } = await supabase
+            .from('schools')
+            .select('programme_logos')
+            .eq('id', schoolId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const currentLogos = data?.programme_logos || {};
+        const updatedLogos = { ...currentLogos, [programmeId]: logoUrl };
+
+        const { error: updateError } = await supabase
+            .from('schools')
+            .update({ programme_logos: updatedLogos })
+            .eq('id', schoolId);
+
+        if (updateError) throw updateError;
+        return true;
+    },
+
+    /**
+     * Updates the main institutional logo for the school profile.
+     * Synchronizes to the schools.logo_url column.
+     */
+    saveSchoolLogo: async (schoolId: string, logoUrl: string) => {
+        const { error } = await supabase
+            .from('schools')
+            .update({ logo_url: logoUrl })
+            .eq('id', schoolId);
+
+        if (error) throw error;
+        return true;
     }
 };

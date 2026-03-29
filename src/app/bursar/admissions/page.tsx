@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSchoolData, RegistrarStudent, AdmissionFormData } from '@/lib/store';
+import { databaseService } from '@/services/databaseService'; // Added for cloud logo sync
 
 export default function AdmissionsPage() {
     const router = useRouter();
@@ -26,6 +27,19 @@ export default function AdmissionsPage() {
     // UI State
     if (!hydrated) return null;
     const [viewMode, setViewMode] = useState<'list' | 'single' | 'batch'>('list');
+    const [programmeLogos, setProgrammeLogos] = useState<Record<string, string>>({}); // Cloud logos
+
+    // --- CLOUD LOGO SYNC ---
+    useEffect(() => {
+        const fetchLogos = async () => {
+            if (schoolProfile?.id) {
+                const logos = await databaseService.getProgrammeLogos(schoolProfile.id);
+                setProgrammeLogos(logos);
+            }
+        };
+        fetchLogos();
+    }, [schoolProfile?.id]);
+
     const [selectedIds, setSelectedIds] = useState<string[]>([]); // Changed to string[] for Store IDs
 
     // Filters State
@@ -264,24 +278,30 @@ export default function AdmissionsPage() {
         // 3. Construct HTML
         let content = template.sections.sort((a, b) => a.order - b.order).map(s => s.content).join('');
 
-        // 4. Substitutions
-        const specificLogo = localStorage.getItem(`logo_${template.id}`);
-        const globalLogo = localStorage.getItem('school_logo');
-        const activeLogo = specificLogo || globalLogo;
-
-        const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 100px; width: auto; display: block; margin: 0 auto;" />` : '';
+        // 4. Substitutions (Cloud Sync Priority)
+        const progId = prog?.id || (template as any).programmeId;
+        const cloudLogo = progId ? programmeLogos[progId] : null;
+        const specLogo = template.logo; // Direct override in template
+        const localProgLogo = progId ? (typeof window !== 'undefined' ? localStorage.getItem(`logo_${progId}`) : null) : null;
+        const globalLogo = schoolProfile?.logo || (typeof window !== 'undefined' ? localStorage.getItem('school_logo') : null);
+        
+        const activeLogo = cloudLogo || specLogo || localProgLogo || globalLogo;
+        const logoHtml = activeLogo ? `<img src="${activeLogo}" style="max-height: 80px; width: auto; display: block; margin: 0 auto 10px auto;" />` : '';
 
         const replacements: Record<string, string> = {
+            '{{programme_logo}}': logoHtml,
+            '{{institution_logo}}': logoHtml,
             '{{student_name}}': student.name,
             '{{student_code}}': student.id,
             '{{programme_name}}': prog.name,
-            '{{institution_name}}': schoolProfile.name,
+            '{{institution_name}}': schoolProfile?.name || 'School Platform',
+            '{{institution_address}}': schoolProfile?.poBox || schoolProfile?.address || '',
+            '{{institution_contact}}': schoolProfile?.phone || schoolProfile?.email || '',
             '{{current_date}}': new Date().toLocaleDateString(),
             '{{reporting_date}}': student.admissionDate,
             '{{admission_date}}': student.admissionDate,
             '{{pay_code}}': student.schoolPayCode || student.payCode || '',
-            '{{year}}': new Date().getFullYear().toString(),
-            '{{programme_logo}}': logoHtml
+            '{{year}}': new Date().getFullYear().toString()
         };
 
         Object.entries(replacements).forEach(([key, val]) => {

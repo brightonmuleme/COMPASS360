@@ -3800,64 +3800,58 @@ function useSchoolDataInternal() {
 
     const addProgramme = async (p: Programme) => {
         const isDev = (activeRole || '').toLowerCase() === 'developer';
-        const origin = (isDev ? 'official' : ((activeRole === 'Registrar' || activeRole === 'School News Coordinator') ? 'registrar' : 'bursar')) as any;
-        const ownerId = isDev ? 'developer' : p.ownerId;
+        const origin = 'custom';
+        const ownerId = schoolProfile?.id || p.ownerId;
         const enriched = { ...p, origin, ownerId };
         setProgrammes(prev => [...prev, enriched]);
-        if (isDev) {
-            try {
-                await databaseService.saveOfficialProgramme({
-                    id: enriched.id,
-                    code: enriched.code,
-                    name: enriched.name,
-                    type: enriched.type,
-                    duration: enriched.duration,
-                    description: enriched.description,
-                    ownerId: 'developer',
-                    levels: enriched.levels,
-                    feeStructure: enriched.feeStructure,
-                    origin: 'official'
-                });
-            } catch (error) {
-                console.error("Failed to sync programme to cloud:", error);
-            }
+        try {
+            await databaseService.saveOfficialProgramme({
+                id: enriched.id,
+                code: enriched.code,
+                name: enriched.name,
+                type: enriched.type,
+                duration: enriched.duration,
+                description: enriched.description,
+                ownerId,
+                levels: enriched.levels,
+                feeStructure: enriched.feeStructure,
+                origin: 'official'
+            });
+        } catch (error) {
+            console.error("Failed to sync programme to cloud:", error);
         }
     };
     const updateProgramme = async (p: Programme) => {
         const isDev = (activeRole || '').toLowerCase() === 'developer';
-        setProgrammes(prev => prev.map(prog => prog.id === p.id ? { ...p, ownerId: p.ownerId || (isDev ? 'developer' : undefined) } : prog));
-        if (isDev) {
-            try {
-                await databaseService.saveOfficialProgramme({
-                    id: p.id,
-                    code: p.code,
-                    name: p.name,
-                    type: p.type,
-                    duration: p.duration,
-                    description: p.description,
-                    ownerId: 'developer',
-                    levels: p.levels,
-                    feeStructure: p.feeStructure,
-                    origin: 'official'
-                });
-            } catch (error) {
-                console.error("Failed to sync programme update to cloud:", error);
-            }
+        const ownerId = isDev ? 'developer' : (schoolProfile?.id || p.ownerId);
+        setProgrammes(prev => prev.map(prog => prog.id === p.id ? { ...p, ownerId } : prog));
+        try {
+            await databaseService.saveOfficialProgramme({
+                id: p.id,
+                code: p.code,
+                name: p.name,
+                type: p.type,
+                duration: p.duration,
+                description: p.description,
+                ownerId: ownerId,
+                levels: p.levels,
+                feeStructure: p.feeStructure,
+                origin: p.origin || (isDev ? 'official' : 'custom')
+            });
+        } catch (error) {
+            console.error("Failed to sync programme update to cloud:", error);
         }
     };
     const deleteProgramme = async (id: string) => {
-        const isDev = (activeRole || '').toLowerCase() === 'developer';
         setProgrammes(prev => prev.filter(p => p.id !== id));
         setTutors(prev => prev.map(tutor => ({
             ...tutor,
             programmeIds: (tutor.programmeIds || []).filter(pid => pid !== id)
         })));
-        if (isDev) {
-            try {
-                await databaseService.deleteOfficialProgramme(id);
-            } catch (error) {
-                console.error("Failed to sync programme deletion to cloud:", error);
-            }
+        try {
+            await databaseService.deleteOfficialProgramme(id);
+        } catch (error) {
+            console.error("Failed to sync programme deletion to cloud:", error);
         }
     };
 

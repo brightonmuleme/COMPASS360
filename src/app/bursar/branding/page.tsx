@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSchoolData } from '@/lib/store';
+import { databaseService } from '@/services/databaseService';
 import { Layout, Image as ImageIcon, Type, Palette, Save, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function PortalBrandingPage() {
-    const { portalBranding, updatePortalBranding } = useSchoolData();
+    const { portalBranding, updatePortalBranding, schoolProfile } = useSchoolData();
 
     const [formData, setFormData] = useState(portalBranding);
     const [logoPreview, setLogoPreview] = useState<string | null>(portalBranding.logo || null);
@@ -23,21 +24,43 @@ export default function PortalBrandingPage() {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            if (file.size > 1024 * 1024) { // 1MB limit for portal logo
-                setStatus({ type: 'error', message: 'Logo must be under 1MB' });
-                return;
+        if (!file) return;
+
+        // Validation (2MB limit for cloud)
+        if (file.size > 2 * 1024 * 1024) {
+            setStatus({ type: 'error', message: 'Logo must be under 2MB' });
+            return;
+        }
+
+        try {
+            setIsSaving(true);
+            setStatus({ type: 'success', message: '📤 Uploading Institutional Logo to Cloud...' });
+
+            // 1. Storage Upload
+            const fileExt = file.name.split('.').pop();
+            const fileName = `institutional_logo_${Date.now()}.${fileExt}`;
+            const path = `logos/${fileName}`;
+            
+            await databaseService.uploadFile('official-assets', path, file);
+            const url = databaseService.getFileUrl('official-assets', path);
+
+            // 2. Set UI Preview & Form Data (URL instead of Base64)
+            setLogoPreview(url);
+            setFormData(prev => ({ ...prev, logo: url }));
+            
+            // 3. Direct Column Update for immediate global branding
+            if (schoolProfile?.id) {
+                await databaseService.saveSchoolLogo(schoolProfile.id, url);
             }
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                setLogoPreview(result);
-                setFormData(prev => ({ ...prev, logo: result }));
-            };
-            reader.readAsDataURL(file);
+            setStatus({ type: 'success', message: 'School logo uploaded and synced successfuly!' });
+        } catch (error) {
+            console.error('Logo upload error:', error);
+            setStatus({ type: 'error', message: 'Cloud upload failed. Check storage policies.' });
+        } finally {
+            setIsSaving(false);
         }
     };
 
