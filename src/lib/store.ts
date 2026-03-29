@@ -3823,7 +3823,7 @@ function useSchoolDataInternal() {
         }
     };
     const deleteProgramme = async (id: string) => {
-        setProgrammes(prev => prev.filter(p => p.id !== id));
+        triggerTombstone([id]); setProgrammes(prev => prev.filter(p => p.id !== id));
         setTutors(prev => prev.map(tutor => ({
             ...tutor,
             programmeIds: (tutor.programmeIds || []).filter(pid => pid !== id)
@@ -3899,14 +3899,26 @@ function useSchoolDataInternal() {
         }
     };
 
-    const updateTemplate = (t: DocumentTemplate) => {
+    const updateTemplate = async (t: DocumentTemplate) => {
         setDocumentTemplates(prev => {
             const exists = prev.find(p => p.id === t.id);
             if (exists) return prev.map(p => p.id === t.id ? t : p);
             return [...prev, t];
         });
+        try {
+            await takeInstitutionalSnapshot(`Update Template: ${t.name}`, true);
+        } catch (error) {
+            console.error("Failed to sync template update to cloud snapshot:", error);
+        }
     };
-    const deleteTemplate = (id: string) => setDocumentTemplates(prev => prev.filter(t => t.id !== id));
+    const deleteTemplate = async (id: string) => {
+        setDocumentTemplates(prev => prev.filter(t => t.id !== id));
+        try {
+            await takeInstitutionalSnapshot(`Delete Template: ${id}`, true);
+        } catch (error) {
+            console.error("Failed to sync template deletion to cloud snapshot:", error);
+        }
+    };
 
 
     useEffect(() => {
