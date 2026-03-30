@@ -3823,13 +3823,10 @@ function useSchoolDataInternal() {
         }
     };
     const deleteProgramme = async (id: string) => {
-        triggerTombstone([id]); setProgrammes(prev => prev.filter(p => p.id !== id));
-        setTutors(prev => prev.map(tutor => ({
-            ...tutor,
-            programmeIds: (tutor.programmeIds || []).filter(pid => pid !== id)
-        })));
+        triggerTombstone([id]);
+        setProgrammes(prev => prev.filter(p => p.id !== id));
         try {
-            // CRITICAL: Push updated program list to Cloud Snapshot blob
+            await new Promise(r => setTimeout(r, 100));
             await takeInstitutionalSnapshot(`Delete Program: ${id}`, true);
         } catch (error) {
             console.error("Failed to sync programme deletion to cloud snapshot:", error);
@@ -3906,6 +3903,8 @@ function useSchoolDataInternal() {
             return [...prev, t];
         });
         try {
+            // 🛡️ SYNC HARMONY: Wait for React state cycle to settle before snapshot
+            await new Promise(r => setTimeout(r, 100));
             await takeInstitutionalSnapshot(`Update Template: ${t.name}`, true);
         } catch (error) {
             console.error("Failed to sync template update to cloud snapshot:", error);
@@ -3914,6 +3913,7 @@ function useSchoolDataInternal() {
     const deleteTemplate = async (id: string) => {
         setDocumentTemplates(prev => prev.filter(t => t.id !== id));
         try {
+            await new Promise(r => setTimeout(r, 100));
             await takeInstitutionalSnapshot(`Delete Template: ${id}`, true);
         } catch (error) {
             console.error("Failed to sync template deletion to cloud snapshot:", error);
