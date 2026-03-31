@@ -1400,7 +1400,7 @@ function useSchoolDataInternal() {
 
             // 🔒 SYNC HARMONY: Skip heartbeat if a manual action (like delete) happened recently (5s)
             const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
-            if (Date.now() - lastManualAction < 5000) {
+            if (Date.now() - lastManualAction < 8000) { // Increased to 8s
                 console.log("☁️ Compass Heartbeat: Skipping cycle due to recent manual action lock.");
                 return;
             }
@@ -1999,17 +1999,26 @@ function useSchoolDataInternal() {
         if (hydrated) safeSetItem('school_staff_accounts_v1', staffAccounts);
     }, [staffAccounts, hydrated]);
 
-    const updateStaffPassword = (accountId: string, newPassword: string) => {
+    const updateStaffPassword = async (accountId: string, newPassword: string) => {
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, password: newPassword } : acc));
+        try {
+            await takeInstitutionalSnapshot(`Update Staff Password: ${accountId}`, true);
+        } catch (error) { console.error(error); }
     };
 
     const resetStaffPassword = (accountId: string) => {
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, password: 'password123' } : acc));
     };
 
-    const updateStaffProfile = (accountId: string, updates: Partial<StaffAccount>) => {
+    const updateStaffProfile = async (accountId: string, updates: Partial<StaffAccount>) => {
         triggerManualActionLock();
         setStaffAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, ...updates } : acc));
+        try {
+            await new Promise(r => setTimeout(r, 100));
+            await takeInstitutionalSnapshot(`Update Staff Profile: ${accountId}`, true);
+        } catch (error) {
+            console.error("Failed to sync staff profile update to cloud snapshot:", error);
+        }
     };
 
     // PERSISTENCE EFFECT FOR ARCHIVES
@@ -3799,6 +3808,7 @@ function useSchoolDataInternal() {
 
 
     const addProgramme = async (p: Programme) => {
+        triggerManualActionLock(); // 🛡️ SYNC PROTECTION
         const isDev = (activeRole || '').toLowerCase() === 'developer';
         const origin = 'custom';
         const ownerId = schoolProfile?.id || p.ownerId;
@@ -3812,6 +3822,7 @@ function useSchoolDataInternal() {
         }
     };
     const updateProgramme = async (p: Programme) => {
+        triggerManualActionLock(); // 🛡️ SYNC PROTECTION
         const isDev = (activeRole || '').toLowerCase() === 'developer';
         const ownerId = isDev ? 'developer' : (schoolProfile?.id || p.ownerId);
         setProgrammes(prev => prev.map(prog => prog.id === p.id ? { ...p, ownerId } : prog));
@@ -3823,6 +3834,7 @@ function useSchoolDataInternal() {
         }
     };
     const deleteProgramme = async (id: string) => {
+        triggerManualActionLock(); // 🛡️ SYNC PROTECTION
         triggerTombstone([id]);
         setProgrammes(prev => prev.filter(p => p.id !== id));
         try {
@@ -3833,9 +3845,15 @@ function useSchoolDataInternal() {
         }
     };
 
-    const updateStudent = (s: EnrolledStudent) => {
+    const updateStudent = async (s: EnrolledStudent) => {
         triggerManualActionLock();
         setStudents(prev => prev.map(st => st.id.toString() === s.id.toString() ? { ...st, ...s, schoolId: st.schoolId || schoolProfile.id, lastUpdated: new Date().toISOString() } : st));
+        try {
+            await new Promise(r => setTimeout(r, 100));
+            await takeInstitutionalSnapshot(`Update Student: ${s.name}`, true);
+        } catch (error) {
+            console.error("Failed to sync student update to cloud snapshot:", error);
+        }
     };
 
     const batchUpdateStudents = (updatedStudents: EnrolledStudent[], logAction?: string, logDetails?: string) => {
@@ -3897,26 +3915,39 @@ function useSchoolDataInternal() {
     };
 
     const updateTemplate = async (t: DocumentTemplate) => {
+        triggerManualActionLock(); // 🛡️ SYNC PROTECTION
+        let freshTemplates: DocumentTemplate[] = [];
         setDocumentTemplates(prev => {
             const exists = prev.find(p => p.id === t.id);
-            if (exists) return prev.map(p => p.id === t.id ? t : p);
-            return [...prev, t];
+            freshTemplates = exists ? prev.map(p => p.id === t.id ? t : p) : [...prev, t];
+            return freshTemplates;
         });
         try {
-            // 🛡️ SYNC HARMONY: Wait for React state cycle to settle before snapshot
-            await new Promise(r => setTimeout(r, 100));
-            await takeInstitutionalSnapshot(`Update Template: ${t.name}`, true);
+            // 🚄 EXPRESS LANE: Direct save to dedicated column for maximum persistence
+            if (schoolProfile?.id) {
+                await databaseService.saveDocumentTemplates(schoolProfile.id, freshTemplates);
+            }
+            // 🕰️ Backup: Still push to snapshot for version history
+            await takeInstitutionalSnapshot(`Update Template: ${t.name}`, true, { documentTemplates: freshTemplates });
         } catch (error) {
-            console.error("Failed to sync template update to cloud snapshot:", error);
+            console.error("Failed to sync template update to express/cloud lane:", error);
         }
     };
     const deleteTemplate = async (id: string) => {
-        setDocumentTemplates(prev => prev.filter(t => t.id !== id));
+        triggerManualActionLock(); // 🛡️ SYNC PROTECTION
+        let freshTemplates: DocumentTemplate[] = [];
+        setDocumentTemplates(prev => {
+            freshTemplates = prev.filter(t => t.id !== id);
+            return freshTemplates;
+        });
         try {
-            await new Promise(r => setTimeout(r, 100));
-            await takeInstitutionalSnapshot(`Delete Template: ${id}`, true);
+            // 🚄 EXPRESS LANE: Direct save to dedicated column
+            if (schoolProfile?.id) {
+                await databaseService.saveDocumentTemplates(schoolProfile.id, freshTemplates);
+            }
+            await takeInstitutionalSnapshot(`Delete Template: ${id}`, true, { documentTemplates: freshTemplates });
         } catch (error) {
-            console.error("Failed to sync template deletion to cloud snapshot:", error);
+            console.error("Failed to sync template deletion to express/cloud lane:", error);
         }
     };
 
@@ -4208,7 +4239,7 @@ function useSchoolDataInternal() {
 
     const deleteStudent = (studentId: number | string) => deleteStudents([studentId]);
 
-    const deleteStudents = (studentIds: (number | string)[]) => {
+    const deleteStudents = async (studentIds: (number | string)[]) => {
         triggerManualActionLock();
         if (studentIds.length === 0) return;
 
@@ -4259,6 +4290,12 @@ function useSchoolDataInternal() {
         triggerTombstone([...studentIds, ...Array.from(paymentIdsToRemove), ...Array.from(billingIdsToRemove)]);
 
         logGlobalAction('Students Deleted (Batch)', `Deleted ${studentIds.length} students. IDs: ${studentIds.join(', ')}`);
+        try {
+            await new Promise(r => setTimeout(r, 100));
+            await takeInstitutionalSnapshot(`Delete Students: ${studentIds.length} items`, true);
+        } catch (error) {
+            console.error("Failed to sync student deletion to cloud snapshot:", error);
+        }
     };
 
     const syncRequirementToInventory = (studentId: number | string, reqName: string, changeAmount: number) => {
@@ -4455,14 +4492,26 @@ function useSchoolDataInternal() {
         setTutorContents(prev => prev.map(c => c.tutorId === id ? { ...c, tutorId: 'system' } : c));
     };
 
-    const addStudent = (s: EnrolledStudent) => {
+    const addStudent = async (s: EnrolledStudent) => {
         triggerManualActionLock();
         const origin = (activeRole === 'Registrar' || activeRole === 'School News Coordinator') ? 'registrar' : 'bursar';
         setStudents(prev => [...prev, { ...s, origin, schoolId: schoolProfile.id, lastUpdated: new Date().toISOString() }]);
+        try {
+            await new Promise(r => setTimeout(r, 100));
+            await takeInstitutionalSnapshot(`Enroll Student: ${s.name}`, true);
+        } catch (error) {
+            console.error("Failed to sync student enrollment to cloud snapshot:", error);
+        }
     };
-    const addStaffAccount = (s: StaffAccount) => {
+    const addStaffAccount = async (s: StaffAccount) => {
         triggerManualActionLock();
         setStaffAccounts(prev => [...prev, s]);
+        try {
+            await new Promise(r => setTimeout(r, 100));
+            await takeInstitutionalSnapshot(`Add Staff: ${s.name}`, true);
+        } catch (error) {
+            console.error("Failed to sync staff addition to cloud snapshot:", error);
+        }
     };
 
     // TUTOR CONTENT ACTIONS
@@ -5306,7 +5355,7 @@ function useSchoolDataInternal() {
     ]);
 
     // 🕒 THE TIME MACHINE: SNAPSHOT MANAGEMENT (Phase 4)
-    const takeInstitutionalSnapshot = async (label: string = 'Manual Snapshot', silent: boolean = false) => {
+    const takeInstitutionalSnapshot = async (label: string = 'Manual Snapshot', silent: boolean = false, stateOverride?: any) => {
         if (!schoolProfile.id) {
             if (!silent) alert("❌ Cannot snapshot: School ID is missing.");
             return false;
@@ -5314,6 +5363,7 @@ function useSchoolDataInternal() {
         setIsCloudSyncing(true);
         try {
             const state = {
+                ...stateOverride,
                 students, registrarStudents, payments, billings, generalTransactions,
                 requisitions, bursaries, programmes, services, staffAccounts, schoolProfile,
                 documentTemplates, paymentIntegrations, manualPaymentMethods, financialSettings,
@@ -5432,6 +5482,13 @@ function useSchoolDataInternal() {
 
         const idToUse = targetSchoolId || schoolProfile.id || studentProfile?.schoolId;
 
+        // 🔒 SYNC HARMONY: Skip pull if a manual action happened recently (unless forced)
+        const lastManualAction = Number(localStorage.getItem('school_manual_action_lock') || 0);
+        if (!isForce && Date.now() - lastManualAction < 8000) { // Increased to 8s
+            console.log("☁️ Compass Heartbeat: Skipping pull due to manual action lock.");
+            return;
+        }
+
         // 🛡️ STUDENT SYNC BRIDGE
         // If we have a student ID, ensure we sync the profile first
         if (studentProfile?.id && studentProfile.id !== 'std_user_1') {
@@ -5501,6 +5558,17 @@ function useSchoolDataInternal() {
 
         setIsCloudSyncing(true);
         try {
+            // 🚄 EXPRESS LANE: Load document templates directly from dedicated column
+            try {
+                const expressTemplates = await databaseService.getDocumentTemplates(idToUse);
+                if (expressTemplates && expressTemplates.length > 0) {
+                    console.log("🚄 Express Lane: Successfully loaded templates from dedicated storage.");
+                    setDocumentTemplates(expressTemplates);
+                }
+            } catch (expressErr) {
+                console.warn("🚄 Express Lane: Fetch failed, falling back to snapshot.", expressErr);
+            }
+
             let cloudStateRaw = await databaseService.getSchoolCloudState(idToUse);
             let cloudState = null;
 
@@ -5620,7 +5688,11 @@ function useSchoolDataInternal() {
                     }
                     if (cloudState.financialSettings) setFinancialSettings(cloudState.financialSettings);
                     if (cloudState.unclaimedPayments) setUnclaimedPayments(prev => filterAndMerge(prev, cloudState.unclaimedPayments));
-                    if (cloudState.documentTemplates) setDocumentTemplates(cloudState.documentTemplates);
+                    if (cloudState.documentTemplates) {
+                        // 🛡️ SYNC PROTECTION: Only use snapshot templates if Express Lane is empty
+                        // This prevents old snapshots from overwriting fresh Express Lane data.
+                        setDocumentTemplates(prev => (prev && prev.length > 0) ? prev : cloudState.documentTemplates);
+                    }
                     if (cloudState.budgetPeriods) setBudgetPeriods(cloudState.budgetPeriods);
                     if (cloudState.expenseCategories) setExpenseCategories(cloudState.expenseCategories);
                     if (cloudState.incomeCategories) setIncomeCategories(cloudState.incomeCategories);

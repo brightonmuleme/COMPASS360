@@ -5,7 +5,7 @@ import { DocumentTemplate, DocumentSection } from '@/lib/store';
 interface EditorProps {
     template: DocumentTemplate;
     programmeLogo?: string;
-    onSave: (template: DocumentTemplate) => void;
+    onSave: (template: DocumentTemplate) => Promise<void> | void;
     onCancel: () => void;
     onUpload?: (file: File) => Promise<string>; // NEW: Handle cloud upload
 }
@@ -71,6 +71,7 @@ export default function DocumentTemplateEditor({ template, programmeLogo, onSave
     const [previewMode, setPreviewMode] = useState(false);
     const [logo, setLogo] = useState<string>('');
     const [isUploading, setIsUploading] = useState(false); // NEW: Track upload state
+    const [isSaving, setIsSaving] = useState(false); // NEW: Track save state
 
     // For syncing contentEditable
     const editorRef = useRef<HTMLDivElement>(null);
@@ -133,12 +134,18 @@ export default function DocumentTemplateEditor({ template, programmeLogo, onSave
         }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         // Also ensure the logo is 'stuck' to the programme in localStorage for persistence across templates
         if (logo && template.programmeId) {
             localStorage.setItem(`logo_${template.programmeId}`, logo);
         }
-        onSave({ ...template, name: templateName, sections, logo, updatedAt: new Date().toISOString() });
+        setIsSaving(true);
+        try {
+            await onSave({ ...template, name: templateName, sections, logo, updatedAt: new Date().toISOString() });
+        } catch (err) {
+            console.error("Save failed:", err);
+            setIsSaving(false);
+        }
     };
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -386,9 +393,19 @@ export default function DocumentTemplateEditor({ template, programmeLogo, onSave
                     <div className="mt-auto flex flex-col gap-3 p-6 border-t border-gray-800 bg-gray-900 sticky bottom-0">
                         <button
                             onClick={handleSave}
-                            className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] touch-target"
+                            disabled={isSaving}
+                            className={`w-full py-3 ${isSaving ? 'bg-gray-600' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400'} text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] touch-target`}
                         >
-                            <span>💾</span> Save
+                            {isSaving ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>Saving to Cloud...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span>💾</span> Save
+                                </>
+                            )}
                         </button>
                         <button
                             onClick={onCancel}

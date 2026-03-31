@@ -1217,14 +1217,14 @@ export default function ProgrammeDetailPage() {
                             // Priority: Direct Column Logo > Program Object Logo
                             programmeLogo={programmeLogos[programme?.id || ''] || (programme as any)?.logo}
                             onUpload={handleCloudLogoUpload}
-                            onSave={(updated) => {
+                            onSave={async (updated) => {
                                 // 1. Update the specific template
-                                updateTemplate(updated);
+                                await updateTemplate(updated);
 
                                 // 2. Sync logo back to the Programme itself for global cloud persistence
                                 if (updated.logo && programme) {
                                     // @ts-ignore
-                                    updateProgramme({ ...programme, logo: updated.logo });
+                                    await updateProgramme({ ...programme, logo: updated.logo });
                                 }
 
                                 setEditorTemplate(null);

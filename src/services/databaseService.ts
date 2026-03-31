@@ -375,5 +375,35 @@ export const databaseService = {
 
         if (error) throw error;
         return true;
+    },
+
+
+    // --- DOCUMENT TEMPLATES (New Express Lane) ---
+
+    getDocumentTemplates: async (schoolId: string) => {
+        const { data, error } = await supabase
+            .from('schools')
+            .select('document_templates')
+            .eq('id', schoolId)
+            .single();
+
+        if (error) {
+            console.error('☁️ Express Lane: Error fetching templates:', error);
+            return [];
+        }
+        return data?.document_templates || [];
+    },
+
+    saveDocumentTemplates: async (schoolId: string, templates: any[]) => {
+        const { error } = await supabase
+            .from('schools')
+            .update({ document_templates: templates })
+            .eq('id', schoolId);
+
+        if (error) {
+            console.error('☁️ Express Lane: Error saving templates:', error);
+            throw error;
+        }
+        return true;
     }
 };
